@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "../VR/VrApi.h"
 #include "CraftsState.h"
 #include <sstream>
 #include "../Engine/Action.h"
@@ -187,7 +188,7 @@ void CraftsState::lstCraftsClick(Action *action)
 			// warp mouse
 			if (row != _lstCrafts->getVisibleRows() - 1 + _lstCrafts->getScroll())
 			{
-				SDL_WarpMouse(action->getLeftBlackBand() + action->getXMouse(), action->getTopBlackBand() + action->getYMouse() + static_cast<Uint16>(8 * action->getYScale()));
+				VR::warpMouse(action->getLeftBlackBand() + action->getXMouse(), action->getTopBlackBand() + action->getYMouse() + static_cast<Uint16>(8 * action->getYScale()));
 			}
 			else
 			{
@@ -205,7 +206,7 @@ void CraftsState::lstCraftsClick(Action *action)
 			// warp mouse
 			if (row != _lstCrafts->getScroll())
 			{
-				SDL_WarpMouse(action->getLeftBlackBand() + action->getXMouse(), action->getTopBlackBand() + action->getYMouse() - static_cast<Uint16>(8 * action->getYScale()));
+				VR::warpMouse(action->getLeftBlackBand() + action->getXMouse(), action->getTopBlackBand() + action->getYMouse() - static_cast<Uint16>(8 * action->getYScale()));
 			}
 			else
 			{

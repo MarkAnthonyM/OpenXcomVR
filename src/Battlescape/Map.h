@@ -150,6 +150,8 @@ public:
 	void setCursorType(CursorType type, int size = 1);
 	/// Gets the 3D cursor type.
 	CursorType getCursorType() const;
+	/// VR tabletop: points the selector at a tile picked on the table.
+	void setSelectorTile(int x, int y) { _selectorX = x; _selectorY = y; }
 
 	/// Sets projectile.
 	void setProjectile(Projectile *projectile);

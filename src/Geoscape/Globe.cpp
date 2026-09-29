@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "../VR/VrApi.h"
 #include "Globe.h"
 #include "../fmath.h"
 #include "../Engine/Action.h"
@@ -1827,7 +1828,7 @@ void Globe::mouseOver(Action *action, State *state)
 		// the mouse-release event is missed for any reason.
 		// (checking: is the dragScroll-mouse-button still pressed?)
 		// However if the SDL is also missed the release event, then it is to no avail :(
-		if (0 == (SDL_GetMouseState(0, 0)&SDL_BUTTON(Options::geoDragScrollButton)))
+		if (0 == (VR::getMouseState(0, 0)&SDL_BUTTON(Options::geoDragScrollButton)))
 		{ // so we missed again the mouse-release :(
 			// Check if we have to revoke the scrolling, because it was too short in time, so it was a click
 			if ((!_mouseMovedOverThreshold) && ((int)(SDL_GetTicks() - _mouseScrollingStartTime) <= (Options::dragScrollTimeTolerance)))
@@ -1845,7 +1846,7 @@ void Globe::mouseOver(Action *action, State *state)
 		{
 			// Set the mouse cursor back
 			SDL_EventState(SDL_MOUSEMOTION, SDL_IGNORE);
-			SDL_WarpMouse((_game->getScreen()->getWidth() - 100) / 2 , _game->getScreen()->getHeight() / 2);
+			VR::warpMouse((_game->getScreen()->getWidth() - 100) / 2 , _game->getScreen()->getHeight() / 2);
 			SDL_EventState(SDL_MOUSEMOTION, SDL_ENABLE);
 		}
 
@@ -1909,7 +1910,7 @@ void Globe::mousePress(Action *action, State *state)
 	{
 		_isMouseScrolling = true;
 		_isMouseScrolled = false;
-		SDL_GetMouseState(&_xBeforeMouseScrolling, &_yBeforeMouseScrolling);
+		VR::getMouseState(&_xBeforeMouseScrolling, &_yBeforeMouseScrolling);
 		_lonBeforeMouseScrolling = _cenLon;
 		_latBeforeMouseScrolling = _cenLat;
 		_totalMouseMoveX = 0; _totalMouseMoveY = 0;
@@ -1970,7 +1971,7 @@ void Globe::mouseClick(Action *action, State *state)
 	if (_isMouseScrolling)
 	{
 		if (action->getDetails()->button.button != Options::geoDragScrollButton
-			&& 0 == (SDL_GetMouseState(0, 0)&SDL_BUTTON(Options::geoDragScrollButton)))
+			&& 0 == (VR::getMouseState(0, 0)&SDL_BUTTON(Options::geoDragScrollButton)))
 		{ // so we missed again the mouse-release :(
 			// Check if we have to revoke the scrolling, because it was too short in time, so it was a click
 			if ((!_mouseMovedOverThreshold) && ((int)(SDL_GetTicks() - _mouseScrollingStartTime) <= (Options::dragScrollTimeTolerance)))
@@ -2141,7 +2142,7 @@ void Globe::setupRadii(int width, int height)
  */
 void Globe::stopScrolling(Action *action)
 {
-	SDL_WarpMouse(_xBeforeMouseScrolling, _yBeforeMouseScrolling);
+	VR::warpMouse(_xBeforeMouseScrolling, _yBeforeMouseScrolling);
 	action->setMouseAction(_xBeforeMouseScrolling, _yBeforeMouseScrolling, getX(), getY());
 }
 

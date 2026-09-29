@@ -74,6 +74,8 @@ public:
 	/// Adjusts a linear volume level to an exponential one.
 	static double volumeExponent(int volume);
 	/// Gets the game's display screen.
+	/// VR tabletop: read-only view of the state stack.
+	const std::list<State*> &getStates() const { return _states; }
 	Screen *getScreen() const { return _screen; }
 	/// Gets the game's cursor.
 	Cursor *getCursor() const { return _cursor; }

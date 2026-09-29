@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "../VR/VrApi.h"
 #include "InventoryState.h"
 #include "InventoryLoadState.h"
 #include "InventorySaveState.h"
@@ -1717,11 +1718,11 @@ void InventoryState::refreshMouse()
 {
 	// send a mouse motion event to refresh any hover actions
 	int x, y;
-	SDL_GetMouseState(&x, &y);
-	SDL_WarpMouse(x+1, y);
+	VR::getMouseState(&x, &y);
+	VR::warpMouse(x+1, y);
 
 	// move the mouse back to avoid cursor creep
-	SDL_WarpMouse(x, y);
+	VR::warpMouse(x, y);
 }
 
 void InventoryState::onClearInventory(Action *)

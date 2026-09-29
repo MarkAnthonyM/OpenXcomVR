@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "../VR/VrApi.h"
 #include "Camera.h"
 #include "Map.h"
 #include "../Engine/Action.h"
@@ -79,7 +80,7 @@ void Camera::mousePress(Action *action, State *)
 		_scrollTrigger = true;
 		mouseOver(action, 0);
 	}
-	else if (Options::battleDragScrollButton != SDL_BUTTON_MIDDLE || (SDL_GetMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)) == 0)
+	else if (Options::battleDragScrollButton != SDL_BUTTON_MIDDLE || (VR::getMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)) == 0)
 	{
 		if (action->getDetails()->button.button == SDL_BUTTON_WHEELUP)
 		{
@@ -215,7 +216,7 @@ void Camera::mouseOver(Action *action, State *)
 			_scrollMouseY = 0;
 		}
 
-		if ((_scrollMouseX || _scrollMouseY) && !_scrollMouseTimer->isRunning() && !_scrollKeyTimer->isRunning() && 0==(SDL_GetMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)))
+		if ((_scrollMouseX || _scrollMouseY) && !_scrollMouseTimer->isRunning() && !_scrollKeyTimer->isRunning() && 0==(VR::getMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)))
 		{
 			_scrollMouseTimer->start();
 		}
@@ -257,7 +258,7 @@ void Camera::keyboardPress(Action *action, State *)
 		_scrollKeyY = -scrollSpeed;
 	}
 
-	if ((_scrollKeyX || _scrollKeyY) && !_scrollKeyTimer->isRunning() && !_scrollMouseTimer->isRunning() && 0==(SDL_GetMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)))
+	if ((_scrollKeyX || _scrollKeyY) && !_scrollKeyTimer->isRunning() && !_scrollMouseTimer->isRunning() && 0==(VR::getMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)))
 	{
 		_scrollKeyTimer->start();
 	}
@@ -297,7 +298,7 @@ void Camera::keyboardRelease(Action *action, State *)
 		_scrollKeyY = 0;
 	}
 
-	if ((_scrollKeyX || _scrollKeyY) && !_scrollKeyTimer->isRunning() && !_scrollMouseTimer->isRunning() && 0==(SDL_GetMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)))
+	if ((_scrollKeyX || _scrollKeyY) && !_scrollKeyTimer->isRunning() && !_scrollMouseTimer->isRunning() && 0==(VR::getMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)))
 	{
 		_scrollKeyTimer->start();
 	}

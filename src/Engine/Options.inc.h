@@ -10,6 +10,7 @@ OPT bool fullscreen, asyncBlit, playIntro, useScaleFilter, useHQXFilter, useXBRZ
 	cursorInBlackBandsInFullscreen, cursorInBlackBandsInWindow, cursorInBlackBandsInBorderlessWindow, maximizeInfoScreens, musicAlwaysLoop, StereoSound, verboseLogging, soldierDiaries, touchEnabled,
 	rootWindowedMode, lazyLoadResources, backgroundMute;
 OPT std::string language, useOpenGLShader;
+OPT int vrMode; // VR tabletop: 0 off, 1 headset (OpenXR), 2 desktop preview
 OPT KeyboardType keyboardMode;
 OPT SaveSort saveOrder;
 OPT MusicFormat preferredMusic;

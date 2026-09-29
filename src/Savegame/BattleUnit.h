@@ -263,6 +263,10 @@ public:
 	/// Sets the unit's face direction (only used by strafing moves)
 	void setFaceDirection(int direction);
 	/// Gets the unit's direction.
+	/// VR tabletop: snapshot/restore of every facing value, so the sprite can be drawn for another viewing angle.
+	struct FacingSnapshot { int direction, toDirection, turret, toTurret, face; };
+	FacingSnapshot getFacingSnapshot() const { return { _direction, _toDirection, _directionTurret, _toDirectionTurret, _faceDirection }; }
+	void setFacingSnapshot(const FacingSnapshot &f) { _direction = f.direction; _toDirection = f.toDirection; _directionTurret = f.turret; _toDirectionTurret = f.toTurret; _faceDirection = f.face; }
 	int getDirection() const;
 	/// Gets the unit's face direction (only used by strafing moves)
 	int getFaceDirection() const;

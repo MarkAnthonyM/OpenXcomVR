@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "../VR/VrApi.h"
 #include "ModListState.h"
 #include "ModConfirmExtendedState.h"
 #include <climits>
@@ -358,13 +359,13 @@ void ModListState::moveModUp(Action *action, unsigned int row, bool max)
 		if (curScrollPos < targetScrollPos)
 		{
 			int ydiff = _lstMods->getTextHeight(row - 1);
-			SDL_WarpMouse(action->getLeftBlackBand() + action->getXMouse(),
+			VR::warpMouse(action->getLeftBlackBand() + action->getXMouse(),
 				 action->getTopBlackBand() + action->getYMouse() - static_cast<Uint16>(ydiff * action->getYScale()));
 		}
 		else
 		{
 			int ydiff = _lstMods->getRowY(row) - _lstMods->getY();
-			SDL_WarpMouse(action->getLeftBlackBand() + action->getXMouse(),
+			VR::warpMouse(action->getLeftBlackBand() + action->getXMouse(),
 				 action->getTopBlackBand() + action->getYMouse() - static_cast<Uint16>(ydiff * action->getYScale()));
 			_lstMods->scrollTo(targetScrollPos);
 		}
@@ -442,13 +443,13 @@ void ModListState::moveModDown(Action *action, unsigned int row, bool max)
 		if (curScrollPos + (int)_lstMods->getVisibleRows() > targetScrollPos)
 		{
 			int ydiff = _lstMods->getTextHeight(row + 1);
-			SDL_WarpMouse(action->getLeftBlackBand() + action->getXMouse(),
+			VR::warpMouse(action->getLeftBlackBand() + action->getXMouse(),
 				 action->getTopBlackBand() + action->getYMouse() + static_cast<Uint16>(ydiff * action->getYScale()));
 		}
 		else
 		{
 			int ydiff = _lstMods->getY() + _lstMods->getHeight() - (_lstMods->getRowY(row) + _lstMods->getTextHeight(row));
-			SDL_WarpMouse(action->getLeftBlackBand() + action->getXMouse(),
+			VR::warpMouse(action->getLeftBlackBand() + action->getXMouse(),
 				 action->getTopBlackBand() + action->getYMouse() + static_cast<Uint16>(ydiff * action->getYScale()));
 			_lstMods->scrollTo(targetScrollPos - _lstMods->getVisibleRows() + 1);
 		}

@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+#include "../VR/VrApi.h"
 #include "../fmath.h"
 #include <SDL_gfxPrimitives.h>
 #include "Map.h"
@@ -901,7 +902,7 @@ void BattlescapeState::mapOver(Action *action)
 		// the mouse-release event is missed for any reason.
 		// (checking: is the dragScroll-mouse-button still pressed?)
 		// However if the SDL is also missed the release event, then it is to no avail :(
-		if ((SDL_GetMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)) == 0)
+		if ((VR::getMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)) == 0)
 		{ // so we missed again the mouse-release :(
 			// Check if we have to revoke the scrolling, because it was too short in time, so it was a click
 			if ((!_mouseMovedOverThreshold) && ((int)(SDL_GetTicks() - _mouseScrollingStartTime) <= (Options::dragScrollTimeTolerance)))
@@ -919,7 +920,7 @@ void BattlescapeState::mapOver(Action *action)
 		{
 			// Set the mouse cursor back
 			SDL_EventState(SDL_MOUSEMOTION, SDL_IGNORE);
-			SDL_WarpMouse(_game->getScreen()->getWidth() / 2, _game->getScreen()->getHeight() / 2 - _map->getIconHeight() / 2);
+			VR::warpMouse(_game->getScreen()->getWidth() / 2, _game->getScreen()->getHeight() / 2 - _map->getIconHeight() / 2);
 			SDL_EventState(SDL_MOUSEMOTION, SDL_ENABLE);
 		}
 
@@ -1005,7 +1006,7 @@ void BattlescapeState::mapPress(Action *action)
 	{
 		_isMouseScrolling = true;
 		_isMouseScrolled = false;
-		SDL_GetMouseState(&_xBeforeMouseScrolling, &_yBeforeMouseScrolling);
+		VR::getMouseState(&_xBeforeMouseScrolling, &_yBeforeMouseScrolling);
 		_mapOffsetBeforeMouseScrolling = _map->getCamera()->getMapOffset();
 		if (!Options::battleDragScrollInvert && _cursorPosition.z == 0)
 		{
@@ -1034,7 +1035,7 @@ void BattlescapeState::mapClick(Action *action)
 	if (_isMouseScrolling)
 	{
 		if (action->getDetails()->button.button != Options::battleDragScrollButton
-		&& (SDL_GetMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)) == 0)
+		&& (VR::getMouseState(0,0)&SDL_BUTTON(Options::battleDragScrollButton)) == 0)
 		{   // so we missed again the mouse-release :(
 			// Check if we have to revoke the scrolling, because it was too short in time, so it was a click
 			if ((!_mouseMovedOverThreshold) && ((int)(SDL_GetTicks() - _mouseScrollingStartTime) <= (Options::dragScrollTimeTolerance)))
@@ -1121,6 +1122,39 @@ void BattlescapeState::mapClick(Action *action)
 				}
 			}
 		}
+	}
+}
+
+/**
+ * VR tabletop: same as clicking a map tile, but the tile comes from the 3D table.
+ * @param pos Tile position.
+ * @param rightClick Secondary action instead of primary.
+ */
+void BattlescapeState::vrTileClick(Position pos, bool rightClick)
+{
+	if (rightClick && _battleGame->cancelCurrentAction())
+	{
+		return;
+	}
+	if (_map->getCursorType() == CT_NONE || _battleGame->isBusy())
+	{
+		return;
+	}
+	if (_save->getTile(pos) == 0)
+	{
+		return;
+	}
+	_map->setSelectorTile(pos.x, pos.y);
+	if (rightClick)
+	{
+		if (playableUnitSelected())
+		{
+			_battleGame->secondaryAction(pos);
+		}
+	}
+	else
+	{
+		_battleGame->primaryAction(pos);
 	}
 }
 
@@ -4089,7 +4123,7 @@ void BattlescapeState::stopScrolling(Action *action)
 {
 	if (Options::battleDragScrollInvert)
 	{
-		SDL_WarpMouse(_xBeforeMouseScrolling, _yBeforeMouseScrolling);
+		VR::warpMouse(_xBeforeMouseScrolling, _yBeforeMouseScrolling);
 		action->setMouseAction(_xBeforeMouseScrolling, _yBeforeMouseScrolling, _map->getX(), _map->getY());
 		_battleGame->setupCursor();
 		if (_battleGame->getCurrentAction()->actor == 0 && (_save->getSide() == FACTION_PLAYER || _save->getDebugMode()))
@@ -4099,7 +4133,7 @@ void BattlescapeState::stopScrolling(Action *action)
 	}
 	else
 	{
-		SDL_WarpMouse(_cursorPosition.x, _cursorPosition.y);
+		VR::warpMouse(_cursorPosition.x, _cursorPosition.y);
 		action->setMouseAction(_cursorPosition.x, _cursorPosition.y, _map->getX(), _map->getY());
 		_map->setSelectorPosition(action->getAbsoluteXMouse(), action->getAbsoluteYMouse());
 	}

@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Game.h"
+#include "../VR/VrApi.h"
 #include "../resource.h"
 #include <algorithm>
 #include <cmath>
@@ -87,10 +88,12 @@ Game::Game(const std::string &title) : _screen(0), _cursor(0), _lang(0), _save(0
 	Unicode::getUtf8Locale();
 
 	// Create display
+	VR::configureOptions();
 	_screen = new Screen();
 
 	// Create cursor
 	_cursor = new Cursor(9, 13);
+	VR::startup(this);
 
 	// Create invisible hardware cursor to workaround bug with absolute positioning pointing devices
 	SDL_ShowCursor(SDL_ENABLE);
@@ -121,6 +124,7 @@ Game::~Game()
 
 	SDL_FreeCursor(SDL_GetCursor());
 
+	VR::shutdown();
 	delete _cursor;
 	delete _lang;
 	delete _save;
@@ -170,7 +174,7 @@ void Game::run()
 			// Refresh mouse position
 			SDL_Event ev;
 			int x, y;
-			SDL_GetMouseState(&x, &y);
+			VR::getMouseState(&x, &y);
 			ev.type = SDL_MOUSEMOTION;
 			ev.motion.x = x;
 			ev.motion.y = y;
@@ -181,6 +185,8 @@ void Game::run()
 		// Process events
 		while (SDL_PollEvent(&_event))
 		{
+			if (!VR::filterEvent(_event))
+				continue;
 			if (CrossPlatform::isQuitShortcut(_event))
 				_event.type = SDL_QUIT;
 			switch (_event.type)
@@ -327,6 +333,10 @@ void Game::run()
 			}
 		}
 
+		// In VR the desktop window's focus is irrelevant: keep the game running.
+		if (VR::active())
+			runningState = RUNNING;
+
 		// Process rendering
 		if (runningState != PAUSED)
 		{
@@ -368,11 +378,15 @@ void Game::run()
 			}
 		}
 
+		// VR frame: input, table scene, submit to the headset (or the desktop preview)
+		VR::frame();
+
 		// Save on CPU
 		switch (runningState)
 		{
 			case RUNNING:
-				SDL_Delay(1); //Save CPU from going 100%
+				if (!VR::pacesLoop())
+					SDL_Delay(1); //Save CPU from going 100%
 				break;
 			case SLOWED: case PAUSED:
 				SDL_Delay(100); break; //More slowing down.

@@ -153,6 +153,8 @@ public:
 	size_t getZoom() const;
 	/// Centers the globe on a point.
 	void center(double lon, double lat);
+	/// VR tabletop: the point the globe is currently centered on.
+	void getCenter(double *lon, double *lat) const { *lon = _cenLon; *lat = _cenLat; }
 	/// Checks if a point is inside land.
 	bool insideLand(double lon, double lat) const;
 	/// Checks if a point is inside fakeUnderwater texture.

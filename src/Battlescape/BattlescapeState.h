@@ -138,6 +138,8 @@ public:
 	/// Handler for clicking the Unit Down button.
 	void btnUnitDownClick(Action *action);
 	/// Handler for clicking the Map Up button.
+	/// VR tabletop: a tile was clicked on the table diorama.
+	void vrTileClick(Position pos, bool rightClick);
 	void btnMapUpClick(Action *action);
 	/// Handler for clicking the Map Down button.
 	void btnMapDownClick(Action *action);

@@ -18,6 +18,7 @@
  */
 #include <sstream>
 #include <climits>
+#include "../VR/VrApi.h"
 #include "PsiTrainingState.h"
 #include "AllocatePsiTrainingState.h"
 #include "../Engine/Game.h"
@@ -410,7 +411,7 @@ void AllocatePsiTrainingState::moveSoldierUp(Action *action, unsigned int row, b
 		_base->getSoldiers()->at(row - 1) = s;
 		if (row != _lstSoldiers->getScroll())
 		{
-			SDL_WarpMouse(action->getLeftBlackBand() + action->getXMouse(), action->getTopBlackBand() + action->getYMouse() - static_cast<Uint16>(8 * action->getYScale()));
+			VR::warpMouse(action->getLeftBlackBand() + action->getXMouse(), action->getTopBlackBand() + action->getYMouse() - static_cast<Uint16>(8 * action->getYScale()));
 		}
 		else
 		{
@@ -463,7 +464,7 @@ void AllocatePsiTrainingState::moveSoldierDown(Action *action, unsigned int row,
 		_base->getSoldiers()->at(row + 1) = s;
 		if (row != _lstSoldiers->getVisibleRows() - 1 + _lstSoldiers->getScroll())
 		{
-			SDL_WarpMouse(action->getLeftBlackBand() + action->getXMouse(), action->getTopBlackBand() + action->getYMouse() + static_cast<Uint16>(8 * action->getYScale()));
+			VR::warpMouse(action->getLeftBlackBand() + action->getXMouse(), action->getTopBlackBand() + action->getYMouse() + static_cast<Uint16>(8 * action->getYScale()));
 		}
 		else
 		{

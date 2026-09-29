@@ -1,0 +1,1120 @@
+/*
+ * OXCE VR tabletop - main VR driver.
+ *
+ * Owns the OpenXR runtime (or the desktop preview camera), the command
+ * center scene, the floating game screen and the controller -> mouse bridge.
+ * Scene content that depends on game state (battlescape diorama, geoscape
+ * globe) lives in VrBoard and is updated here every frame.
+ */
+#include "VrGL.h" // must come first (GL extension headers)
+#include "VrXr.h"
+#include "VrShaders.h"
+#include "VrRoom.h"
+#include "VrBoard.h"
+#include "VrApi.h"
+#include "../Engine/Game.h"
+#include "../Engine/Screen.h"
+#include "../Engine/Options.h"
+#include "../Engine/Logger.h"
+#include "../Engine/Surface.h"
+#include "../Engine/Font.h"
+#include "../Interface/Text.h"
+#include "../Mod/Mod.h"
+#include "../Menu/StartState.h"
+#include "../lodepng.h"
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <cstdlib>
+#include <cmath>
+#include <fstream>
+#include <sstream>
+#include <deque>
+
+namespace OpenXcom
+{
+namespace VR
+{
+
+static const Uint8 SYNTH_TAG = 0xB7; // "which" value marking events we injected
+
+struct Panel
+{
+	glm::vec3 pos{0.f};
+	glm::quat rot{1.f, 0.f, 0.f, 0.f};
+	float width = 1.7f;
+	float aspect = 0.625f; // height / width
+	bool inHand = false;
+	float height() const { return width * aspect; }
+	glm::mat4 matrix() const { return glm::translate(glm::mat4(1.f), pos) * glm::mat4_cast(rot); }
+	/// Ray test in world space; returns distance or -1. uv is (0,0) top-left.
+	float hit(const glm::vec3 &o, const glm::vec3 &d, glm::vec2 &uv) const
+	{
+		glm::mat4 inv = glm::inverse(matrix());
+		glm::vec3 lo = glm::vec3(inv * glm::vec4(o, 1.f));
+		glm::vec3 ld = glm::vec3(inv * glm::vec4(d, 0.f));
+		if (ld.z >= -1e-5f || lo.z <= 0.f) return -1.f; // only from the front
+		float t = -lo.z / ld.z;
+		glm::vec3 p = lo + ld * t;
+		float hw = width * 0.5f, hh = height() * 0.5f;
+		if (std::fabs(p.x) > hw || std::fabs(p.y) > hh) return -1.f;
+		uv = glm::vec2(p.x / width + 0.5f, 0.5f - p.y / height());
+		return t;
+	}
+};
+
+struct Grab
+{
+	enum Kind { NONE, WORLD, PANEL, BOARD } kind = NONE;
+	glm::mat4 offset{1.f};      // PANEL: panel relative to hand (world)
+	glm::vec3 lastTracking{0.f}; // WORLD: hand position in tracking space last frame
+};
+
+struct ScriptCmd
+{
+	std::string op;
+	std::vector<std::string> args;
+};
+
+struct State
+{
+	bool on = false;
+	Mode mode = MODE_OFF;
+	Game *game = nullptr;
+	void *glContext = nullptr;
+	XrRuntime xr;
+	bool xrReady = false;
+
+	// resources
+	Shader shader;
+	Mesh roomMesh, panelFrame, controllerMesh[2], laserMesh, dotMesh, quadMesh;
+	Texture gameTex;
+	Texture placardTex;
+	bool placardTried = false;
+	RenderTarget eyeTarget[2];
+	RenderTarget previewTarget;
+	RoomLayout layout;
+	Board board;
+
+	// game frame
+	std::vector<uint32_t> pixels;
+	int surfW = 0, surfH = 0;
+	bool pixelsDirty = false;
+
+	// tracking
+	glm::mat4 rig{1.f};          // tracking space -> world
+	bool recentered = false;
+	EyeView views[2];
+	HandState hands[2];
+	Pose head;
+	Panel panel;
+	int pointerHand = 1;
+	Grab grab[2];
+	bool twoHandWorld = false;
+	float stickTurnLatch[2] = {0.f, 0.f};
+	Uint32 wheelNext = 0;
+
+	// virtual mouse (window coordinates the game understands)
+	int vmX = 0, vmY = 0;
+	Uint8 vmButtons = 0;
+	bool leftSent = false, rightSent = false;
+	bool pointerOnPanel = false;
+	bool pointerOnBoard = false;
+	glm::vec3 laserEnd[2];
+	bool laserHit[2] = {false, false};
+
+	// desktop preview
+	glm::vec3 camPos{0.f, 1.65f, 0.25f};
+	float camYaw = 0.f, camPitch = -15.f;
+	bool camDrag = false;
+	int realMouseX = 0, realMouseY = 0;
+	Uint32 lastPreviewFrame = 0;
+	int previewW = 0, previewH = 0;
+
+	// automation (desktop preview only)
+	std::deque<ScriptCmd> script;
+	struct PendingButton { int frames; Uint8 button; bool down; };
+	std::vector<PendingButton> pendingButtons;
+	Uint32 scriptWaitUntil = 0;
+	std::string pendingShot;
+	int frameCount = 0;
+	double time = 0.0;
+};
+
+static State *S = nullptr;
+
+// ------------------------------------------------------------------ helpers
+
+static glm::vec3 xfPoint(const glm::mat4 &m, const glm::vec3 &p) { return glm::vec3(m * glm::vec4(p, 1.f)); }
+static glm::vec3 xfDir(const glm::mat4 &m, const glm::vec3 &d) { return glm::normalize(glm::vec3(m * glm::vec4(d, 0.f))); }
+
+static void gameToWindow(const glm::vec2 &uv, int &wx, int &wy)
+{
+	Screen *scr = S->game->getScreen();
+	double gx = std::floor(glm::clamp(uv.x, 0.f, 0.9999f) * S->surfW) + 0.5;
+	double gy = std::floor(glm::clamp(uv.y, 0.f, 0.9999f) * S->surfH) + 0.5;
+	wx = (int)(gx * scr->getXScale()) + scr->getCursorLeftBlackBand();
+	wy = (int)(gy * scr->getYScale()) + scr->getCursorTopBlackBand();
+}
+
+static void pushMotion(int x, int y)
+{
+	SDL_Event ev{};
+	ev.type = SDL_MOUSEMOTION;
+	ev.motion.which = SYNTH_TAG;
+	ev.motion.state = S->vmButtons;
+	ev.motion.x = (Uint16)std::max(0, x);
+	ev.motion.y = (Uint16)std::max(0, y);
+	ev.motion.xrel = (Sint16)(x - S->vmX);
+	ev.motion.yrel = (Sint16)(y - S->vmY);
+	S->vmX = x;
+	S->vmY = y;
+	SDL_PushEvent(&ev);
+}
+
+static void pushButton(Uint8 button, bool down)
+{
+	SDL_Event ev{};
+	ev.type = down ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+	ev.button.which = SYNTH_TAG;
+	ev.button.button = button;
+	ev.button.state = down ? SDL_PRESSED : SDL_RELEASED;
+	ev.button.x = (Uint16)std::max(0, S->vmX);
+	ev.button.y = (Uint16)std::max(0, S->vmY);
+	if (button <= 3)
+	{
+		if (down) S->vmButtons |= SDL_BUTTON(button);
+		else S->vmButtons &= ~SDL_BUTTON(button);
+	}
+	SDL_PushEvent(&ev);
+}
+
+static void pushKey(SDLKey key, Uint16 unicode)
+{
+	for (int down = 1; down >= 0; --down)
+	{
+		SDL_Event ev{};
+		ev.type = down ? SDL_KEYDOWN : SDL_KEYUP;
+		ev.key.which = SYNTH_TAG;
+		ev.key.state = down ? SDL_PRESSED : SDL_RELEASED;
+		ev.key.keysym.sym = key;
+		ev.key.keysym.unicode = down ? unicode : 0;
+		SDL_PushEvent(&ev);
+	}
+}
+
+// ------------------------------------------------------------------ setup
+
+static void resetPanel()
+{
+	S->panel.pos = S->layout.panelPos;
+	S->panel.rot = glm::angleAxis(glm::radians(-S->layout.panelTiltDeg), glm::vec3(1, 0, 0));
+	S->panel.width = S->layout.panelWidth;
+	S->panel.inHand = false;
+}
+
+static bool createResources()
+{
+	if (!loadGL()) return false;
+	if (!S->shader.build("scene", kSceneVS, kSceneFS)) return false;
+
+	MeshData room;
+	buildCommandCenter(room, S->layout);
+	S->roomMesh.upload(room);
+
+	for (int h = 0; h < 2; ++h)
+	{
+		MeshData c;
+		buildController(c, h == 0);
+		S->controllerMesh[h].upload(c);
+	}
+	MeshData laser;
+	laser.addBox({-0.0012f, -0.0012f, -1.f}, {0.0012f, 0.0012f, 0.f}, glm::vec4(1), MAT_PLAIN);
+	S->laserMesh.upload(laser);
+	MeshData dot;
+	dot.addSphere({0, 0, 0}, 1.f, 12, 8, glm::vec4(1), MAT_PLAIN);
+	S->dotMesh.upload(dot);
+	MeshData quad;
+	quad.addQuad({-0.5f, -0.5f, 0}, {0.5f, -0.5f, 0}, {0.5f, 0.5f, 0}, {-0.5f, 0.5f, 0}, glm::vec4(1), MAT_PLAIN, {0, 1}, {1, 1}, {1, 0}, {0, 0});
+	S->quadMesh.upload(quad);
+	MeshData frame;
+	frame.addBox({-0.5f, -0.5f, -0.04f}, {0.5f, 0.5f, -0.003f}, glm::vec4(0.06f, 0.065f, 0.075f, 1), MAT_GLOSSY);
+	S->panelFrame.upload(frame);
+
+	S->gameTex.create(320, 200, true);
+	S->board.init(S->layout);
+	S->board.clickScreen = [](int gx, int gy, int button)
+	{
+		glm::vec2 uv((gx + 0.5f) / std::max(1, S->surfW), (gy + 0.5f) / std::max(1, S->surfH));
+		int wx, wy;
+		gameToWindow(uv, wx, wy);
+		pushMotion(wx, wy);
+		// let the game see the hover first: some dialogs ignore a press that arrives with the move
+		S->pendingButtons.push_back({2, (Uint8)button, true});
+		S->pendingButtons.push_back({3, (Uint8)button, false});
+	};
+	resetPanel();
+	logGLErrors("createResources");
+	return true;
+}
+
+static void loadScript()
+{
+	const char *path = std::getenv("OXCE_VR_SCRIPT");
+	if (!path) return;
+	std::ifstream f(path);
+	std::string line;
+	while (std::getline(f, line))
+	{
+		std::istringstream ss(line);
+		ScriptCmd c;
+		if (!(ss >> c.op) || c.op[0] == '#') continue;
+		std::string a;
+		while (ss >> a) c.args.push_back(a);
+		S->script.push_back(c);
+	}
+	Log(LOG_INFO) << "[VR] loaded " << S->script.size() << " automation commands from " << path;
+}
+
+void configureOptions()
+{
+	if (Options::vrMode == MODE_OFF) return;
+	// VR composes the game screen into a texture: that needs the OpenGL output path.
+	Options::useOpenGL = true;
+	Options::vSyncForOpenGL = false; // the headset paces the loop, not the monitor
+	Options::allowResize = false;    // resizing would recreate the GL context under OpenXR
+	Options::fullscreen = false;
+	if (Options::pauseMode > 0) Options::pauseMode = 0; // keep running while the desktop window is unfocused
+}
+
+void startup(Game *game)
+{
+	if (Options::vrMode == MODE_OFF) return;
+	S = new State();
+	S->game = game;
+	S->mode = (Mode)Options::vrMode;
+	S->glContext = XrRuntime::currentGLContext();
+	if (!S->glContext)
+	{
+		Log(LOG_ERROR) << "[VR] no OpenGL context - is useOpenGL disabled? Continuing without VR.";
+		delete S; S = nullptr;
+		return;
+	}
+	if (!createResources())
+	{
+		Log(LOG_ERROR) << "[VR] failed to create GL resources. Continuing without VR.";
+		delete S; S = nullptr;
+		return;
+	}
+	if (S->mode == MODE_HEADSET)
+	{
+		S->xrReady = S->xr.init("OpenXcom Extended VR Tabletop");
+		if (!S->xrReady)
+		{
+			Log(LOG_ERROR) << "[VR] headset mode unavailable. Start with -vrMode 2 for the desktop preview, or -vrMode 0 for the normal game.";
+			S->xr.shutdown();
+			delete S; S = nullptr;
+			return;
+		}
+		int w = S->xr.eyeWidth(), h = S->xr.eyeHeight();
+		for (auto &t : S->eyeTarget)
+			if (!t.create(w, h, 4)) { delete S; S = nullptr; return; }
+		if (!S->xr.floorLevel())
+			S->rig = glm::translate(glm::mat4(1.f), {0.f, 1.25f, 0.f}); // seated: put the eyes at seated height
+	}
+	else
+	{
+		loadScript();
+		if (const char *cam = std::getenv("OXCE_VR_CAMERA"))
+		{
+			std::sscanf(cam, "%f,%f,%f,%f,%f", &S->camPos.x, &S->camPos.y, &S->camPos.z, &S->camYaw, &S->camPitch);
+		}
+	}
+	S->on = true;
+	SDL_GetMouseState(&S->vmX, &S->vmY);
+	Log(LOG_INFO) << "[VR] started in " << (S->mode == MODE_HEADSET ? "headset" : "desktop preview") << " mode";
+}
+
+void shutdown()
+{
+	if (!S) return;
+	S->xr.shutdown();
+	delete S;
+	S = nullptr;
+}
+
+bool active() { return S && S->on; }
+bool preview() { return S && S->on && S->mode == MODE_PREVIEW; }
+bool pacesLoop() { return S && S->on && S->mode == MODE_HEADSET && S->xr.isRunning(); }
+
+// ------------------------------------------------------------------ controls placard
+
+/// A small plate on the near edge of the table listing the controls, written with the game's own font.
+static void buildPlacard()
+{
+	// wait until the mod (and its fonts) finished loading
+	for (OpenXcom::State *st : S->game->getStates())
+		if (dynamic_cast<StartState*>(st)) return;
+	S->placardTried = true;
+	Mod *mod = S->game->getMod();
+	if (!mod || !S->game->getLanguage()) return;
+	Font *big = mod->getFont("FONT_BIG", false), *small = mod->getFont("FONT_SMALL", false);
+	if (!big || !small) return;
+	const int W = 480, H = 44;
+	Text text(W, H, 0, 0);
+	text.initText(big, small, S->game->getLanguage());
+	text.setSmall();
+	text.setColor(1);
+	text.setWordWrap(false);
+	if (S->mode == MODE_HEADSET)
+		text.setText(
+			"TRIGGER: click / pick a tile          A: right click          B: back (Esc)\n"
+			"GRIP: slide the map, spin the globe, move the screen, or move yourself\n"
+			"STICK: scroll / map level up-down / globe zoom          both GRIPS: zoom + turn map\n"
+			"LEFT A: screen to your hand          LEFT B: recenter          LEFT STICK: turn");
+	else
+		text.setText(
+			"DESKTOP PREVIEW - mouse aims from your eyes\n"
+			"LEFT CLICK: click / pick a tile          RIGHT CLICK: right click\n"
+			"WHEEL over the table: map level / globe zoom\n"
+			"hold MIDDLE BUTTON and move the mouse to look around");
+	text.draw();
+	std::vector<uint32_t> px((size_t)W * H);
+	for (int y = 0; y < H; ++y)
+		for (int x = 0; x < W; ++x)
+		{
+			// glyph body = color+1..+2, the font's dark outline = higher offsets
+			int v = text.getPixel(x, y);
+			px[(size_t)y * W + x] = v == 0 ? 0x00000000u : v <= 2 ? 0xFFF4EDB8u : v <= 3 ? 0xFFC8C090u : 0xC0100C08u;
+		}
+	if (const char *dump = std::getenv("OXCE_VR_DUMP_PLACARD"))
+	{
+		std::vector<unsigned char> b((const unsigned char*)px.data(), (const unsigned char*)(px.data() + px.size()));
+		lodepng::encode(dump, b, W, H);
+	}
+	S->placardTex.create(W, H, true);
+	S->placardTex.update(px.data(), W, H);
+}
+
+// ------------------------------------------------------------------ game frame
+
+bool onScreenFlip(SDL_Surface *s)
+{
+	if (!active() || !s) return false;
+	S->surfW = s->w;
+	S->surfH = s->h;
+	S->pixels.resize((size_t)s->w * s->h);
+	SDL_LockSurface(s);
+	if (s->format->BitsPerPixel == 8 && s->format->palette)
+	{
+		uint32_t lut[256];
+		SDL_Color *c = s->format->palette->colors;
+		int n = s->format->palette->ncolors;
+		for (int i = 0; i < 256; ++i)
+		{
+			SDL_Color k = i < n ? c[i] : SDL_Color{0, 0, 0, 0};
+			lut[i] = (uint32_t)k.r | ((uint32_t)k.g << 8) | ((uint32_t)k.b << 16) | 0xFF000000u;
+		}
+		for (int y = 0; y < s->h; ++y)
+		{
+			const Uint8 *row = (const Uint8*)s->pixels + y * s->pitch;
+			uint32_t *out = &S->pixels[(size_t)y * s->w];
+			for (int x = 0; x < s->w; ++x) out[x] = lut[row[x]];
+		}
+	}
+	else
+	{
+		for (int y = 0; y < s->h; ++y)
+			for (int x = 0; x < s->w; ++x)
+			{
+				Uint32 px = 0;
+				const Uint8 *p = (const Uint8*)s->pixels + y * s->pitch + x * s->format->BytesPerPixel;
+				std::memcpy(&px, p, s->format->BytesPerPixel);
+				Uint8 r, g, b;
+				SDL_GetRGB(px, s->format, &r, &g, &b);
+				S->pixels[(size_t)y * s->w + x] = (uint32_t)r | ((uint32_t)g << 8) | ((uint32_t)b << 16) | 0xFF000000u;
+			}
+	}
+	SDL_UnlockSurface(s);
+	S->pixelsDirty = true;
+	S->panel.aspect = (float)s->h / (float)s->w;
+	return S->mode == MODE_PREVIEW;
+}
+
+// ------------------------------------------------------------------ mouse API
+
+Uint8 getMouseState(int *x, int *y)
+{
+	if (!active()) return SDL_GetMouseState(x, y);
+	if (x) *x = S->vmX;
+	if (y) *y = S->vmY;
+	return S->vmButtons;
+}
+
+void warpMouse(Uint16 x, Uint16 y)
+{
+	if (!active()) { SDL_WarpMouse(x, y); return; }
+	pushMotion(x, y);
+}
+
+// ------------------------------------------------------------------ interaction
+
+struct RayHit
+{
+	enum Target { NONE, PANEL, BOARD } target = NONE;
+	float t = 1e9f;
+	glm::vec2 uv{0.f};
+	BoardHit board;
+};
+
+static RayHit castRay(const glm::vec3 &o, const glm::vec3 &d)
+{
+	RayHit best;
+	glm::vec2 uv;
+	float t = S->panel.hit(o, d, uv);
+	if (t > 0.f && t < best.t) { best.target = RayHit::PANEL; best.t = t; best.uv = uv; }
+	BoardHit bh;
+	if (S->board.raycast(o, d, bh) && bh.t < best.t)
+	{
+		best.target = RayHit::BOARD;
+		best.t = bh.t;
+		best.board = bh;
+	}
+	return best;
+}
+
+static void recenter()
+{
+	glm::vec3 H = xfPoint(S->rig, S->head.pos);
+	glm::vec3 f = xfDir(S->rig, S->head.forward());
+	float yaw = std::atan2(-f.x, -f.z);
+	glm::vec3 target(0.f, H.y, 0.f);
+	if (!S->xr.floorLevel()) target.y = 1.25f;
+	glm::mat4 M = glm::translate(glm::mat4(1.f), target) * glm::rotate(glm::mat4(1.f), -yaw, {0, 1, 0}) * glm::translate(glm::mat4(1.f), -H);
+	S->rig = M * S->rig;
+	S->recentered = true;
+}
+
+static void pointerTo(const RayHit &hit)
+{
+	S->pointerOnPanel = hit.target == RayHit::PANEL;
+	S->pointerOnBoard = hit.target == RayHit::BOARD;
+	if (S->pointerOnPanel)
+	{
+		int wx, wy;
+		gameToWindow(hit.uv, wx, wy);
+		if (wx != S->vmX || wy != S->vmY) pushMotion(wx, wy);
+	}
+	else if (S->pointerOnBoard)
+	{
+		S->board.hover(hit.board);
+	}
+	if (!S->pointerOnBoard) S->board.hoverNone();
+}
+
+static void updateHeadsetInput(float dt)
+{
+	HandState *H = S->hands;
+	glm::mat4 rigRot = S->rig;
+
+	// who points: the last hand that pulled its trigger
+	for (int h = 0; h < 2; ++h)
+		if (H[h].active && H[h].triggerBtn.pressed) S->pointerHand = h;
+
+	// grabbing
+	for (int h = 0; h < 2; ++h)
+	{
+		Grab &g = S->grab[h];
+		if (!H[h].active) { g.kind = Grab::NONE; continue; }
+		glm::mat4 handWorld = S->rig * H[h].grip.matrix();
+		if (H[h].squeezeBtn.pressed)
+		{
+			glm::vec3 o = xfPoint(S->rig, H[h].aim.pos), d = xfDir(S->rig, H[h].aim.forward());
+			RayHit hit = castRay(o, d);
+			if (hit.target == RayHit::PANEL && !S->panel.inHand && hit.t < 3.0f)
+			{
+				g.kind = Grab::PANEL;
+				g.offset = glm::inverse(handWorld) * S->panel.matrix();
+			}
+			else if (S->board.canGrab(xfPoint(S->rig, H[h].grip.pos)))
+			{
+				g.kind = Grab::BOARD;
+				S->board.beginGrab(h, xfPoint(S->rig, H[h].grip.pos));
+			}
+			else
+			{
+				g.kind = Grab::WORLD;
+				g.lastTracking = H[h].grip.pos;
+			}
+			S->xr.haptic(h, 0.3f, 0.02f);
+		}
+		else if (H[h].squeezeBtn.released)
+		{
+			if (g.kind == Grab::BOARD) S->board.endGrab(h);
+			g.kind = Grab::NONE;
+		}
+	}
+	bool worldL = S->grab[0].kind == Grab::WORLD, worldR = S->grab[1].kind == Grab::WORLD;
+	if (worldL && worldR)
+	{
+		glm::vec3 l0 = S->grab[0].lastTracking, r0 = S->grab[1].lastTracking;
+		glm::vec3 l1 = H[0].grip.pos, r1 = H[1].grip.pos;
+		glm::vec2 v0(r0.x - l0.x, r0.z - l0.z), v1(r1.x - l1.x, r1.z - l1.z);
+		float a0 = std::atan2(v0.y, v0.x), a1 = std::atan2(v1.y, v1.x);
+		float delta = a1 - a0;
+		// rotating the hands clockwise turns the world with them
+		glm::vec3 mid = (l1 + r1) * 0.5f, midPrev = (l0 + r0) * 0.5f;
+		S->rig = S->rig * glm::translate(glm::mat4(1.f), midPrev) * glm::rotate(glm::mat4(1.f), delta, {0, 1, 0}) * glm::translate(glm::mat4(1.f), -mid);
+		S->grab[0].lastTracking = l1;
+		S->grab[1].lastTracking = r1;
+	}
+	else
+	{
+		for (int h = 0; h < 2; ++h)
+		{
+			Grab &g = S->grab[h];
+			if (g.kind != Grab::WORLD) continue;
+			glm::vec3 now = H[h].grip.pos;
+			S->rig = S->rig * glm::translate(glm::mat4(1.f), g.lastTracking - now);
+			g.lastTracking = now;
+		}
+	}
+	for (int h = 0; h < 2; ++h)
+	{
+		if (S->grab[h].kind == Grab::PANEL)
+		{
+			glm::mat4 m = S->rig * H[h].grip.matrix() * S->grab[h].offset;
+			S->panel.pos = glm::vec3(m[3]);
+			S->panel.rot = glm::quat_cast(glm::mat3(m));
+		}
+		else if (S->grab[h].kind == Grab::BOARD)
+		{
+			S->board.updateGrab(h, xfPoint(S->rig, H[h].grip.pos));
+		}
+	}
+	(void)rigRot;
+
+	// hand-held tablet
+	if (H[0].a.pressed)
+	{
+		S->panel.inHand = !S->panel.inHand;
+		if (!S->panel.inHand) resetPanel();
+	}
+	if (S->panel.inHand && H[0].active)
+	{
+		glm::mat4 m = S->rig * H[0].grip.matrix()
+			* glm::translate(glm::mat4(1.f), {0.02f, 0.10f, -0.06f})
+			* glm::rotate(glm::mat4(1.f), glm::radians(-55.f), {1, 0, 0})
+			* glm::rotate(glm::mat4(1.f), glm::radians(-10.f), {0, 0, 1});
+		S->panel.pos = glm::vec3(m[3]);
+		S->panel.rot = glm::quat_cast(glm::mat3(m));
+		S->panel.width = 0.46f;
+	}
+
+	if (H[0].b.pressed) recenter();
+
+	// snap turn on the non-pointing hand's stick
+	int other = 1 - S->pointerHand;
+	float sx = H[other].stick.x;
+	if (std::fabs(sx) > 0.7f && S->stickTurnLatch[other] == 0.f)
+	{
+		float ang = sx > 0 ? -30.f : 30.f;
+		glm::vec3 hp = S->head.pos;
+		S->rig = S->rig * glm::translate(glm::mat4(1.f), hp) * glm::rotate(glm::mat4(1.f), glm::radians(ang), {0, 1, 0}) * glm::translate(glm::mat4(1.f), -hp);
+		S->stickTurnLatch[other] = 1.f;
+	}
+	else if (std::fabs(sx) < 0.3f)
+	{
+		S->stickTurnLatch[other] = 0.f;
+	}
+
+	// lasers
+	for (int h = 0; h < 2; ++h)
+	{
+		S->laserHit[h] = false;
+		if (!H[h].active) continue;
+		glm::vec3 o = xfPoint(S->rig, H[h].aim.pos), d = xfDir(S->rig, H[h].aim.forward());
+		RayHit hit = castRay(o, d);
+		S->laserHit[h] = hit.target != RayHit::NONE;
+		S->laserEnd[h] = o + d * (S->laserHit[h] ? hit.t : 4.f);
+		if (h == S->pointerHand && S->grab[h].kind == Grab::NONE)
+		{
+			bool wasOnPanel = S->pointerOnPanel;
+			pointerTo(hit);
+			if (S->pointerOnPanel && !wasOnPanel) S->xr.haptic(h, 0.15f, 0.01f);
+		}
+	}
+
+	// buttons of the pointing hand
+	HandState &P = H[S->pointerHand];
+	if (P.triggerBtn.pressed)
+	{
+		if (S->pointerOnPanel) { pushButton(SDL_BUTTON_LEFT, true); S->leftSent = true; }
+		else if (S->pointerOnBoard) S->board.click(SDL_BUTTON_LEFT);
+		S->xr.haptic(S->pointerHand, 0.4f, 0.015f);
+	}
+	if (P.triggerBtn.released && S->leftSent) { pushButton(SDL_BUTTON_LEFT, false); S->leftSent = false; }
+	if (P.a.pressed && S->pointerHand == 1)
+	{
+		if (S->pointerOnPanel) { pushButton(SDL_BUTTON_RIGHT, true); S->rightSent = true; }
+		else if (S->pointerOnBoard) S->board.click(SDL_BUTTON_RIGHT);
+	}
+	if (P.a.released && S->rightSent) { pushButton(SDL_BUTTON_RIGHT, false); S->rightSent = false; }
+	if (H[1].b.pressed) pushKey(SDLK_ESCAPE, 27);
+
+	// scroll wheel on the pointing hand's stick
+	float sy = P.stick.y;
+	Uint32 now = SDL_GetTicks();
+	if (std::fabs(sy) > 0.55f && now >= S->wheelNext)
+	{
+		Uint8 b = sy > 0 ? SDL_BUTTON_WHEELUP : SDL_BUTTON_WHEELDOWN;
+		if (S->pointerOnPanel) { pushButton(b, true); pushButton(b, false); }
+		else S->board.wheel(sy > 0 ? 1 : -1);
+		S->wheelNext = now + (std::fabs(sy) > 0.9f ? 90 : 180);
+	}
+	(void)dt;
+}
+
+// ------------------------------------------------------------------ rendering
+
+static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye)
+{
+	Shader &sh = S->shader;
+	sh.use();
+	sh.set("uViewProj", viewProj);
+	sh.set("uEye", eye);
+	sh.set("uTime", (float)S->time);
+	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
+	sh.set("uTex", 0);
+	for (int i = 0; i < 4; ++i)
+	{
+		std::string p = "uLightPos[" + std::to_string(i) + "]";
+		std::string c = "uLightCol[" + std::to_string(i) + "]";
+		sh.set(p.c_str(), S->layout.lightPos[i]);
+		sh.set(c.c_str(), S->layout.lightCol[i]);
+	}
+}
+
+static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye, bool drawHands)
+{
+	glm::mat4 vp = proj * view;
+	glEnable(GL_FRAMEBUFFER_SRGB);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+	glDepthMask(GL_TRUE);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_BLEND);
+	glClearColor(0.01f, 0.012f, 0.015f, 1.f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	Shader &sh = S->shader;
+	setCommonUniforms(vp, eye);
+	sh.set("uMode", 0);
+	sh.set("uModel", glm::mat4(1.f));
+	S->roomMesh.draw();
+
+	// game content on the table (diorama / globe)
+	S->board.draw(sh, vp, eye, S->time);
+	sh.use();
+
+	// game screen
+	glm::mat4 pm = S->panel.matrix() * glm::scale(glm::mat4(1.f), {S->panel.width, S->panel.height(), 1.f});
+	glm::mat4 fm = S->panel.matrix() * glm::scale(glm::mat4(1.f), {S->panel.width + 0.06f, S->panel.height() + 0.06f, 1.f});
+	sh.set("uMode", 0);
+	sh.set("uModel", fm);
+	S->panelFrame.draw();
+	sh.set("uMode", 1);
+	sh.set("uModel", pm);
+	sh.set("uTexSize", glm::vec2((float)S->gameTex.width(), (float)S->gameTex.height()));
+	S->gameTex.bind(0);
+	S->quadMesh.draw();
+
+	// controls placard on the near rim of the table
+	if (S->placardTex.valid())
+	{
+		const RoomLayout &L = S->layout;
+		glm::vec3 c(L.tableCenter.x, L.tableCenter.y + 0.028f, L.tableCenter.z + L.tableSize.y * 0.5f + 0.06f);
+		glm::mat4 m = glm::translate(glm::mat4(1.f), c) * glm::rotate(glm::mat4(1.f), glm::radians(-62.f), {1, 0, 0});
+		sh.set("uMode", 0);
+		sh.set("uModel", m * glm::scale(glm::mat4(1.f), {0.80f, 0.10f, 1.f}));
+		S->panelFrame.draw();
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		sh.set("uMode", 4);
+		sh.set("uModel", m * glm::translate(glm::mat4(1.f), {0.f, 0.f, 0.002f}) * glm::scale(glm::mat4(1.f), {0.76f, 0.0697f, 1.f}));
+		sh.set("uTint", glm::vec4(1.f));
+		S->placardTex.bind(0);
+		S->quadMesh.draw();
+		glDisable(GL_BLEND);
+	}
+
+	if (!drawHands) return;
+	// controllers
+	sh.set("uMode", 0);
+	for (int h = 0; h < 2; ++h)
+	{
+		if (!S->hands[h].active) continue;
+		sh.set("uModel", S->rig * S->hands[h].grip.matrix());
+		S->controllerMesh[h].draw();
+	}
+	// lasers
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDepthMask(GL_FALSE);
+	sh.set("uMode", 2);
+	for (int h = 0; h < 2; ++h)
+	{
+		if (!S->hands[h].active) continue;
+		if (S->panel.inHand && h == 0) continue; // the tablet hand doesn't need a beam
+		glm::vec3 o = xfPoint(S->rig, S->hands[h].aim.pos);
+		glm::vec3 d = xfDir(S->rig, S->hands[h].aim.forward());
+		float len = glm::length(S->laserEnd[h] - o);
+		glm::quat q = glm::rotation(glm::vec3(0, 0, -1), d);
+		sh.set("uModel", glm::translate(glm::mat4(1.f), o) * glm::mat4_cast(q) * glm::scale(glm::mat4(1.f), {1.f, 1.f, len}));
+		bool main = h == S->pointerHand;
+		glm::vec4 tint = S->laserHit[h] ? glm::vec4(0.25f, 0.95f, 1.f, main ? 0.8f : 0.35f) : glm::vec4(0.6f, 0.6f, 0.65f, main ? 0.35f : 0.15f);
+		sh.set("uTint", tint);
+		S->laserMesh.draw();
+		if (S->laserHit[h])
+		{
+			sh.set("uModel", glm::translate(glm::mat4(1.f), S->laserEnd[h]) * glm::scale(glm::mat4(1.f), glm::vec3(0.006f)));
+			sh.set("uTint", glm::vec4(0.6f, 1.f, 1.f, 0.9f));
+			S->dotMesh.draw();
+		}
+	}
+	sh.set("uTint", glm::vec4(1.f));
+	glDepthMask(GL_TRUE);
+	glDisable(GL_BLEND);
+}
+
+static glm::mat4 viewFromPose(const Pose &eyeWorldPose)
+{
+	return glm::inverse(eyeWorldPose.matrix());
+}
+
+// ------------------------------------------------------------------ preview mode
+
+static Pose previewHead()
+{
+	Pose p;
+	p.pos = S->camPos;
+	p.rot = glm::angleAxis(glm::radians(S->camYaw), glm::vec3(0, 1, 0)) * glm::angleAxis(glm::radians(S->camPitch), glm::vec3(1, 0, 0));
+	return p;
+}
+
+static void previewRay(int mx, int my, glm::vec3 &o, glm::vec3 &d)
+{
+	SDL_Surface *vs = SDL_GetVideoSurface();
+	int w = vs ? vs->w : 640, h = vs ? vs->h : 400;
+	float fovY = glm::radians(62.f);
+	float aspect = (float)w / (float)h;
+	float nx = ((mx + 0.5f) / w) * 2.f - 1.f;
+	float ny = 1.f - ((my + 0.5f) / h) * 2.f;
+	float th = std::tan(fovY * 0.5f);
+	Pose head = previewHead();
+	o = head.pos;
+	d = glm::normalize(head.rot * glm::vec3(nx * th * aspect, ny * th, -1.f));
+}
+
+static void runScript()
+{
+	Uint32 now = SDL_GetTicks();
+	while (!S->script.empty() && now >= S->scriptWaitUntil)
+	{
+		ScriptCmd c = S->script.front();
+		S->script.pop_front();
+		auto num = [&](size_t i, double def) { return i < c.args.size() ? std::atof(c.args[i].c_str()) : def; };
+		if (c.op == "wait") { S->scriptWaitUntil = now + (Uint32)num(0, 0); }
+		else if (c.op == "waitframes") { S->scriptWaitUntil = now + 1; if (num(0, 0) > 1) { c.args[0] = std::to_string((int)num(0, 0) - 1); S->script.push_front(c); } return; }
+		else if (c.op == "move" || c.op == "click" || c.op == "rclick")
+		{
+			glm::vec2 uv((float)(num(0, 0) + 0.5) / std::max(1, S->surfW), (float)(num(1, 0) + 0.5) / std::max(1, S->surfH));
+			int wx, wy;
+			gameToWindow(uv, wx, wy);
+			pushMotion(wx, wy);
+			if (c.op != "move")
+			{
+				Uint8 b = c.op == "click" ? SDL_BUTTON_LEFT : SDL_BUTTON_RIGHT;
+				pushButton(b, true);
+				pushButton(b, false);
+			}
+		}
+		else if (c.op == "key")
+		{
+			int k = (int)num(0, 0);
+			pushKey((SDLKey)k, (Uint16)(k < 128 ? k : 0));
+		}
+		else if (c.op == "cam")
+		{
+			S->camPos = glm::vec3(num(0, 0), num(1, 1.65), num(2, 0.25));
+			S->camYaw = (float)num(3, 0);
+			S->camPitch = (float)num(4, -24);
+		}
+		else if (c.op == "pointer")
+		{
+			// aim the preview "hand" at a window pixel: board hover/click tests
+			S->realMouseX = (int)num(0, 0);
+			S->realMouseY = (int)num(1, 0);
+		}
+		else if (c.op == "boardclick")
+		{
+			glm::vec3 o, d;
+			previewRay(S->realMouseX, S->realMouseY, o, d);
+			BoardHit bh;
+			if (S->board.raycast(o, d, bh)) { S->board.hover(bh); S->board.click(c.args.size() > 0 && c.args[0] == "right" ? SDL_BUTTON_RIGHT : SDL_BUTTON_LEFT); }
+			else Log(LOG_INFO) << "[VR] script: boardclick missed the board";
+		}
+		else if (c.op == "wheel") { S->board.wheel((int)num(0, 1)); }
+		else if (c.op == "shot") { S->pendingShot = c.args.empty() ? "vr_shot.png" : c.args[0]; return; }
+		else if (c.op == "gameshot" && !S->pixels.empty())
+		{
+			std::vector<unsigned char> px((const unsigned char*)S->pixels.data(), (const unsigned char*)(S->pixels.data() + S->pixels.size()));
+			lodepng::encode(c.args.empty() ? "vr_game.png" : c.args[0], px, S->surfW, S->surfH);
+			Log(LOG_INFO) << "[VR] game frame " << S->surfW << "x" << S->surfH << " saved";
+		}
+		else if (c.op == "log") { std::string m; for (auto &a : c.args) m += a + " "; Log(LOG_INFO) << "[VR] script: " << m; }
+		else if (c.op == "quit") { S->game->quit(); }
+		else Log(LOG_WARNING) << "[VR] unknown script command " << c.op;
+	}
+}
+
+static void saveShot(const std::string &path, int w, int h)
+{
+	std::vector<unsigned char> px((size_t)w * h * 4), flipped((size_t)w * h * 4);
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+	for (int y = 0; y < h; ++y)
+		std::memcpy(&flipped[(size_t)y * w * 4], &px[(size_t)(h - 1 - y) * w * 4], (size_t)w * 4);
+	for (size_t i = 3; i < flipped.size(); i += 4) flipped[i] = 255;
+	unsigned err = lodepng::encode(path, flipped, w, h);
+	Log(LOG_INFO) << "[VR] screenshot " << path << (err ? " FAILED" : " saved");
+}
+
+static void previewFrame()
+{
+	runScript();
+	Uint32 now = SDL_GetTicks();
+	if (now - S->lastPreviewFrame < 14 && S->pendingShot.empty()) return;
+	S->lastPreviewFrame = now;
+
+	SDL_Surface *vs = SDL_GetVideoSurface();
+	int w = vs ? vs->w : 640, h = vs ? vs->h : 400;
+	if (w != S->previewW || h != S->previewH)
+	{
+		S->previewTarget.~RenderTarget();
+		new (&S->previewTarget) RenderTarget();
+		S->previewTarget.create(w, h, 4);
+		S->previewW = w; S->previewH = h;
+	}
+	S->head = previewHead();
+	S->board.setViewer(S->head.pos);
+	// the preview "right hand" is a ray from the eye through the mouse cursor
+	glm::vec3 o, d;
+	previewRay(S->realMouseX, S->realMouseY, o, d);
+	RayHit hit = castRay(o, d);
+	S->laserHit[1] = hit.target != RayHit::NONE;
+	S->laserEnd[1] = o + d * (S->laserHit[1] ? hit.t : 4.f);
+	if (hit.target == RayHit::BOARD) S->board.hover(hit.board);
+	else S->board.hoverNone();
+
+	GLStateGuard guard;
+	S->previewTarget.bind();
+	glm::mat4 proj = glm::perspective(glm::radians(62.f), (float)w / (float)h, 0.03f, 60.f);
+	drawScene(viewFromPose(S->head), proj, S->head.pos, false);
+	// cursor dot where the mouse ray lands
+	if (S->laserHit[1])
+	{
+		glDisable(GL_DEPTH_TEST);
+		S->shader.use();
+		S->shader.set("uMode", 2);
+		S->shader.set("uModel", glm::translate(glm::mat4(1.f), S->laserEnd[1]) * glm::scale(glm::mat4(1.f), glm::vec3(0.005f)));
+		S->shader.set("uTint", glm::vec4(0.4f, 1.f, 1.f, 1.f));
+		S->dotMesh.draw();
+	}
+	glDisable(GL_FRAMEBUFFER_SRGB);
+	S->previewTarget.resolveToDefault(w, h);
+	if (!S->pendingShot.empty())
+	{
+		gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+		saveShot(S->pendingShot, w, h);
+		S->pendingShot.clear();
+	}
+	SDL_GL_SwapBuffers();
+}
+
+// ------------------------------------------------------------------ headset mode
+
+static void headsetFrame(float dt)
+{
+	if (!S->xr.pollEvents())
+	{
+		Log(LOG_INFO) << "[VR] runtime asked the app to exit";
+		S->game->quit();
+		S->on = false;
+		return;
+	}
+	if (!S->xr.isRunning()) { SDL_Delay(10); return; }
+	bool render = false;
+	if (!S->xr.beginFrame(S->views, S->hands, render)) return;
+
+	// head = midpoint of the eyes
+	S->head.pos = (S->views[0].pose.pos + S->views[1].pose.pos) * 0.5f;
+	S->head.rot = S->views[0].pose.rot;
+	if (!S->recentered && render) recenter();
+	S->board.setViewer(xfPoint(S->rig, S->head.pos));
+	updateHeadsetInput(dt);
+
+	if (render)
+	{
+		GLStateGuard guard;
+		for (int e = 0; e < 2; ++e)
+		{
+			GLuint tex = S->xr.acquireEye(e);
+			if (!tex) continue;
+			Pose eyeWorld;
+			glm::mat4 m = S->rig * S->views[e].pose.matrix();
+			glm::vec3 eyePos = glm::vec3(m[3]);
+			S->eyeTarget[e].bind();
+			drawScene(glm::inverse(m), S->views[e].projection(0.03f, 60.f), eyePos, true);
+			glDisable(GL_FRAMEBUFFER_SRGB);
+			S->eyeTarget[e].resolveTo(tex);
+			S->xr.releaseEye(e);
+		}
+		glFlush();
+	}
+	S->xr.endFrame(render);
+}
+
+void frame()
+{
+	if (!active()) return;
+	if (XrRuntime::currentGLContext() != S->glContext)
+	{
+		Log(LOG_ERROR) << "[VR] the OpenGL context was re-created (video options changed?). VR stopped; restart the game.";
+		S->on = false;
+		return;
+	}
+	static Uint32 last = SDL_GetTicks();
+	Uint32 now = SDL_GetTicks();
+	float dt = std::min(0.1f, (now - last) / 1000.f);
+	last = now;
+	S->time += dt;
+	S->frameCount++;
+	for (auto it = S->pendingButtons.begin(); it != S->pendingButtons.end();)
+	{
+		if (--it->frames <= 0) { pushButton(it->button, it->down); it = S->pendingButtons.erase(it); }
+		else ++it;
+	}
+
+	if (!S->placardTried && S->game->getMod() && S->surfW > 0 && S->frameCount % 30 == 0)
+	{
+		GLStateGuard guard;
+		buildPlacard();
+	}
+	if (S->pixelsDirty && S->surfW > 0)
+	{
+		GLStateGuard guard;
+		S->gameTex.update(S->pixels.data(), S->surfW, S->surfH);
+		S->pixelsDirty = false;
+	}
+	{
+		GLStateGuard guard;
+		S->board.update(S->game, dt);
+	}
+
+	if (S->mode == MODE_HEADSET) headsetFrame(dt);
+	else previewFrame();
+}
+
+// ------------------------------------------------------------------ desktop events
+
+bool filterEvent(SDL_Event &ev)
+{
+	if (!active()) return true;
+	bool mouse = ev.type == SDL_MOUSEMOTION || ev.type == SDL_MOUSEBUTTONDOWN || ev.type == SDL_MOUSEBUTTONUP;
+	if (!mouse) return true;
+	Uint8 which = ev.type == SDL_MOUSEMOTION ? ev.motion.which : ev.button.which;
+	if (which == SYNTH_TAG) return true; // ours, already consistent with the virtual mouse
+
+	if (S->mode == MODE_HEADSET)
+	{
+		// a real mouse on the desktop still works; keep the virtual state in sync
+		if (ev.type == SDL_MOUSEMOTION) { S->vmX = ev.motion.x; S->vmY = ev.motion.y; }
+		else if (ev.button.button <= 3)
+		{
+			if (ev.type == SDL_MOUSEBUTTONDOWN) S->vmButtons |= SDL_BUTTON(ev.button.button);
+			else S->vmButtons &= ~SDL_BUTTON(ev.button.button);
+		}
+		return true;
+	}
+
+	// desktop preview: the mouse aims a ray from the camera
+	if (ev.type == SDL_MOUSEMOTION)
+	{
+		if (S->camDrag)
+		{
+			S->camYaw -= ev.motion.xrel * 0.25f;
+			S->camPitch = glm::clamp(S->camPitch - ev.motion.yrel * 0.25f, -85.f, 85.f);
+			SDL_WarpMouse(S->realMouseX, S->realMouseY);
+			return false;
+		}
+		S->realMouseX = ev.motion.x;
+		S->realMouseY = ev.motion.y;
+	}
+	else
+	{
+		if (ev.button.button == SDL_BUTTON_MIDDLE)
+		{
+			S->camDrag = ev.type == SDL_MOUSEBUTTONDOWN;
+			return false;
+		}
+	}
+	glm::vec3 o, d;
+	int mx = ev.type == SDL_MOUSEMOTION ? ev.motion.x : ev.button.x;
+	int my = ev.type == SDL_MOUSEMOTION ? ev.motion.y : ev.button.y;
+	previewRay(mx, my, o, d);
+	RayHit hit = castRay(o, d);
+	bool held = S->vmButtons != 0;
+	if (hit.target == RayHit::PANEL || (held && ev.type != SDL_MOUSEBUTTONDOWN))
+	{
+		int wx = S->vmX, wy = S->vmY;
+		if (hit.target == RayHit::PANEL) gameToWindow(hit.uv, wx, wy);
+		S->pointerOnPanel = hit.target == RayHit::PANEL;
+		if (ev.type == SDL_MOUSEMOTION)
+		{
+			ev.motion.xrel = (Sint16)(wx - S->vmX);
+			ev.motion.yrel = (Sint16)(wy - S->vmY);
+			ev.motion.x = (Uint16)wx;
+			ev.motion.y = (Uint16)wy;
+			ev.motion.state = S->vmButtons;
+		}
+		else
+		{
+			ev.button.x = (Uint16)wx;
+			ev.button.y = (Uint16)wy;
+			if (ev.button.button <= 3)
+			{
+				if (ev.type == SDL_MOUSEBUTTONDOWN) S->vmButtons |= SDL_BUTTON(ev.button.button);
+				else S->vmButtons &= ~SDL_BUTTON(ev.button.button);
+			}
+		}
+		S->vmX = wx;
+		S->vmY = wy;
+		return true;
+	}
+	if (hit.target == RayHit::BOARD)
+	{
+		S->board.hover(hit.board);
+		if (ev.type == SDL_MOUSEBUTTONDOWN)
+		{
+			if (ev.button.button == SDL_BUTTON_WHEELUP) S->board.wheel(1);
+			else if (ev.button.button == SDL_BUTTON_WHEELDOWN) S->board.wheel(-1);
+			else S->board.click(ev.button.button);
+		}
+	}
+	return false;
+}
+
+}
+}

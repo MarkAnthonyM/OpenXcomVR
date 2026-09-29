@@ -548,6 +548,13 @@ if ( UNIX AND EMBED_ASSETS )
   set_property ( SOURCE OpenXcom.s PROPERTY COMPILE_FLAGS -I${CMAKE_BINARY_DIR} )
 endif ()
 
+set ( vr_src
+  VR/VrBoard.cpp
+  VR/VrGL.cpp
+  VR/VrRoom.cpp
+  VR/VrSystem.cpp
+  VR/VrXr.cpp
+)
 set ( openxcom_src ${c_src} ${cxx_src} ${embed_src} )
 set ( install_dest RUNTIME )
 set ( set_exec_path ON )
@@ -628,6 +635,29 @@ if (WIN32)
 endif(WIN32)
 
 target_link_libraries ( openxcom ${system_libs} ${PKG_DEPS_LDFLAGS} ${EXTRA_XCOM_LIBS} ${WIN32_LIBS} )
+
+# ---- VR tabletop (OpenXR) -------------------------------------------------
+option ( OXCE_VR "Build the VR tabletop mode (needs OpenXR loader + glm)" ON )
+if ( OXCE_VR AND NOT OPENGL_FOUND )
+  message ( WARNING "OXCE_VR needs OpenGL - VR disabled" )
+  set ( OXCE_VR OFF )
+endif ()
+if ( OXCE_VR )
+  find_package ( OpenXR CONFIG )
+  find_path ( GLM_INCLUDE_DIR glm/glm.hpp )
+  if ( NOT OpenXR_FOUND OR NOT GLM_INCLUDE_DIR )
+    message ( WARNING "OpenXR SDK or glm not found - building without VR" )
+  else ()
+    message ( STATUS "VR tabletop mode: enabled" )
+    target_sources ( openxcom PRIVATE ${vr_src} )
+    target_compile_definitions ( openxcom PRIVATE OXCE_VR GLM_ENABLE_EXPERIMENTAL )
+    target_include_directories ( openxcom PRIVATE ${GLM_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/VR/khr )
+    target_link_libraries ( openxcom OpenXR::openxr_loader )
+    if ( UNIX AND NOT APPLE )
+      target_link_libraries ( openxcom X11 )
+    endif ()
+  endif ()
+endif ()
 
 # Pack libraries into bundle and link executable appropriately
 if ( APPLE AND CREATE_BUNDLE )

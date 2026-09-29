@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Screen.h"
+#include "../VR/VrApi.h"
 #include "../resource.h"
 #include <algorithm>
 #include <sstream>
@@ -190,6 +191,12 @@ void Screen::handle(Action *action)
  */
 void Screen::flip()
 {
+	// VR: the composed game frame becomes the in-headset screen texture.
+	if (VR::onScreenFlip(_surface.get()))
+	{
+		return; // desktop preview draws the VR scene instead
+	}
+
 	// perform any requested palette update
 	if (_flickerFix && _pushPalette && _numColors && _screen->format->BitsPerPixel == 8)
 	{
