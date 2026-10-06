@@ -11,6 +11,9 @@
 namespace OpenXcom
 {
 class Game;
+class BattleUnit;
+class BattlescapeState;
+class SavedBattleGame;
 
 namespace VR
 {
@@ -43,6 +46,22 @@ public:
 	void update(Game *game, float dt);
 	void draw(const Shader &sh, const glm::mat4 &viewProj, const glm::vec3 &eye, double time);
 	bool raycast(const glm::vec3 &o, const glm::vec3 &d, BoardHit &hit) const;
+	/// Table area (world xz rect: xmin, zmin, xmax, zmax) the battle map is shown in.
+	void setMapRect(const glm::vec4 &rect);
+	/// The live battlescape, or null.
+	BattlescapeState *battleState() const;
+	SavedBattleGame *battle() const;
+	/// Heads of the figures on the table (world), for finger taps.
+	struct UnitMarker { BattleUnit *unit; glm::vec3 head; float radius; bool ours; };
+	std::vector<UnitMarker> unitMarkers() const;
+	/// Map tile under a world point (highest visible floor at or below it). floorY = its world height.
+	bool tileUnder(const glm::vec3 &world, int &tx, int &ty, int &tz, float &floorY) const;
+	/// Clicks a map tile (move / fire / select, exactly like clicking it on the flat map).
+	void clickTile(int tx, int ty, int tz, bool right);
+	/// Selects one of our units directly.
+	bool selectUnit(BattleUnit *unit);
+	/// World position of a tile's floor centre.
+	glm::vec3 tileCenter(int tx, int ty, int tz) const;
 	void hover(const BoardHit &hit);
 	void hoverNone();
 	void click(int button);

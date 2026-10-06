@@ -551,6 +551,8 @@ endif ()
 set ( vr_src
   VR/VrBoard.cpp
   VR/VrGL.cpp
+  VR/VrHands.cpp
+  VR/VrTable.cpp
   VR/VrRoom.cpp
   VR/VrSystem.cpp
   VR/VrXr.cpp

@@ -58,6 +58,7 @@
 #include <unordered_map>
 #include <cmath>
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 
 namespace OpenXcom
@@ -137,7 +138,13 @@ struct UnitCard
 {
 	std::unique_ptr<VR::Texture> tex;
 	int w = 32, h = 40, anchorY = 32;
+	int topRow = 4;            // first opaque row: where the head is
 	std::vector<uint32_t> px;
+	glm::vec3 vis{0.f};        // smoothed position on the table (voxels)
+	glm::vec3 visVel{0.f};     // its velocity (voxels/s)
+	bool visInit = false;
+	int lastKey = -1;
+	double lastRender = -1.0;
 };
 
 struct Board::Impl
@@ -190,21 +197,17 @@ struct Board::Impl
 	Globe *globe = nullptr;
 	GeoscapeState *geo = nullptr;
 
+	glm::vec4 mapRect{0.f};    // world xz rect of the table area that shows the map
 	float surfaceY() const { return layout.tableCenter.y - 0.02f; }
 	glm::mat4 boardMatrix() const
 	{
 		float k = tileSize / TILE_W;
-		return glm::translate(glm::mat4(1.f), {layout.tableCenter.x, surfaceY(), layout.tableCenter.z})
+		return glm::translate(glm::mat4(1.f), {(mapRect.x + mapRect.z) * 0.5f, surfaceY(), (mapRect.y + mapRect.w) * 0.5f})
 			* glm::rotate(glm::mat4(1.f), yaw, {0, 1, 0})
 			* glm::scale(glm::mat4(1.f), glm::vec3(k))
 			* glm::translate(glm::mat4(1.f), {-focus.x, 0.f, -focus.z});
 	}
-	glm::vec4 clipRect() const
-	{
-		glm::vec3 c = layout.tableCenter;
-		float hx = layout.tableSize.x * 0.5f, hz = layout.tableSize.y * 0.5f;
-		return {c.x - hx, c.z - hz, c.x + hx, c.z + hz};
-	}
+	glm::vec4 clipRect() const { return mapRect; }
 	glm::mat4 globeMatrix() const
 	{
 		// rotate so the game's globe center faces the player (+Z)
@@ -601,12 +604,15 @@ void Board::Impl::renderUnitCard(BattleUnit *u, UnitCard &card, int apparentOffs
 	card.h = surf->getHeight();
 	card.anchorY = size > 1 ? 40 : 32;
 	card.px.resize((size_t)card.w * card.h);
+	card.topRow = -1;
 	for (int y = 0; y < card.h; ++y)
 		for (int x = 0; x < card.w; ++x)
 		{
 			Uint8 c = surf->getPixel(x, y);
 			card.px[(size_t)y * card.w + x] = c ? rgba(pal[c]) : 0u;
+			if (c && card.topRow < 0) card.topRow = y;
 		}
+	if (card.topRow < 0) card.topRow = 4;
 	if (!card.tex) { card.tex.reset(new VR::Texture()); card.tex->create(card.w, card.h, false, false); }
 	card.tex->update(card.px.data(), card.w, card.h);
 }
@@ -667,13 +673,54 @@ void Board::Impl::updateBattle(float dt)
 	{
 		if (u->isOut()) continue;
 		if (!(u->getFaction() == FACTION_PLAYER || u->getVisible() || battle->getDebugMode())) continue;
-		glm::vec3 p = unitVoxelPos(u);
+		UnitCard &card = cards[u];
+
+		// smooth movement (see below); jumps of more than 3 tiles (loading, teleports) snap
+		glm::vec3 target = unitVoxelPos(u);
+		if (!card.visInit || glm::length(target - card.vis) > TILE_W * 3.f)
+		{
+			card.vis = target;
+			card.visVel = glm::vec3(0.f);
+			card.visInit = true;
+		}
+		else
+		{
+			int stepMs = std::max(1, u->getFaction() == FACTION_PLAYER ? Options::battleXcomSpeed : Options::battleAlienSpeed);
+			bool moving = u->getStatus() == STATUS_WALKING || u->getStatus() == STATUS_FLYING;
+			// The game moves figures in 2-voxel steps on a timer that bunches up after slow frames.
+			// Follow it with a critically damped spring (time constant ~3 game steps) and a speed cap:
+			// figures glide at an even walking speed instead of hopping and sprinting.
+			float stepS = stepMs / 1000.f;
+			float T = glm::clamp(3.f * stepS, 0.06f, 0.2f);
+			float w = 2.f / T;
+			glm::vec3 x0 = card.vis - target;
+			glm::vec3 tmp = (card.visVel + w * x0) * dt;
+			float e = std::exp(-w * dt);
+			glm::vec3 vel = (card.visVel - w * tmp) * e;
+			glm::vec3 before = card.vis;
+			card.vis = target + (x0 + tmp) * e;
+			float maxSpeed = 2.f * 1.3f / stepS * (moving ? 1.f : 1.5f);
+			float sp = glm::length(vel);
+			if (sp > maxSpeed) vel *= maxSpeed / sp;
+			card.visVel = vel;
+			static const bool trace = std::getenv("OXCE_VR_TRACE_WALK") != nullptr;
+			if (trace && moving && dt > 0.f)
+				Log(LOG_INFO) << "[VR] walk " << (glm::length(card.vis - before) / dt) << " vox/s, game " << glm::length(target - before) << " ahead, dt " << dt;
+		}
+
+		glm::vec3 p = card.vis;
 		glm::vec2 toViewer(viewerVox.x - p.x, viewerVox.z - p.z);
 		// sector the viewer stands in, seen from the unit (0 = north, clockwise)
 		float ang = std::atan2(toViewer.x, -toViewer.y);
 		int sector = ((int)std::lround(ang / (3.14159265f / 4.f)) % 8 + 8) % 8;
-		// the flat map's camera sits to the south-east (sector 3)
-		renderUnitCard(u, cards[u], 3 - sector);
+		// the flat map's camera sits to the south-east (sector 3); redraw on a change or ~15 times a second
+		int key = (3 - sector + 8) % 8 + 8 * u->getDirection() + 64 * (int)u->getStatus();
+		if (key != card.lastKey || animTime - card.lastRender > 1.0 / 15.0 || !card.tex)
+		{
+			renderUnitCard(u, card, 3 - sector);
+			card.lastKey = key;
+			card.lastRender = animTime;
+		}
 	}
 }
 
@@ -691,7 +738,7 @@ void Board::Impl::drawUnits(const Shader &sh)
 		if (!(u->getFaction() == FACTION_PLAYER || u->getVisible() || battle->getDebugMode())) continue;
 		if (u->getPosition().z > viewLevel) continue;
 		const UnitCard &card = it->second;
-		glm::vec3 p = unitVoxelPos(u);
+		glm::vec3 p = card.visInit ? card.vis : unitVoxelPos(u);
 		int size = u->getArmor()->getSize();
 
 		// miniature base in the faction's color
@@ -984,6 +1031,8 @@ Board::~Board() {}
 void Board::init(const RoomLayout &layout)
 {
 	_p->layout = layout;
+	glm::vec3 tc = layout.tableCenter;
+	_p->mapRect = glm::vec4(tc.x - layout.tableSize.x * 0.5f, tc.z - layout.tableSize.y * 0.5f, tc.x + layout.tableSize.x * 0.5f, tc.z + layout.tableSize.y * 0.5f);
 	MeshData q;
 	q.addQuad({-0.5f, -0.5f, 0}, {0.5f, -0.5f, 0}, {0.5f, 0.5f, 0}, {-0.5f, 0.5f, 0}, glm::vec4(1), MAT_BOARD, {0, 1}, {1, 1}, {1, 0}, {0, 0});
 	_p->quad.upload(q);
@@ -1026,6 +1075,81 @@ void Board::init(const RoomLayout &layout)
 }
 
 void Board::setViewer(const glm::vec3 &head) { _p->viewer = head; }
+void Board::setMapRect(const glm::vec4 &rect) { _p->mapRect = rect; }
+BattlescapeState *Board::battleState() const { return _p->hasBattle ? _p->bs : nullptr; }
+SavedBattleGame *Board::battle() const { return _p->hasBattle ? _p->battle : nullptr; }
+
+std::vector<Board::UnitMarker> Board::unitMarkers() const
+{
+	std::vector<UnitMarker> out;
+	const Impl &p = *_p;
+	if (!p.hasBattle || !p.battle) return out;
+	glm::mat4 M = p.boardMatrix();
+	float k = p.tileSize / TILE_W;
+	for (BattleUnit *u : *p.battle->getUnits())
+	{
+		auto it = p.cards.find(u);
+		if (it == p.cards.end() || !it->second.visInit || u->isOut()) continue;
+		if (!(u->getFaction() == FACTION_PLAYER || u->getVisible() || p.battle->getDebugMode())) continue;
+		if (u->getPosition().z > p.viewLevel) continue;
+		const UnitCard &c = it->second;
+		// same placement as the standee in drawUnits: pixel row r sits at anchorY - r above the base
+		glm::vec3 local = c.vis + glm::vec3(0.f, 1.3f + c.anchorY - c.topRow - 5.f, 0.f);
+		glm::vec3 w = glm::vec3(M * glm::vec4(local, 1.f));
+		glm::vec4 clip = p.clipRect();
+		if (w.x < clip.x || w.x > clip.z || w.z < clip.y || w.z > clip.w) continue;
+		out.push_back({u, w, std::max(0.016f, 6.f * k), u->getFaction() == p.battle->getSide()});
+	}
+	return out;
+}
+
+bool Board::tileUnder(const glm::vec3 &world, int &tx, int &ty, int &tz, float &floorY) const
+{
+	const Impl &p = *_p;
+	if (!p.hasBattle || !p.battle) return false;
+	glm::vec4 clip = p.clipRect();
+	if (world.x < clip.x || world.x > clip.z || world.z < clip.y || world.z > clip.w) return false;
+	glm::mat4 M = p.boardMatrix();
+	glm::vec3 l = glm::vec3(glm::inverse(M) * glm::vec4(world, 1.f));
+	int x = (int)std::floor(l.x / TILE_W), y = (int)std::floor(l.z / TILE_W);
+	if (x < 0 || y < 0 || x >= p.mx || y >= p.my) return false;
+	for (int z = std::min(p.viewLevel, p.mz - 1); z >= 0; --z)
+	{
+		Tile *t = p.battle->getTile(Position(x, y, z));
+		if (!t) continue;
+		bool floor = z == 0 || (t->isDiscovered(O_FLOOR) && (t->getMapData(O_FLOOR) || t->getMapData(O_OBJECT)));
+		if (!floor) continue;
+		float fy = (float)(z * TILE_H - t->getTerrainLevel());
+		if (l.y < fy - 3.f && z > 0) continue; // below this floor: look further down
+		tx = x; ty = y; tz = z;
+		floorY = glm::vec3(M * glm::vec4(l.x, fy, l.z, 1.f)).y;
+		return true;
+	}
+	return false;
+}
+
+glm::vec3 Board::tileCenter(int tx, int ty, int tz) const
+{
+	const Impl &p = *_p;
+	float lvl = 0.f;
+	if (p.battle)
+		if (Tile *t = p.battle->getTile(Position(tx, ty, tz))) lvl = (float)t->getTerrainLevel();
+	return glm::vec3(p.boardMatrix() * glm::vec4(tx * TILE_W + 8.f, tz * TILE_H - lvl, ty * TILE_W + 8.f, 1.f));
+}
+
+void Board::clickTile(int tx, int ty, int tz, bool right)
+{
+	Impl &p = *_p;
+	revalidate(p);
+	if (p.bs) p.bs->vrTileClick(Position(tx, ty, tz), right);
+}
+
+bool Board::selectUnit(BattleUnit *unit)
+{
+	Impl &p = *_p;
+	revalidate(p);
+	return p.bs ? p.bs->vrSelectUnit(unit) : false;
+}
 bool Board::hasContent() const { return _p->hasBattle || _p->hasGlobe; }
 
 void Board::update(Game *game, float dt)

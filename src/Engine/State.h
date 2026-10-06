@@ -98,6 +98,12 @@ public:
 	virtual void think();
 	/// Blits the state to the screen.
 	virtual void blit();
+	/// VR tabletop: draws this state's surfaces onto another surface (off-screen copy for wall displays).
+	void vrBlitTo(Surface *dest);
+	/// VR tabletop: an off-screen copy never plays its pop-up sound.
+	void vrMute() { _soundPlayed = true; }
+	/// VR tabletop: this state's palette.
+	const SDL_Color *vrPalette() const { return _palette; }
 	/// Hides all the state surfaces.
 	void hideAll();
 	/// Shows all the state surfaces.

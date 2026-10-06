@@ -91,6 +91,12 @@ struct XrRuntime::Impl
 	std::string runtime;
 
 	XrActionSet actionSet = XR_NULL_HANDLE;
+	bool handExt = false, motionRangeExt = false;
+	XrHandTrackerEXT tracker[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
+	PFN_xrCreateHandTrackerEXT createHandTracker = nullptr;
+	PFN_xrDestroyHandTrackerEXT destroyHandTracker = nullptr;
+	PFN_xrLocateHandJointsEXT locateHandJoints = nullptr;
+	XrAction squeezeForce = XR_NULL_HANDLE, triggerTouch = XR_NULL_HANDLE, thumbTouch = XR_NULL_HANDLE;
 	XrAction aimPose = XR_NULL_HANDLE, gripPose = XR_NULL_HANDLE, trigger = XR_NULL_HANDLE, squeeze = XR_NULL_HANDLE,
 		stick = XR_NULL_HANDLE, btnA = XR_NULL_HANDLE, btnB = XR_NULL_HANDLE, stickClick = XR_NULL_HANDLE, vibrate = XR_NULL_HANDLE;
 	XrPath hand[2] = {XR_NULL_PATH, XR_NULL_PATH};
@@ -133,21 +139,27 @@ bool XrRuntime::init(const std::string &appName)
 	xrEnumerateInstanceExtensionProperties(nullptr, extCount, &extCount, exts.data());
 	bool hasGL = false;
 	for (auto &e : exts)
+	{
 		if (!std::strcmp(e.extensionName, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME)) hasGL = true;
+		if (!std::strcmp(e.extensionName, XR_EXT_HAND_TRACKING_EXTENSION_NAME)) _p->handExt = true;
+		if (!std::strcmp(e.extensionName, XR_EXT_HAND_JOINTS_MOTION_RANGE_EXTENSION_NAME)) _p->motionRangeExt = true;
+	}
 	if (!hasGL)
 	{
 		Log(LOG_ERROR) << "[VR] OpenXR runtime does not support OpenGL (XR_KHR_opengl_enable).";
 		return false;
 	}
-	const char *enabled[] = {XR_KHR_OPENGL_ENABLE_EXTENSION_NAME};
+	std::vector<const char*> enabled = {XR_KHR_OPENGL_ENABLE_EXTENSION_NAME};
+	if (_p->handExt) enabled.push_back(XR_EXT_HAND_TRACKING_EXTENSION_NAME);
+	if (_p->handExt && _p->motionRangeExt) enabled.push_back(XR_EXT_HAND_JOINTS_MOTION_RANGE_EXTENSION_NAME);
 	XrInstanceCreateInfo ici{XR_TYPE_INSTANCE_CREATE_INFO};
 	std::strncpy(ici.applicationInfo.applicationName, appName.c_str(), XR_MAX_APPLICATION_NAME_SIZE - 1);
 	ici.applicationInfo.applicationVersion = 1;
 	std::strncpy(ici.applicationInfo.engineName, "OpenXcom Extended", XR_MAX_ENGINE_NAME_SIZE - 1);
 	ici.applicationInfo.engineVersion = 1;
 	ici.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
-	ici.enabledExtensionCount = 1;
-	ici.enabledExtensionNames = enabled;
+	ici.enabledExtensionCount = (uint32_t)enabled.size();
+	ici.enabledExtensionNames = enabled.data();
 	if (!XR_CHECK(xrCreateInstance(&ici, &_p->instance))) return false;
 
 	XrInstanceProperties ip{XR_TYPE_INSTANCE_PROPERTIES};
@@ -168,6 +180,13 @@ bool XrRuntime::init(const std::string &appName)
 	xrGetInstanceProcAddr(_p->instance, "xrGetOpenGLGraphicsRequirementsKHR", (PFN_xrVoidFunction*)&getReq);
 	XrGraphicsRequirementsOpenGLKHR req{XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR};
 	if (!getReq || !XR_CHECK(getReq(_p->instance, _p->system, &req))) return false;
+	if (_p->handExt)
+	{
+		XrSystemHandTrackingPropertiesEXT htp{XR_TYPE_SYSTEM_HAND_TRACKING_PROPERTIES_EXT};
+		XrSystemProperties sp{XR_TYPE_SYSTEM_PROPERTIES};
+		sp.next = &htp;
+		if (XR_SUCCEEDED(xrGetSystemProperties(_p->instance, _p->system, &sp)) && !htp.supportsHandTracking) _p->handExt = false;
+	}
 
 	// ---- session on the engine's GL context
 #ifdef _WIN32
@@ -274,6 +293,9 @@ bool XrRuntime::init(const std::string &appName)
 	_p->btnB = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "button_b", "Back / recenter");
 	_p->stickClick = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "stick_click", "Stick click");
 	_p->vibrate = makeAction(_p.get(), XR_ACTION_TYPE_VIBRATION_OUTPUT, "haptic", "Haptic");
+	_p->squeezeForce = makeAction(_p.get(), XR_ACTION_TYPE_FLOAT_INPUT, "grab_force", "Grab force (Index)");
+	_p->triggerTouch = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "trigger_touch", "Index finger on trigger");
+	_p->thumbTouch = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "thumb_touch", "Thumb resting");
 
 	struct B { XrAction a; const char *p; };
 	auto suggest = [&](const char *profile, std::vector<B> list)
@@ -306,6 +328,12 @@ bool XrRuntime::init(const std::string &appName)
 		both(v, _p->btnB, "/input/b/click");
 		both(v, _p->stickClick, "/input/thumbstick/click");
 		both(v, _p->vibrate, "/output/haptic");
+		both(v, _p->squeezeForce, "/input/squeeze/force");
+		both(v, _p->triggerTouch, "/input/trigger/touch");
+		both(v, _p->thumbTouch, "/input/thumbstick/touch");
+		both(v, _p->thumbTouch, "/input/a/touch");
+		both(v, _p->thumbTouch, "/input/b/touch");
+		both(v, _p->thumbTouch, "/input/trackpad/touch");
 		suggest("/interaction_profiles/valve/index_controller", v);
 	}
 	{
@@ -321,6 +349,12 @@ bool XrRuntime::init(const std::string &appName)
 		v.push_back({_p->btnB, "/user/hand/left/input/y/click"});
 		v.push_back({_p->btnA, "/user/hand/right/input/a/click"});
 		v.push_back({_p->btnB, "/user/hand/right/input/b/click"});
+		both(v, _p->triggerTouch, "/input/trigger/touch");
+		both(v, _p->thumbTouch, "/input/thumbstick/touch");
+		v.push_back({_p->thumbTouch, "/user/hand/left/input/x/touch"});
+		v.push_back({_p->thumbTouch, "/user/hand/left/input/y/touch"});
+		v.push_back({_p->thumbTouch, "/user/hand/right/input/a/touch"});
+		v.push_back({_p->thumbTouch, "/user/hand/right/input/b/touch"});
 		suggest("/interaction_profiles/oculus/touch_controller", v);
 	}
 	{
@@ -359,6 +393,23 @@ bool XrRuntime::init(const std::string &appName)
 	att.actionSets = &_p->actionSet;
 	if (!XR_CHECK(xrAttachSessionActionSets(_p->session, &att))) return false;
 
+	if (_p->handExt)
+	{
+		xrGetInstanceProcAddr(_p->instance, "xrCreateHandTrackerEXT", (PFN_xrVoidFunction*)&_p->createHandTracker);
+		xrGetInstanceProcAddr(_p->instance, "xrDestroyHandTrackerEXT", (PFN_xrVoidFunction*)&_p->destroyHandTracker);
+		xrGetInstanceProcAddr(_p->instance, "xrLocateHandJointsEXT", (PFN_xrVoidFunction*)&_p->locateHandJoints);
+		bool ok = _p->createHandTracker && _p->locateHandJoints;
+		for (int h = 0; h < 2 && ok; ++h)
+		{
+			XrHandTrackerCreateInfoEXT ci{XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT};
+			ci.hand = h == 0 ? XR_HAND_LEFT_EXT : XR_HAND_RIGHT_EXT;
+			ci.handJointSet = XR_HAND_JOINT_SET_DEFAULT_EXT;
+			ok = XR_SUCCEEDED(_p->createHandTracker(_p->session, &ci, &_p->tracker[h]));
+		}
+		if (!ok) _p->handExt = false;
+	}
+	Log(LOG_INFO) << "[VR] finger tracking: " << (_p->handExt ? "XR_EXT_hand_tracking" : "not available (hands posed from controller buttons)");
+
 	for (auto &v : _p->views) v = {XR_TYPE_VIEW};
 	return true;
 }
@@ -366,6 +417,7 @@ bool XrRuntime::init(const std::string &appName)
 void XrRuntime::shutdown()
 {
 	if (!_p) return;
+	for (auto &t : _p->tracker) if (t && _p->destroyHandTracker) { _p->destroyHandTracker(t); t = XR_NULL_HANDLE; }
 	for (auto &s : _p->swaps) if (s.handle) { xrDestroySwapchain(s.handle); s.handle = XR_NULL_HANDLE; }
 	for (int h = 0; h < 2; ++h)
 	{
@@ -428,6 +480,7 @@ bool XrRuntime::isFocused() const { return _p->state == XR_SESSION_STATE_FOCUSED
 int XrRuntime::eyeWidth() const { return _p->swaps[0].w; }
 int XrRuntime::eyeHeight() const { return _p->swaps[0].h; }
 bool XrRuntime::floorLevel() const { return _p->stage; }
+bool XrRuntime::hasHandTracking() const { return _p->handExt; }
 std::string XrRuntime::runtimeName() const { return _p->runtime; }
 
 bool XrRuntime::beginFrame(EyeView views[2], HandState hands[2], bool &shouldRender)
@@ -463,6 +516,11 @@ bool XrRuntime::beginFrame(EyeView views[2], HandState hands[2], bool &shouldRen
 		gi.action = _p->btnA; hs.a.update(synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState);
 		gi.action = _p->btnB; hs.b.update(synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState);
 		gi.action = _p->stickClick; hs.stickClick.update(synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState);
+		gi.action = _p->squeezeForce;
+		hs.hasForce = synced && xrGetActionStateFloat(_p->session, &gi, &f) == XR_SUCCESS && f.isActive;
+		hs.squeezeForce = hs.hasForce ? f.currentState : 0.f;
+		gi.action = _p->triggerTouch; hs.triggerTouch = synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState;
+		gi.action = _p->thumbTouch; hs.thumbTouch = synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState;
 		hs.triggerBtn.update(hs.trigger > hs.triggerHyst(hs.triggerBtn.down));
 		hs.squeezeBtn.update(hs.squeeze > (hs.squeezeBtn.down ? 0.3f : 0.6f));
 
@@ -482,6 +540,38 @@ bool XrRuntime::beginFrame(EyeView views[2], HandState hands[2], bool &shouldRen
 		else if (hs.active)
 		{
 			hs.grip = hs.aim;
+		}
+
+		hs.jointsValid = false;
+		if (_p->handExt && _p->tracker[h])
+		{
+			XrHandJointLocationEXT jl[XR_HAND_JOINT_COUNT_EXT];
+			XrHandJointLocationsEXT locs{XR_TYPE_HAND_JOINT_LOCATIONS_EXT};
+			locs.jointCount = XR_HAND_JOINT_COUNT_EXT;
+			locs.jointLocations = jl;
+			XrHandJointsLocateInfoEXT li{XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
+			li.baseSpace = _p->appSpace;
+			li.time = t;
+			XrHandJointsMotionRangeInfoEXT mr{XR_TYPE_HAND_JOINTS_MOTION_RANGE_INFO_EXT};
+			if (_p->motionRangeExt)
+			{
+				// the real finger positions, not curled around the controller
+				mr.handJointsMotionRange = XR_HAND_JOINTS_MOTION_RANGE_UNOBSTRUCTED_EXT;
+				li.next = &mr;
+			}
+			if (XR_SUCCEEDED(_p->locateHandJoints(_p->tracker[h], &li, &locs)) && locs.isActive)
+			{
+				bool all = true;
+				for (int j = 0; j < XR_HAND_JOINT_COUNT_EXT; ++j)
+				{
+					if (!(jl[j].locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)) { all = false; break; }
+					Pose jp = toPose(jl[j].pose);
+					hs.jointPos[j] = jp.pos;
+					hs.jointRot[j] = jp.rot;
+					hs.jointRadius[j] = jl[j].radius > 0.f ? jl[j].radius : 0.008f;
+				}
+				hs.jointsValid = all;
+			}
 		}
 	}
 

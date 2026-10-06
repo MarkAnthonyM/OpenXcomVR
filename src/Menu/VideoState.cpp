@@ -27,6 +27,7 @@
 #include "../Engine/CrossPlatform.h"
 #include "../Engine/FileMap.h"
 #include "../Engine/Screen.h"
+#include "../VR/VrApi.h"
 #include "../Engine/Music.h"
 #include "../Engine/Sound.h"
 #include "../Mod/Mod.h"
@@ -523,6 +524,7 @@ void VideoState::init()
 			}
 			_game->getScreen()->setPalette(pal2, 0, 256, true);
 			_game->getScreen()->flip();
+			VR::frame();
 			SDL_Delay(FADE_DELAY);
 		}
 	}

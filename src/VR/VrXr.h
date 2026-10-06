@@ -29,12 +29,23 @@ struct Button
 	void update(bool now) { pressed = now && !down; released = !now && down; down = now; }
 };
 
+enum { HAND_JOINTS = 26 };   // same order as XR_EXT_hand_tracking (palm, wrist, thumb x4, index..little x5)
+
 struct HandState
 {
 	bool active = false;       // pose is tracked
 	Pose aim;                  // pointing ray origin/direction (tracking space)
 	Pose grip;                 // where the controller is held
 	float trigger = 0.f, squeeze = 0.f;
+	float squeezeForce = 0.f;  // Index only: how hard the grip is actually squeezed
+	bool hasForce = false;     // squeezeForce is meaningful (Index controllers)
+	bool triggerTouch = false, thumbTouch = false;
+	// skeletal hand from XR_EXT_hand_tracking (tracking space); jointsValid false = not available
+	bool jointsValid = false;
+	glm::vec3 jointPos[HAND_JOINTS];
+	glm::quat jointRot[HAND_JOINTS];
+	float jointRadius[HAND_JOINTS];
+	Button grabBtn;            // deliberate grab (force/threshold + hold time), see VrSystem
 	glm::vec2 stick{0.f};
 	Button triggerBtn, squeezeBtn, a, b, stickClick;
 	float triggerHyst(bool wasDown) const { return wasDown ? 0.35f : 0.65f; }
@@ -76,6 +87,8 @@ public:
 	/// Whether the tracking space has its origin on the floor.
 	bool floorLevel() const;
 	std::string runtimeName() const;
+	/// True when the runtime gives us finger joints (XR_EXT_hand_tracking).
+	bool hasHandTracking() const;
 	/// Handle of the GL context current on this thread (to detect context re-creation).
 	static void *currentGLContext();
 	struct Impl;

@@ -1159,6 +1159,48 @@ void BattlescapeState::vrTileClick(Position pos, bool rightClick)
 }
 
 /**
+ * VR tabletop: selects a unit tapped on the table, like clicking it on the map
+ * but without triggering an aimed action.
+ * @param unit Unit to select.
+ * @return True if it became the selected unit.
+ */
+bool BattlescapeState::vrSelectUnit(BattleUnit *unit)
+{
+	if (!unit || _battleGame->isBusy() || unit->isOut() || unit->getFaction() != _save->getSide() || unit == _save->getSelectedUnit())
+	{
+		return false;
+	}
+	if (!unit->isSelectable(_save->getSide(), false, false))
+	{
+		return false;
+	}
+	_battleGame->cancelCurrentAction(true);
+	_save->setSelectedUnit(unit);
+	updateSoldierInfo();
+	_battleGame->setupCursor();
+	_battleGame->getCurrentAction()->actor = unit;
+	_battleGame->playUnitResponseSound(unit, 0); // "select unit" sound
+	return true;
+}
+
+/**
+ * VR tabletop: the icon panel's controls that get a physical button on the table.
+ */
+std::vector<std::pair<std::string, InteractiveSurface*>> BattlescapeState::vrButtons() const
+{
+	std::vector<std::pair<std::string, InteractiveSurface*>> list = {
+		{"unitUp", _btnUnitUp}, {"unitDown", _btnUnitDown}, {"mapUp", _btnMapUp}, {"mapDown", _btnMapDown},
+		{"showMap", _btnShowMap}, {"kneel", _btnKneel}, {"inventory", _btnInventory}, {"center", _btnCenter},
+		{"nextSoldier", _btnNextSoldier}, {"nextStop", _btnNextStop}, {"showLayers", _btnShowLayers}, {"help", _btnHelp},
+		{"endTurn", _btnEndTurn}, {"abort", _btnAbort},
+		{"reserveNone", _btnReserveNone}, {"reserveSnap", _btnReserveSnap}, {"reserveAimed", _btnReserveAimed}, {"reserveAuto", _btnReserveAuto},
+		{"reserveKneel", _btnReserveKneel}, {"zeroTUs", _btnZeroTUs},
+		{"leftHand", _btnLeftHandItem}, {"rightHand", _btnRightHandItem},
+	};
+	return list;
+}
+
+/**
  * Handles mouse entering the map surface.
  * @param action Pointer to an action.
  */

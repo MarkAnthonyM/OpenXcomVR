@@ -36,6 +36,7 @@
 #include "Screen.h"
 #include "Options.h"
 #include "Game.h"
+#include "../VR/VrApi.h"
 
 namespace OpenXcom
 {
@@ -230,6 +231,8 @@ void FlcPlayer::delay(Uint32 milliseconds)
 }
 void FlcPlayer::SDLPolling()
 {
+	// VR: the video runs its own loop, so the headset would otherwise get no frames
+	VR::frame();
 	SDL_Event event;
 	while (SDL_PollEvent(&event))
 	{
@@ -919,7 +922,7 @@ void FlcPlayer::waitForNextFrame(Uint32 delay)
 				decodeAudio(1);
 				currentTick = SDL_GetTicks();
 			}
-			SDL_Delay(1);
+			if (VR::active()) VR::frame(); else SDL_Delay(1);
 			currentTick = SDL_GetTicks();
 		}
 	}
@@ -927,7 +930,7 @@ void FlcPlayer::waitForNextFrame(Uint32 delay)
 	{
 		while (currentTick < newTick)
 		{
-			SDL_Delay(1);
+			if (VR::active()) VR::frame(); else SDL_Delay(1);
 			currentTick = SDL_GetTicks();
 		}
 	}

@@ -140,6 +140,12 @@ public:
 	/// Handler for clicking the Map Up button.
 	/// VR tabletop: a tile was clicked on the table diorama.
 	void vrTileClick(Position pos, bool rightClick);
+	/// VR tabletop: select one of our units directly (tapped on the table).
+	bool vrSelectUnit(BattleUnit *unit);
+	/// VR tabletop: the clickable controls of the icon panel, for the physical buttons on the table.
+	std::vector<std::pair<std::string, InteractiveSurface*>> vrButtons() const;
+	/// VR tabletop: the icon panel area.
+	InteractiveSurface *vrIcons() const { return _icons; }
 	void btnMapUpClick(Action *action);
 	/// Handler for clicking the Map Down button.
 	void btnMapDownClick(Action *action);

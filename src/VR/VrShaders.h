@@ -19,6 +19,7 @@ in vec4 aColor;
 in float aMat;
 uniform mat4 uModel;
 uniform mat4 uViewProj;
+uniform vec4 uUVRect;        // uv = aUV * zw + xy (a sub-rectangle of a texture)
 out vec3 vWorld;
 out vec3 vNormal;
 out vec2 vUV;
@@ -29,7 +30,7 @@ void main()
 	vec4 w = uModel * vec4(aPos, 1.0);
 	vWorld = w.xyz;
 	vNormal = mat3(uModel) * aNormal;
-	vUV = aUV;
+	vUV = aUV * uUVRect.zw + uUVRect.xy;
 	vColor = vec4(pow(aColor.rgb, vec3(2.2)), aColor.a);
 	vMat = int(aMat + 0.5);
 	gl_Position = uViewProj * w;
@@ -51,6 +52,9 @@ uniform float uTime;
 uniform vec4 uTint;
 uniform vec3 uLightPos[4];
 uniform vec3 uLightCol[4];
+uniform int uHoleCount;      // open hatches in the table: these xz rects are cut out...
+uniform vec4 uHoles[24];
+uniform vec2 uHoleY;         // ...but only between these heights
 uniform vec3 uSun;           // globe mode: world-space direction towards the sun
 uniform vec4 uClip;          // world-space xz clip rectangle (xmin, zmin, xmax, zmax); disabled when xmin > xmax
 out vec4 fragColor;
@@ -119,6 +123,14 @@ vec3 displayContent(vec2 uv)
 void main()
 {
 	if (uClip.x <= uClip.z && (vWorld.x < uClip.x || vWorld.x > uClip.z || vWorld.z < uClip.y || vWorld.z > uClip.w)) discard;
+	if (uHoleCount > 0 && vWorld.y > uHoleY.x && vWorld.y < uHoleY.y)
+	{
+		for (int i = 0; i < uHoleCount; ++i)
+		{
+			vec4 h = uHoles[i];
+			if (vWorld.x > h.x && vWorld.x < h.z && vWorld.z > h.y && vWorld.z < h.w) discard;
+		}
+	}
 	vec3 n = normalize(vNormal);
 	if (!gl_FrontFacing) n = -n;
 

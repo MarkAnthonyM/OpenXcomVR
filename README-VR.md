@@ -9,6 +9,16 @@ X-COM command center at a holographic war table:
   dollhouse. Point at a tile and pull the trigger to move or shoot.
 - **Geoscape** – a physical globe hovers over the table, with bases, craft,
   UFOs and mission sites as markers and the real day/night terminator.
+- **The table is a control panel.** When a battle starts, hatches in the near
+  edge of the table open and physical buttons rise for the battlescape controls
+  (kneel, end turn, next soldier, level up/down, ...). Press them with your
+  finger. Next to them is an inventory tray for the selected soldier, with small
+  floating voxel models of the items; pinch one to move it.
+- **Your hands** are tracked finger by finger (Valve Index knuckles) and collide
+  with the table and the buttons: a finger pressed against the table edge stops
+  there and bends. Tap a soldier's head to select it, tap a tile to walk there.
+- **Wall screens** show the selected soldier's stats, a top-down minimap and the
+  squad roster during a battle.
 - **Everything else** (menus, inventory, research, base management) is on the
   big game screen behind the table. Point at it and use the trigger as a mouse.
 
@@ -42,13 +52,33 @@ It can be passed on the command line (`-vrMode 2`) or set in `options.cfg`.
 | Stick up/down | Scroll lists; over the table: map level up/down; over the globe: zoom |
 | Grip over the table | Slide the map (one hand), zoom + turn it (both hands) |
 | Grip on the globe | Spin the globe |
-| Grip on the screen | Pick the screen up and put it somewhere else |
+| Grip on the grab bar under the screen | Pick the screen up and put it somewhere else |
 | Grip elsewhere | Move yourself (one hand), turn the room (both hands) |
 | Left A | Put the screen on your left hand as a tablet (again to put it back) |
 | Left B | Recenter |
 | Other stick left/right | Snap turn |
 
 Whichever hand pulled its trigger last is the pointing hand.
+
+Grabbing is deliberate: on the Index the grip has to be **squeezed** (force
+sensor, not just touched) for about a tenth of a second; on other controllers
+it has to be pulled most of the way. The screen can only be picked up by the
+glowing bar underneath it.
+
+**With your hands** (anywhere the laser is off, i.e. over the table):
+
+| Gesture | What it does |
+|---|---|
+| Press a table button | Same as clicking that battlescape button. Buttons travel about 5 mm, click near the bottom of the stroke (with a haptic tick) and spring back. A laser click on a button works too. |
+| Tap a soldier's head with your index finger | Select that soldier |
+| Tap a tile on the map with your index finger | Move the selected soldier there (with path preview on, tap again to confirm) |
+| Pinch an item in the inventory tray | Pick it up; let go over a slot or hand to move it there (costs TU like in the game). Dropping onto an occupied hand swaps the items. |
+
+If SteamVR offers skeletal finger data (`XR_EXT_hand_tracking`), the hands use
+it; otherwise each hand is posed from the controller (trigger = index finger,
+grip = other fingers, thumb on a button/stick = thumb down). If your real hand
+goes far into the table, the virtual one turns see-through and stops colliding
+until you pull back.
 
 **Desktop preview** (`vrMode 2`) shows the same room on your monitor: the mouse
 aims from your eyes, clicks work on the screen and the table, and holding the
@@ -62,6 +92,13 @@ headset on.
   tested in the desktop preview with the original game data.
 - Changing video options in-game recreates the OpenGL context, which stops VR
   (restart the game).
+- Valve Index finger tracking, the grip force thresholds and haptics have been
+  written against the spec but **not yet felt on a real headset**; the hand
+  physics, buttons, inventory pinching and taps were tested with a simulated
+  hand in the desktop preview.
+- The inventory tray moves items between slots and hands; loading ammo by
+  dragging a clip onto a weapon is not supported yet (use the screen). Ground
+  items are packed into the ground area rather than laid out as in the game.
 - Typing (base names, save names) needs the real keyboard.
 - Projectiles and explosions on the table are simple glowing markers; smoke,
   fire and floor items are not shown on the table yet (they are on the screen).
@@ -79,7 +116,9 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrXr.*` | OpenXR: instance, session on the engine's GL context (Xlib or Win32 binding), stereo swapchains, action bindings for Index/Touch/Vive/simple controllers, haptics. |
 | `VrSystem.cpp` | Frame loop, tracking-space → world "rig", the controller → mouse bridge (synthetic SDL events), grabbing, desktop preview camera, test automation (`OXCE_VR_SCRIPT`). |
 | `VrRoom.*` | Procedural command-center room, war table, controller models. |
-| `VrBoard.*` | Everything on the table: battlescape diorama, unit standees, tile picking, globe. |
+| `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (with a critically damped follower so walking speed is steady), tile picking, globe. |
+| `VrHands.*` | Hand skeletons (from XR hand tracking or posed from controller inputs), collision against box colliders with per-finger joint solving, pinch / point gestures. |
+| `VrTable.*` | The table's control panel: hatches and spring buttons, the inventory tray with voxel item models, head/tile taps, and the live wall screens. |
 | `VrGL.*`, `VrShaders.h` | Tiny GL helper layer and the single scene shader (linear lighting into an sRGB target). |
 
 Key ideas:
@@ -99,13 +138,23 @@ Key ideas:
   events; table clicks call `BattlescapeState::vrTileClick`, which mirrors
   `mapClick` (primary/secondary action on a tile); globe clicks are converted
   back into a click on the flat globe.
+- **Physical buttons mirror the game's own buttons.** `BattlescapeState::vrButtons`
+  reports each icon-panel button's rectangle; a fully pressed cap clicks that
+  rectangle through the same synthetic mouse path, so the game decides what the
+  button does. Button caps are colliders for the fingers, so pressing one is
+  just the finger collision pushing it down against a spring.
+- **Wall screens reuse game states off-screen.** `UnitInfoState` is rendered into
+  a private surface with `State::vrBlitTo` (palette saved and restored, sounds
+  muted), and `MiniMapView` is drawn directly.
 - **The flat camera and the table stay in sync.** The table follows the game's
   camera center and view level, and sliding the map on the table moves the
   game's camera.
 
 Engine hooks: `Game.cpp` (startup, event filter, per-loop `VR::frame`),
 `Screen.cpp` (hand the composed frame to VR), `Options` (`vrMode`),
-`BattlescapeState::vrTileClick`, `Map::setSelectorTile`,
+`BattlescapeState::vrTileClick` / `vrSelectUnit` / `vrButtons` / `vrIcons`,
+`State::vrBlitTo` / `vrMute`, `FlcPlayer` and `VideoState` (keep VR frames
+going during the intro and cutscenes), `Map::setSelectorTile`,
 `BattleUnit::get/setFacingSnapshot`, `Globe::getCenter`, `Game::getStates`, and
 `SDL_GetMouseState`/`SDL_WarpMouse` calls routed through `VR::getMouseState` /
 `VR::warpMouse` so the laser pointer is the mouse.

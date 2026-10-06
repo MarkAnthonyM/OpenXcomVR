@@ -375,6 +375,18 @@ void State::blit()
 }
 
 /**
+ * VR tabletop: draws all the surfaces of this state onto another surface.
+ * @param dest Destination surface.
+ */
+void State::vrBlitTo(Surface *dest)
+{
+	for (auto* surface : _surfaces)
+	{
+		surface->blit(dest->getSurface());
+	}
+}
+
+/**
  * Hides all the Surface child elements on display.
  */
 void State::hideAll()

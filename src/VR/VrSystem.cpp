@@ -11,8 +11,13 @@
 #include "VrShaders.h"
 #include "VrRoom.h"
 #include "VrBoard.h"
+#include "VrHands.h"
+#include "VrTable.h"
 #include "VrApi.h"
 #include "../Engine/Game.h"
+#include "../Savegame/SavedBattleGame.h"
+#include "../Savegame/BattleUnit.h"
+#include "../Battlescape/Position.h"
 #include "../Engine/Screen.h"
 #include "../Engine/Options.h"
 #include "../Engine/Logger.h"
@@ -61,6 +66,23 @@ struct Panel
 		uv = glm::vec2(p.x / width + 0.5f, 0.5f - p.y / height());
 		return t;
 	}
+	/// The grab bar under the screen (local centre and size).
+	glm::vec3 handleLocal() const { return {0.f, -height() * 0.5f - 0.05f, 0.01f}; }
+	glm::vec2 handleSize() const { return {std::min(0.36f, width * 0.32f), 0.03f}; }
+	glm::vec3 handleWorld() const { return glm::vec3(matrix() * glm::vec4(handleLocal(), 1.f)); }
+	float hitHandle(const glm::vec3 &o, const glm::vec3 &d) const
+	{
+		glm::mat4 inv = glm::inverse(matrix());
+		glm::vec3 lo = glm::vec3(inv * glm::vec4(o, 1.f)), ld = glm::vec3(inv * glm::vec4(d, 0.f));
+		glm::vec3 c = handleLocal();
+		if (std::fabs(ld.z) < 1e-5f) return -1.f;
+		float t = (c.z - lo.z) / ld.z;
+		if (t <= 0.f) return -1.f;
+		glm::vec3 p = lo + ld * t;
+		glm::vec2 s = handleSize() * 0.5f + glm::vec2(0.015f);
+		if (std::fabs(p.x - c.x) > s.x || std::fabs(p.y - c.y) > s.y) return -1.f;
+		return t;
+	}
 };
 
 struct Grab
@@ -95,6 +117,19 @@ struct State
 	RenderTarget previewTarget;
 	RoomLayout layout;
 	Board board;
+	Hands handsVis;
+	Table table;
+	std::vector<Collider> colliders;
+	float grabHold[2] = {0.f, 0.f};
+	bool laserOn[2] = {true, true};
+	bool handleHover = false;
+	// desktop preview: a scripted right hand for testing
+	bool simHand = false;
+	Pose simGrip;
+	glm::vec3 simTarget{0.f}, simStep{0.f};
+	int simFrames = 0;
+	float simIndex = 0.f, simOthers = 0.f;
+	bool simThumb = false;
 
 	// game frame
 	std::vector<uint32_t> pixels;
@@ -243,6 +278,9 @@ static bool createResources()
 
 	S->gameTex.create(320, 200, true);
 	S->board.init(S->layout);
+	S->handsVis.init();
+	S->table.init(S->layout);
+	S->board.setMapRect(S->table.mapRect());
 	S->board.clickScreen = [](int gx, int gy, int button)
 	{
 		glm::vec2 uv((gx + 0.5f) / std::max(1, S->surfW), (gy + 0.5f) / std::max(1, S->surfH));
@@ -360,7 +398,7 @@ static void buildPlacard()
 	if (!mod || !S->game->getLanguage()) return;
 	Font *big = mod->getFont("FONT_BIG", false), *small = mod->getFont("FONT_SMALL", false);
 	if (!big || !small) return;
-	const int W = 480, H = 44;
+	const int W = 520, H = 44;
 	Text text(W, H, 0, 0);
 	text.initText(big, small, S->game->getLanguage());
 	text.setSmall();
@@ -368,14 +406,14 @@ static void buildPlacard()
 	text.setWordWrap(false);
 	if (S->mode == MODE_HEADSET)
 		text.setText(
-			"TRIGGER: click / pick a tile          A: right click          B: back (Esc)\n"
-			"GRIP: slide the map, spin the globe, move the screen, or move yourself\n"
-			"STICK: scroll / map level up-down / globe zoom          both GRIPS: zoom + turn map\n"
-			"LEFT A: screen to your hand          LEFT B: recenter          LEFT STICK: turn");
+			"POKE the table buttons, TAP a soldier's head to select, TAP a tile to move\n"
+			"PINCH an item in the tray and let go on another cell (or a hand) to move it\n"
+			"TRIGGER: laser click away from the table   A: right click   B: back\n"
+			"SQUEEZE grip: bar under screen / map / room   LEFT A: tablet   LEFT B: recenter");
 	else
 		text.setText(
 			"DESKTOP PREVIEW - mouse aims from your eyes\n"
-			"LEFT CLICK: click / pick a tile          RIGHT CLICK: right click\n"
+			"LEFT CLICK: click, pick a tile, press a table button, pick up / drop an item\n"
 			"WHEEL over the table: map level / globe zoom\n"
 			"hold MIDDLE BUTTON and move the mouse to look around");
 	text.draw();
@@ -461,10 +499,11 @@ void warpMouse(Uint16 x, Uint16 y)
 
 struct RayHit
 {
-	enum Target { NONE, PANEL, BOARD } target = NONE;
+	enum Target { NONE, PANEL, BOARD, TABLE, HANDLE } target = NONE;
 	float t = 1e9f;
 	glm::vec2 uv{0.f};
 	BoardHit board;
+	TableHit table;
 };
 
 static RayHit castRay(const glm::vec3 &o, const glm::vec3 &d)
@@ -473,12 +512,22 @@ static RayHit castRay(const glm::vec3 &o, const glm::vec3 &d)
 	glm::vec2 uv;
 	float t = S->panel.hit(o, d, uv);
 	if (t > 0.f && t < best.t) { best.target = RayHit::PANEL; best.t = t; best.uv = uv; }
+	float th = S->panel.inHand ? -1.f : S->panel.hitHandle(o, d);
+	if (th > 0.f && th < best.t) { best.target = RayHit::HANDLE; best.t = th; }
 	BoardHit bh;
 	if (S->board.raycast(o, d, bh) && bh.t < best.t)
 	{
 		best.target = RayHit::BOARD;
 		best.t = bh.t;
 		best.board = bh;
+	}
+	TableHit tbl;
+	tbl.t = best.t;
+	if (S->table.raycast(o, d, tbl) && tbl.t <= best.t)
+	{
+		best.target = RayHit::TABLE;
+		best.t = tbl.t;
+		best.table = tbl;
 	}
 	return best;
 }
@@ -499,6 +548,8 @@ static void pointerTo(const RayHit &hit)
 {
 	S->pointerOnPanel = hit.target == RayHit::PANEL;
 	S->pointerOnBoard = hit.target == RayHit::BOARD;
+	S->handleHover = hit.target == RayHit::HANDLE;
+	S->table.pointerMove(hit.target == RayHit::TABLE ? &hit.table : nullptr);
 	if (S->pointerOnPanel)
 	{
 		int wx, wy;
@@ -512,6 +563,43 @@ static void pointerTo(const RayHit &hit)
 	if (!S->pointerOnBoard) S->board.hoverNone();
 }
 
+static TableContext tableContext()
+{
+	TableContext ctx;
+	ctx.game = S->game;
+	ctx.board = &S->board;
+	ctx.pixels = &S->pixels;
+	ctx.surfW = S->surfW;
+	ctx.surfH = S->surfH;
+	ctx.clickScreen = S->board.clickScreen;
+	ctx.haptic = [](int hand, float amp, float sec) { if (S->mode == MODE_HEADSET) S->xr.haptic(hand, amp, sec); };
+	for (int h = 0; h < 2; ++h) ctx.handBusy[h] = S->grab[h].kind != Grab::NONE;
+	return ctx;
+}
+
+/// Hands (after input), then the table: button physics, pinching, taps. Colliders feed the next frame.
+static void updateHandsAndTable(float dt, bool simulated)
+{
+	if (simulated)
+	{
+		S->handsVis.hide(0);
+		if (S->simHand)
+		{
+			if (S->simFrames > 0) { S->simGrip.pos += S->simStep; --S->simFrames; }
+			S->handsVis.simulate(1, S->simGrip, S->simIndex, S->simOthers, S->simThumb, dt, S->colliders);
+		}
+		else S->handsVis.hide(1);
+	}
+	else
+	{
+		S->handsVis.update(S->hands, S->rig, dt, S->colliders);
+	}
+	TableContext ctx = tableContext();
+	S->table.update(ctx, S->handsVis, dt);
+	S->colliders.clear();
+	S->table.colliders(S->colliders);
+}
+
 static void updateHeadsetInput(float dt)
 {
 	HandState *H = S->hands;
@@ -521,34 +609,52 @@ static void updateHeadsetInput(float dt)
 	for (int h = 0; h < 2; ++h)
 		if (H[h].active && H[h].triggerBtn.pressed) S->pointerHand = h;
 
-	// grabbing
+	// grabbing must be deliberate: on Index the grip has to be squeezed (force sensor), elsewhere
+	// pulled most of the way, and held for a moment. Resting fingers on the grip does nothing.
+	for (int h = 0; h < 2; ++h)
+	{
+		HandState &hs = H[h];
+		float v = hs.hasForce ? hs.squeezeForce : hs.squeeze;
+		float on = hs.hasForce ? 0.32f : 0.88f, off = hs.hasForce ? 0.12f : 0.55f;
+		bool above = hs.grabBtn.down ? v > off : v > on;
+		S->grabHold[h] = above ? S->grabHold[h] + dt : 0.f;
+		hs.grabBtn.update(hs.grabBtn.down ? above : S->grabHold[h] >= 0.12f);
+	}
+	const glm::vec4 tableRect(S->layout.tableCenter.x - S->layout.tableSize.x * 0.5f - 0.15f, S->layout.tableCenter.z - S->layout.tableSize.y * 0.5f - 0.15f,
+		S->layout.tableCenter.x + S->layout.tableSize.x * 0.5f + 0.15f, S->layout.tableCenter.z + S->layout.tableSize.y * 0.5f + 0.2f);
+	auto overTable = [&](const glm::vec3 &p)
+	{
+		return p.x > tableRect.x && p.x < tableRect.z && p.z > tableRect.y && p.z < tableRect.w && p.y < S->table.surfaceY() + 0.3f;
+	};
 	for (int h = 0; h < 2; ++h)
 	{
 		Grab &g = S->grab[h];
 		if (!H[h].active) { g.kind = Grab::NONE; continue; }
 		glm::mat4 handWorld = S->rig * H[h].grip.matrix();
-		if (H[h].squeezeBtn.pressed)
+		glm::vec3 gripW = xfPoint(S->rig, H[h].grip.pos);
+		if (H[h].grabBtn.pressed)
 		{
 			glm::vec3 o = xfPoint(S->rig, H[h].aim.pos), d = xfDir(S->rig, H[h].aim.forward());
 			RayHit hit = castRay(o, d);
-			if (hit.target == RayHit::PANEL && !S->panel.inHand && hit.t < 3.0f)
+			bool nearHandle = !S->panel.inHand && glm::length(gripW - S->panel.handleWorld()) < 0.12f;
+			if (!S->panel.inHand && (nearHandle || (hit.target == RayHit::HANDLE && hit.t < 4.f)))
 			{
 				g.kind = Grab::PANEL;
 				g.offset = glm::inverse(handWorld) * S->panel.matrix();
 			}
-			else if (S->board.canGrab(xfPoint(S->rig, H[h].grip.pos)))
+			else if (S->board.canGrab(gripW))
 			{
 				g.kind = Grab::BOARD;
-				S->board.beginGrab(h, xfPoint(S->rig, H[h].grip.pos));
+				S->board.beginGrab(h, gripW);
 			}
-			else
+			else if (!overTable(gripW))
 			{
 				g.kind = Grab::WORLD;
 				g.lastTracking = H[h].grip.pos;
 			}
-			S->xr.haptic(h, 0.3f, 0.02f);
+			if (g.kind != Grab::NONE) S->xr.haptic(h, 0.3f, 0.02f);
 		}
-		else if (H[h].squeezeBtn.released)
+		else if (H[h].grabBtn.released)
 		{
 			if (g.kind == Grab::BOARD) S->board.endGrab(h);
 			g.kind = Grab::NONE;
@@ -628,13 +734,20 @@ static void updateHeadsetInput(float dt)
 		S->stickTurnLatch[other] = 0.f;
 	}
 
-	// lasers
+	// lasers: off while a hand works on the table, so pinching and poking never click from afar
 	for (int h = 0; h < 2; ++h)
 	{
 		S->laserHit[h] = false;
-		if (!H[h].active) continue;
+		if (!H[h].active) { S->laserOn[h] = false; continue; }
 		glm::vec3 o = xfPoint(S->rig, H[h].aim.pos), d = xfDir(S->rig, H[h].aim.forward());
 		RayHit hit = castRay(o, d);
+		glm::vec3 handPos = S->handsVis.pose[h].valid ? S->handsVis.pose[h].tip(F_INDEX) : o;
+		S->laserOn[h] = !overTable(handPos) || hit.target == RayHit::PANEL || hit.target == RayHit::HANDLE;
+		if (!S->laserOn[h])
+		{
+			if (h == S->pointerHand) { S->pointerOnPanel = false; S->pointerOnBoard = false; S->board.hoverNone(); S->table.pointerMove(nullptr); }
+			continue;
+		}
 		S->laserHit[h] = hit.target != RayHit::NONE;
 		S->laserEnd[h] = o + d * (S->laserHit[h] ? hit.t : 4.f);
 		if (h == S->pointerHand && S->grab[h].kind == Grab::NONE)
@@ -647,14 +760,17 @@ static void updateHeadsetInput(float dt)
 
 	// buttons of the pointing hand
 	HandState &P = H[S->pointerHand];
-	if (P.triggerBtn.pressed)
+	if (P.triggerBtn.pressed && S->laserOn[S->pointerHand])
 	{
+		glm::vec3 o = xfPoint(S->rig, P.aim.pos), d = xfDir(S->rig, P.aim.forward());
+		RayHit hit = castRay(o, d);
 		if (S->pointerOnPanel) { pushButton(SDL_BUTTON_LEFT, true); S->leftSent = true; }
+		else if (hit.target == RayHit::TABLE) { TableContext ctx = tableContext(); S->table.pointerClick(hit.table, SDL_BUTTON_LEFT, ctx); }
 		else if (S->pointerOnBoard) S->board.click(SDL_BUTTON_LEFT);
 		S->xr.haptic(S->pointerHand, 0.4f, 0.015f);
 	}
 	if (P.triggerBtn.released && S->leftSent) { pushButton(SDL_BUTTON_LEFT, false); S->leftSent = false; }
-	if (P.a.pressed && S->pointerHand == 1)
+	if (P.a.pressed && S->pointerHand == 1 && S->laserOn[1])
 	{
 		if (S->pointerOnPanel) { pushButton(SDL_BUTTON_RIGHT, true); S->rightSent = true; }
 		else if (S->pointerOnBoard) S->board.click(SDL_BUTTON_RIGHT);
@@ -686,6 +802,8 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye)
 	sh.set("uTime", (float)S->time);
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
+	sh.set("uUVRect", glm::vec4(0.f, 0.f, 1.f, 1.f));
+	sh.set("uHoleCount", 0);
 	sh.set("uTex", 0);
 	for (int i = 0; i < 4; ++i)
 	{
@@ -712,11 +830,19 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 	setCommonUniforms(vp, eye);
 	sh.set("uMode", 0);
 	sh.set("uModel", glm::mat4(1.f));
+	// the table glass is cut open where hatches are open
+	const std::vector<glm::vec4> &holes = S->table.holes();
+	sh.set("uHoleCount", (int)std::min<size_t>(holes.size(), 24));
+	for (size_t i = 0; i < holes.size() && i < 24; ++i) sh.set(("uHoles[" + std::to_string(i) + "]").c_str(), holes[i]);
+	sh.set("uHoleY", glm::vec2(S->table.surfaceY() - 0.002f, S->table.surfaceY() + 0.003f));
 	S->roomMesh.draw();
+	sh.set("uHoleCount", 0);
 
-	// game content on the table (diorama / globe)
+	// game content on the table (diorama / globe), the table's own controls, live wall screens
 	S->board.draw(sh, vp, eye, S->time);
 	sh.use();
+	S->table.draw(sh);
+	S->table.drawWalls(sh);
 
 	// game screen
 	glm::mat4 pm = S->panel.matrix() * glm::scale(glm::mat4(1.f), {S->panel.width, S->panel.height(), 1.f});
@@ -729,13 +855,25 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 	sh.set("uTexSize", glm::vec2((float)S->gameTex.width(), (float)S->gameTex.height()));
 	S->gameTex.bind(0);
 	S->quadMesh.draw();
+	// grab bar under the screen: the only place the screen can be picked up
+	if (!S->panel.inHand)
+	{
+		bool held = S->grab[0].kind == Grab::PANEL || S->grab[1].kind == Grab::PANEL;
+		glm::vec2 hs = S->panel.handleSize();
+		sh.set("uMode", 2);
+		sh.set("uTint", held ? glm::vec4(1.f, 0.85f, 0.3f, 1.f) : S->handleHover ? glm::vec4(0.5f, 1.4f, 1.6f, 1.f) : glm::vec4(0.25f, 0.55f, 0.65f, 1.f));
+		sh.set("uModel", S->panel.matrix() * glm::translate(glm::mat4(1.f), S->panel.handleLocal()) * glm::scale(glm::mat4(1.f), {hs.x, hs.y, 1.f}));
+		S->quadMesh.draw();
+		sh.set("uTint", glm::vec4(1.f));
+	}
 
 	// controls placard on the near rim of the table
 	if (S->placardTex.valid())
 	{
 		const RoomLayout &L = S->layout;
-		glm::vec3 c(L.tableCenter.x, L.tableCenter.y + 0.028f, L.tableCenter.z + L.tableSize.y * 0.5f + 0.06f);
-		glm::mat4 m = glm::translate(glm::mat4(1.f), c) * glm::rotate(glm::mat4(1.f), glm::radians(-62.f), {1, 0, 0});
+		// on the front face of the table rim, facing the player
+		glm::vec3 c(L.tableCenter.x, L.tableCenter.y - 0.055f, L.tableCenter.z + L.tableSize.y * 0.5f + 0.125f);
+		glm::mat4 m = glm::translate(glm::mat4(1.f), c) * glm::rotate(glm::mat4(1.f), glm::radians(-8.f), {1, 0, 0});
 		sh.set("uMode", 0);
 		sh.set("uModel", m * glm::scale(glm::mat4(1.f), {0.80f, 0.10f, 1.f}));
 		S->panelFrame.draw();
@@ -749,12 +887,13 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 		glDisable(GL_BLEND);
 	}
 
+	S->handsVis.draw(sh);
 	if (!drawHands) return;
-	// controllers
+	// controllers, only when there is no hand to show
 	sh.set("uMode", 0);
 	for (int h = 0; h < 2; ++h)
 	{
-		if (!S->hands[h].active) continue;
+		if (!S->hands[h].active || S->handsVis.pose[h].valid) continue;
 		sh.set("uModel", S->rig * S->hands[h].grip.matrix());
 		S->controllerMesh[h].draw();
 	}
@@ -767,6 +906,7 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 	{
 		if (!S->hands[h].active) continue;
 		if (S->panel.inHand && h == 0) continue; // the tablet hand doesn't need a beam
+		if (!S->laserOn[h]) continue;
 		glm::vec3 o = xfPoint(S->rig, S->hands[h].aim.pos);
 		glm::vec3 d = xfDir(S->rig, S->hands[h].aim.forward());
 		float len = glm::length(S->laserEnd[h] - o);
@@ -866,6 +1006,102 @@ static void runScript()
 			else Log(LOG_INFO) << "[VR] script: boardclick missed the board";
 		}
 		else if (c.op == "wheel") { S->board.wheel((int)num(0, 1)); }
+		else if (c.op == "hand")
+		{
+			// hand x y z yaw pitch roll indexCurl othersCurl thumb : a scripted right hand (grip pose, degrees)
+			S->simHand = true;
+			S->simGrip.pos = glm::vec3(num(0, 0), num(1, 1), num(2, -0.4));
+			S->simGrip.rot = glm::angleAxis(glm::radians((float)num(3, 0)), glm::vec3(0, 1, 0))
+				* glm::angleAxis(glm::radians((float)num(4, 0)), glm::vec3(1, 0, 0))
+				* glm::angleAxis(glm::radians((float)num(5, 0)), glm::vec3(0, 0, 1));
+			S->simIndex = (float)num(6, 0);
+			S->simOthers = (float)num(7, 0.8);
+			S->simThumb = num(8, 1) > 0.5;
+			S->simFrames = 0;
+		}
+		else if (c.op == "handmove")
+		{
+			// handmove x y z frames : glide the scripted hand
+			glm::vec3 to((float)num(0, 0), (float)num(1, 1), (float)num(2, -0.4));
+			int n = std::max(1, (int)num(3, 10));
+			S->simStep = (to - S->simGrip.pos) / (float)n;
+			S->simFrames = n;
+		}
+		else if (c.op == "poketile" || c.op == "pokenear" || c.op == "pokeunit" || c.op == "pinchitem" || c.op == "pinchto")
+		{
+			// test macros that steer the scripted hand: poke a point with the index finger, or pinch
+			Hands probe;
+			Pose at;
+			bool pinchPose = c.op == "pinchitem" || c.op == "pinchto";
+			probe.simulate(1, at, pinchPose ? 1.f : 0.f, pinchPose ? 0.8f : 1.f, true, 0.f, {});
+			glm::vec3 off = pinchPose ? probe.pose[1].pinchPoint : probe.pose[1].tip(F_INDEX);
+			glm::vec3 target(0.f);
+			bool ok = false;
+			if (c.op == "poketile") { target = S->board.tileCenter((int)num(0, 0), (int)num(1, 0), (int)num(2, 0)); ok = S->board.battle() != nullptr; }
+			else if (c.op == "pokenear" && S->board.battle() && S->board.battle()->getSelectedUnit())
+			{
+				Position p = S->board.battle()->getSelectedUnit()->getPosition();
+				target = S->board.tileCenter(p.x + (int)num(0, 0), p.y + (int)num(1, 0), std::max(0, p.z + (int)num(2, 0)));
+				Log(LOG_INFO) << "[VR] script: unit at " << p.x << "," << p.y << "," << p.z;
+				ok = true;
+			}
+			else if (c.op == "pokeunit")
+			{
+				auto marks = S->board.unitMarkers();
+				int n = (int)num(0, 0), k = 0;
+				for (auto &m : marks)
+					if (m.ours && m.unit != S->board.battle()->getSelectedUnit() && k++ == n) { target = m.head; ok = true; break; }
+			}
+			else if (c.op == "pinchitem") ok = S->table.itemCenter((int)num(0, 0), target);
+			else if (c.op == "pinchto") ok = S->table.cellCenter(c.args.empty() ? "STR_BACK_PACK" : c.args[0], (float)num(1, 0.5), (float)num(2, 0.5), target);
+			if (!ok) { Log(LOG_WARNING) << "[VR] script: " << c.op << " has no target"; continue; }
+			S->simHand = true;
+			S->simGrip.rot = glm::quat(1.f, 0.f, 0.f, 0.f);
+			glm::vec3 grip = target - off;
+			std::deque<ScriptCmd> seq;
+			auto add = [&](const std::string &op, std::vector<std::string> args) { seq.push_back({op, args}); };
+			auto f = [](float v) { return std::to_string(v); };
+			if (c.op == "pinchto")
+			{
+				// glide there while still pinching, then open the fingers
+				add("handmove", {f(grip.x), f(grip.y + 0.01f), f(grip.z), "30"});
+				add("waitframes", {"36"});
+				add("handcurl", {"0", "0.8", "0"});
+				add("waitframes", {"8"});
+				add("status", {});
+			}
+			else if (pinchPose)
+			{
+				S->simGrip.pos = grip + glm::vec3(0.f, 0.01f, 0.f);
+				S->simIndex = 0.f; S->simOthers = 0.8f; S->simThumb = false;
+				add("waitframes", {"6"});
+				add("handcurl", {"1", "0.8", "1"});
+				add("waitframes", {"10"});
+				add("status", {});
+			}
+			else
+			{
+				S->simGrip.pos = grip + glm::vec3(0.f, 0.05f, 0.f);
+				S->simIndex = 0.f; S->simOthers = 1.f; S->simThumb = true;
+				add("waitframes", {"4"});
+				add("handmove", {f(grip.x), f(grip.y - 0.02f), f(grip.z), "18"});
+				add("waitframes", {"24"});
+				add("status", {});
+				add("handmove", {f(grip.x), f(grip.y + 0.06f), f(grip.z), "8"});
+				add("waitframes", {"10"});
+			}
+			for (auto it = seq.rbegin(); it != seq.rend(); ++it) S->script.push_front(*it);
+			continue;
+		}
+		else if (c.op == "handcurl") { S->simIndex = (float)num(0, 0); S->simOthers = (float)num(1, 0.8); S->simThumb = num(2, 1) > 0.5; }
+		else if (c.op == "handoff") { S->simHand = false; }
+		else if (c.op == "status")
+		{
+			const HandPose &hp = S->handsVis.pose[1];
+			glm::vec3 t = hp.tip(F_INDEX);
+			Log(LOG_INFO) << "[VR] status: " << S->table.status() << " | tip " << t.x << "," << t.y << "," << t.z
+				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch;
+		}
 		else if (c.op == "shot") { S->pendingShot = c.args.empty() ? "vr_shot.png" : c.args[0]; return; }
 		else if (c.op == "gameshot" && !S->pixels.empty())
 		{
@@ -909,6 +1145,12 @@ static void previewFrame()
 	}
 	S->head = previewHead();
 	S->board.setViewer(S->head.pos);
+	{
+		GLStateGuard guard;
+		static Uint32 lastSim = now;
+		updateHandsAndTable(std::min(0.1f, (now - lastSim) / 1000.f), true);
+		lastSim = now;
+	}
 	// the preview "right hand" is a ray from the eye through the mouse cursor
 	glm::vec3 o, d;
 	previewRay(S->realMouseX, S->realMouseY, o, d);
@@ -917,6 +1159,7 @@ static void previewFrame()
 	S->laserEnd[1] = o + d * (S->laserHit[1] ? hit.t : 4.f);
 	if (hit.target == RayHit::BOARD) S->board.hover(hit.board);
 	else S->board.hoverNone();
+	S->table.pointerMove(hit.target == RayHit::TABLE ? &hit.table : nullptr);
 
 	GLStateGuard guard;
 	S->previewTarget.bind();
@@ -964,6 +1207,10 @@ static void headsetFrame(float dt)
 	if (!S->recentered && render) recenter();
 	S->board.setViewer(xfPoint(S->rig, S->head.pos));
 	updateHeadsetInput(dt);
+	{
+		GLStateGuard guard;
+		updateHandsAndTable(dt, false);
+	}
 
 	if (render)
 	{
@@ -1102,6 +1349,16 @@ bool filterEvent(SDL_Event &ev)
 		S->vmX = wx;
 		S->vmY = wy;
 		return true;
+	}
+	if (hit.target == RayHit::TABLE)
+	{
+		S->table.pointerMove(&hit.table);
+		if (ev.type == SDL_MOUSEBUTTONDOWN)
+		{
+			TableContext ctx = tableContext();
+			S->table.pointerClick(hit.table, ev.button.button, ctx);
+		}
+		return false;
 	}
 	if (hit.target == RayHit::BOARD)
 	{
