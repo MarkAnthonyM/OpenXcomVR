@@ -18,6 +18,7 @@
  */
 
 #include "UnitWalkBState.h"
+#include "../VR/VrApi.h"
 #include "MeleeAttackBState.h"
 #include "TileEngine.h"
 #include "Pathfinding.h"
@@ -97,7 +98,9 @@ void UnitWalkBState::think()
 
 	bool unitSpotted = false;
 	int size = _unit->getArmor()->getSize() - 1;
-	bool onScreen = (_unit->getVisible() && _parent->getMap()->getCamera()->isOnScreen(_unit->getPosition(), true, size, false));
+	// VR: the whole map is on the table, so every visible unit counts as on screen
+	// (off-screen units otherwise skip most of the walk cycle and run at timer interval 0).
+	bool onScreen = (_unit->getVisible() && (VR::active() || _parent->getMap()->getCamera()->isOnScreen(_unit->getPosition(), true, size, false)));
 	if (_unit->isKneeled())
 	{
 		if (_parent->kneel(_unit))
@@ -142,7 +145,7 @@ void UnitWalkBState::think()
 		if ((_parent->getSave()->getTile(_unit->getDestination())->getUnit() == 0) || // next tile must be not occupied
 			(_parent->getSave()->getTile(_unit->getDestination())->getUnit() == _unit))
 		{
-			bool onScreenBoundary = (_unit->getVisible() && _parent->getMap()->getCamera()->isOnScreen(_unit->getPosition(), true, size, true));
+			bool onScreenBoundary = (_unit->getVisible() && (VR::active() || _parent->getMap()->getCamera()->isOnScreen(_unit->getPosition(), true, size, true)));
 			_unit->keepWalking(_parent->getSave(), onScreenBoundary); // advances the phase
 			playMovementSound();
 			if (_parent->getSave()->isPreview())
@@ -532,7 +535,7 @@ void UnitWalkBState::setNormalWalkSpeed()
 void UnitWalkBState::playMovementSound()
 {
 	int size = _unit->getArmor()->getSize() - 1;
-	if ((!_unit->getVisible() && !_parent->getSave()->getDebugMode()) || !_parent->getMap()->getCamera()->isOnScreen(_unit->getPosition(), true, size, false)) return;
+	if ((!_unit->getVisible() && !_parent->getSave()->getDebugMode()) || (!VR::active() && !_parent->getMap()->getCamera()->isOnScreen(_unit->getPosition(), true, size, false))) return;
 
 	Tile *tile = _unit->getTile();
 	int sound = -1;

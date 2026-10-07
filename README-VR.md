@@ -9,11 +9,13 @@ X-COM command center at a holographic war table:
   dollhouse. Point at a tile and pull the trigger to move or shoot.
 - **Geoscape** – a physical globe hovers over the table, with bases, craft,
   UFOs and mission sites as markers and the real day/night terminator.
-- **The table is a control panel.** When a battle starts, hatches in the near
-  edge of the table open and physical buttons rise for the battlescape controls
-  (kneel, end turn, next soldier, level up/down, ...). Press them with your
-  finger. Next to them is an inventory tray for the selected soldier, with small
-  floating voxel models of the items; pinch one to move it.
+- **The table is a control panel.** Right in front of you along the near edge
+  is a console: when a battle starts, hatches open and physical buttons rise for
+  the battlescape controls (kneel, end turn, next soldier, level up/down, ...).
+  Press them with your finger. Both weapon buttons sit at the left end of the
+  bay, closest to you; End Turn and Abort are at the far right end. Left of the
+  buttons is an inventory tray for the selected soldier, with small floating
+  voxel models of the items; pinch one to move it.
 - **Your hands** are tracked finger by finger (Valve Index knuckles) and collide
   with the table and the buttons: a finger pressed against the table edge stops
   there and bends. Tap a soldier's head to select it, tap a tile to walk there.
@@ -40,6 +42,9 @@ If no headset or OpenXR runtime is found, the game starts in normal flat mode
 and writes the reason into `openxcom.log`. Look for lines starting with `[VR]`.
 
 The mode is the `vrMode` option: `0` = flat, `1` = headset, `2` = desktop preview.
+The war table is 1.9 × 1.2 m; `vrTableScale` (percent, 60–150, default 100)
+makes it bigger or smaller. Its near edge and the control console stay where
+they are, sized for your hands.
 It can be passed on the command line (`-vrMode 2`) or set in `options.cfg`.
 
 ## Controls (Valve Index / Touch / Vive wands)
@@ -116,7 +121,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrXr.*` | OpenXR: instance, session on the engine's GL context (Xlib or Win32 binding), stereo swapchains, action bindings for Index/Touch/Vive/simple controllers, haptics. |
 | `VrSystem.cpp` | Frame loop, tracking-space → world "rig", the controller → mouse bridge (synthetic SDL events), grabbing, desktop preview camera, test automation (`OXCE_VR_SCRIPT`). |
 | `VrRoom.*` | Procedural command-center room, war table, controller models. |
-| `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (with a critically damped follower so walking speed is steady), tile picking, globe. |
+| `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (a critically damped follower turns the game's ~33 steps a second into smooth motion at the headset's frame rate), tile picking, globe. |
 | `VrHands.*` | Hand skeletons (from XR hand tracking or posed from controller inputs), collision against box colliders with per-finger joint solving, pinch / point gestures. |
 | `VrTable.*` | The table's control panel: hatches and spring buttons, the inventory tray with voxel item models, head/tile taps, and the live wall screens. |
 | `VrGL.*`, `VrShaders.h` | Tiny GL helper layer and the single scene shader (linear lighting into an sRGB target). |
@@ -151,7 +156,10 @@ Key ideas:
   game's camera.
 
 Engine hooks: `Game.cpp` (startup, event filter, per-loop `VR::frame`),
-`Screen.cpp` (hand the composed frame to VR), `Options` (`vrMode`),
+`Screen.cpp` (hand the composed frame to VR), `Options` (`vrMode`, `vrTableScale`),
+`UnitWalkBState` (in VR every visible unit counts as on screen: the engine
+otherwise skips most of the walk animation, and runs at timer interval 0, for
+units outside the flat camera's view, which made them sprint across the table),
 `BattlescapeState::vrTileClick` / `vrSelectUnit` / `vrButtons` / `vrIcons`,
 `State::vrBlitTo` / `vrMute`, `FlcPlayer` and `VideoState` (keep VR frames
 going during the intro and cutscenes), `Map::setSelectorTile`,

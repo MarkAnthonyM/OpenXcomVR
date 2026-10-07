@@ -69,9 +69,10 @@ public:
 	void pointerClick(const TableHit &hit, int button, TableContext &ctx);
 	/// One line about what the table is doing (for logs and tests).
 	std::string status() const;
-	/// Test helpers: where an item floats, and the centre of an inventory cell.
+	/// Test helpers: where an item floats, the centre of an inventory cell, the top of a button.
 	bool itemCenter(int index, glm::vec3 &world) const;
 	bool cellCenter(const std::string &slot, float cx, float cy, glm::vec3 &world) const;
+	bool buttonCenter(const std::string &name, glm::vec3 &world) const;
 	struct Impl;
 private:
 	std::unique_ptr<Impl> _p;

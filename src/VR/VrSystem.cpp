@@ -20,6 +20,9 @@
 #include "../Battlescape/Position.h"
 #include "../Engine/Screen.h"
 #include "../Engine/Options.h"
+#include "../Battlescape/Camera.h"
+#include "../Battlescape/Map.h"
+#include "../Battlescape/BattlescapeState.h"
 #include "../Engine/Logger.h"
 #include "../Engine/Surface.h"
 #include "../Engine/Font.h"
@@ -254,6 +257,12 @@ static bool createResources()
 	if (!S->shader.build("scene", kSceneVS, kSceneFS)) return false;
 
 	MeshData room;
+	{
+		RoomLayout fresh; // resources can be rebuilt; scale from the default size each time
+		S->layout.tableCenter = fresh.tableCenter;
+		S->layout.tableSize = fresh.tableSize;
+		S->layout.scaleTable(glm::clamp(Options::vrTableScale, 60, 150) / 100.f);
+	}
 	buildCommandCenter(room, S->layout);
 	S->roomMesh.upload(room);
 
@@ -1006,6 +1015,12 @@ static void runScript()
 			else Log(LOG_INFO) << "[VR] script: boardclick missed the board";
 		}
 		else if (c.op == "wheel") { S->board.wheel((int)num(0, 1)); }
+		else if (c.op == "gamecam")
+		{
+			// gamecam x y z : centre the flat game camera on a tile (tests of off-screen behaviour)
+			if (BattlescapeState *bs = S->board.battleState())
+				bs->getMap()->getCamera()->centerOnPosition(Position((int)num(0, 0), (int)num(1, 0), (int)num(2, 0)));
+		}
 		else if (c.op == "hand")
 		{
 			// hand x y z yaw pitch roll indexCurl othersCurl thumb : a scripted right hand (grip pose, degrees)
@@ -1027,7 +1042,7 @@ static void runScript()
 			S->simStep = (to - S->simGrip.pos) / (float)n;
 			S->simFrames = n;
 		}
-		else if (c.op == "poketile" || c.op == "pokenear" || c.op == "pokeunit" || c.op == "pinchitem" || c.op == "pinchto")
+		else if (c.op == "poketile" || c.op == "pokenear" || c.op == "pokeunit" || c.op == "pokebutton" || c.op == "pinchitem" || c.op == "pinchto")
 		{
 			// test macros that steer the scripted hand: poke a point with the index finger, or pinch
 			Hands probe;
@@ -1052,6 +1067,7 @@ static void runScript()
 				for (auto &m : marks)
 					if (m.ours && m.unit != S->board.battle()->getSelectedUnit() && k++ == n) { target = m.head; ok = true; break; }
 			}
+			else if (c.op == "pokebutton") ok = !c.args.empty() && S->table.buttonCenter(c.args[0], target);
 			else if (c.op == "pinchitem") ok = S->table.itemCenter((int)num(0, 0), target);
 			else if (c.op == "pinchto") ok = S->table.cellCenter(c.args.empty() ? "STR_BACK_PACK" : c.args[0], (float)num(1, 0.5), (float)num(2, 0.5), target);
 			if (!ok) { Log(LOG_WARNING) << "[VR] script: " << c.op << " has no target"; continue; }

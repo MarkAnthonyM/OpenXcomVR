@@ -22,8 +22,15 @@ enum Material
 /// Where things are in the command center (meters, y up, player starts at the origin facing -Z).
 struct RoomLayout
 {
-	glm::vec3 tableCenter{0.f, 0.90f, -1.0f};   // center of the table's playing surface
-	glm::vec2 tableSize{2.4f, 1.6f};            // playing surface x/z
+	glm::vec3 tableCenter{0.f, 0.90f, -0.8f};   // center of the table's playing surface (near edge 20 cm in front of the player)
+	glm::vec2 tableSize{1.9f, 1.2f};            // playing surface x/z
+	/// Scales the table (option vrTableScale), keeping its near edge where it is.
+	void scaleTable(float s)
+	{
+		float nearZ = tableCenter.z + tableSize.y * 0.5f;
+		tableSize *= s;
+		tableCenter.z = nearZ - tableSize.y * 0.5f;
+	}
 	glm::vec3 lightPos[4];
 	glm::vec3 lightCol[4];
 	glm::vec3 panelPos{0.f, 1.62f, -2.05f};     // default game screen placement

@@ -155,6 +155,19 @@ struct Table::Impl
 	SavedBattleGame *minimapFor = nullptr;
 
 	glm::vec3 bayWorld(float px, float py, float y) const { return {bay.x + px * bayScale, y, bay.y + py * bayScale}; }
+	// The weapon buttons sit at opposite ends of the game's panel. On the table the right-hand one
+	// moves next to the left-hand one (both close to the player); the panel picture and the button
+	// wells are shifted to match, while clicks still go to the game's real button rectangles.
+	int moveFrom = 0, moveTo = 0, insertAt = -1; // panel columns [moveFrom, moveTo) go to insertAt
+	int visX(int c) const
+	{
+		if (insertAt < 0) return c;
+		int w = moveTo - moveFrom;
+		if (c >= moveFrom && c < moveTo) return insertAt + (c - moveFrom);
+		if (c >= insertAt && c < moveFrom) return c + w;
+		return c;
+	}
+	void updateRemap();
 	glm::vec2 invToWorld(glm::vec2 p) const { return invOrigin + (p - glm::vec2(invBox.x, invBox.y)) * invScale; }
 	glm::vec2 worldToInv(glm::vec2 w) const { return (w - invOrigin) / invScale + glm::vec2(invBox.x, invBox.y); }
 	float itemY(int i) const { return sy + 0.024f + 0.003f * (float)std::sin(time * 2.0 + i * 1.7); }
@@ -199,17 +212,20 @@ void Table::init(const RoomLayout &layout)
 	float hx = layout.tableSize.x * 0.5f, hz = layout.tableSize.y * 0.5f;
 	p.sy = T.y - 0.025f;
 	p.table = {T.x - hx, T.z - hz, T.x + hx, T.z + hz};
-	// the near 34 cm of the table hold the controls; the map gets the rest
-	float stripFar = p.table.w - 0.34f;
+	// The near 30 cm of the table hold the controls, sized for hands rather than for the table and
+	// grouped in front of the player (who starts at x = 0): the inventory tray left of centre, the
+	// button bay right of it. The map gets the rest of the table.
+	const float STRIP = 0.30f;
+	float stripFar = p.table.w - STRIP;
 	p.map = {p.table.x, p.table.y, p.table.z, stripFar - 0.02f};
-	// icon panel (320 x 56 px), right part of the strip
-	float bx0 = T.x - 0.55f, bx1 = p.table.z - 0.03f;
-	p.bayScale = std::min((bx1 - bx0) / 320.f, (p.table.w - stripFar - 0.035f) / 56.f);
+	float bcz = (stripFar + p.table.w) * 0.5f;
+	// icon panel (320 x 56 px) at 2 mm per pixel: a main button is about 6.4 x 3.2 cm
+	float bx0 = 0.01f, bx1 = std::min(bx0 + 320.f * 0.002f, p.table.z - 0.03f);
+	p.bayScale = std::min(0.002f, std::min((bx1 - bx0) / 320.f, (STRIP - 0.035f) / 56.f));
 	float bw = 320.f * p.bayScale, bd = 56.f * p.bayScale;
-	float bcx = (bx0 + bx1) * 0.5f, bcz = (stripFar + p.table.w) * 0.5f;
-	p.bay = {bcx - bw * 0.5f, bcz - bd * 0.5f, bcx + bw * 0.5f, bcz + bd * 0.5f};
-	// inventory tray, left part of the strip
-	p.tray = {p.table.x + 0.03f, stripFar + 0.005f, bx0 - 0.03f, p.table.w - 0.012f};
+	p.bay = {bx0, bcz - bd * 0.5f, bx0 + bw, bcz + bd * 0.5f};
+	// inventory tray: up to 58 cm wide, ending just left of centre
+	p.tray = {std::max(p.table.x + 0.03f, -0.60f), stripFar + 0.005f, -0.02f, p.table.w - 0.012f};
 
 	// default panel layout (BattlescapeState), replaced by the live one in a battle
 	struct D { const char *n; int x, y, w, h; };
@@ -256,14 +272,35 @@ void Table::init(const RoomLayout &layout)
 	p.walls[2] = {{-2.15f, 2.25f, -6.972f}, {1, 0, 0}, {0, 0, 1}, 1.6f, 1.0f};      // back: squad roster
 }
 
+void Table::Impl::updateRemap()
+{
+	const Btn *L = nullptr, *R = nullptr;
+	for (const Btn &b : btns)
+	{
+		if (b.name == "leftHand") L = &b;
+		if (b.name == "rightHand") R = &b;
+	}
+	insertAt = -1;
+	if (!L || !R) return;
+	int from = std::max(0, R->px.x - 4), to = std::min(icons.z, R->px.x + R->px.z + 4);
+	int at = L->px.x + L->px.z + 4;
+	// only when the right hand really is to the right of everything else in the way
+	if (at >= from || to <= from) return;
+	for (const Btn &b : btns)
+		if (&b != R && b.px.x < to && b.px.x + b.px.z > from) return; // something else shares those columns
+	moveFrom = from; moveTo = to; insertAt = at;
+}
+
 void Table::Impl::layoutButtons()
 {
+	updateRemap();
 	float cx = (bay.x + bay.z) * 0.5f;
 	float halfW = (bay.z - bay.x) * 0.5f;
 	for (Btn &b : btns)
 	{
-		glm::vec3 a = bayWorld((float)b.px.x, (float)b.px.y, sy);
-		glm::vec3 c = bayWorld((float)(b.px.x + b.px.z), (float)(b.px.y + b.px.w), sy);
+		float vx = (float)visX(b.px.x);
+		glm::vec3 a = bayWorld(vx, (float)b.px.y, sy);
+		glm::vec3 c = bayWorld(vx + b.px.z, (float)(b.px.y + b.px.w), sy);
 		const float m = 0.0025f; // a little frame between neighbouring wells
 		b.rect = {a.x + m, a.z + m, c.x - m, c.z - m};
 		// hatches open as a wave from the middle outward
@@ -308,7 +345,11 @@ void Table::Impl::syncBattle(TableContext &ctx)
 	{
 		panelPx.resize((size_t)icons.z * icons.w);
 		for (int y = 0; y < icons.w; ++y)
-			std::copy_n(&(*ctx.pixels)[(size_t)(icons.y + y) * ctx.surfW + icons.x], icons.z, &panelPx[(size_t)y * icons.z]);
+		{
+			const uint32_t *src = &(*ctx.pixels)[(size_t)(icons.y + y) * ctx.surfW + icons.x];
+			uint32_t *dst = &panelPx[(size_t)y * icons.z];
+			for (int x = 0; x < icons.z; ++x) dst[visX(x)] = src[x];
+		}
 		if (!panelTex.valid() || panelTex.width() != icons.z) panelTex.create(icons.z, icons.w, false, true);
 		panelTex.update(panelPx.data(), icons.z, icons.w);
 		panelValid = true;
@@ -1077,7 +1118,7 @@ void Table::draw(const Shader &sh) const
 				sh.set("uTint", glm::vec4(lit, lit, lit, 1.f));
 				sh.set("uTexSize", glm::vec2((float)p.panelTex.width(), (float)p.panelTex.height()));
 				float tw = (float)p.panelTex.width(), th = (float)p.panelTex.height();
-				sh.set("uUVRect", glm::vec4(b.px.x / tw, b.px.y / th, b.px.z / tw, b.px.w / th));
+				sh.set("uUVRect", glm::vec4(p.visX(b.px.x) / tw, b.px.y / th, b.px.z / tw, b.px.w / th));
 				p.panelTex.bind(0);
 				flat({mn.x, mn.z, mx.x, mx.z}, top);
 				sh.set("uUVRect", glm::vec4(0.f, 0.f, 1.f, 1.f));
@@ -1256,6 +1297,18 @@ bool Table::itemCenter(int i, glm::vec3 &w) const
 	glm::vec2 c = p.invToWorld({p.items[i].foot.x + p.items[i].foot.z * 0.5f, p.items[i].foot.y + p.items[i].foot.w * 0.5f});
 	w = {c.x, p.itemY(i), c.y};
 	return true;
+}
+
+bool Table::buttonCenter(const std::string &name, glm::vec3 &w) const
+{
+	const Impl &p = *_p;
+	for (const Btn &b : p.btns)
+		if (b.name == name)
+		{
+			w = {(b.rect.x + b.rect.z) * 0.5f, p.sy + CAP_PROUD, (b.rect.y + b.rect.w) * 0.5f};
+			return true;
+		}
+	return false;
 }
 
 bool Table::cellCenter(const std::string &slot, float cx, float cy, glm::vec3 &w) const

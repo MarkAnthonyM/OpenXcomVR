@@ -143,6 +143,7 @@ struct UnitCard
 	glm::vec3 vis{0.f};        // smoothed position on the table (voxels)
 	glm::vec3 visVel{0.f};     // its velocity (voxels/s)
 	bool visInit = false;
+	uint64_t seenFrame = 0;    // last update that drew this unit (to spot units coming back into view)
 	int lastKey = -1;
 	double lastRender = -1.0;
 };
@@ -198,6 +199,7 @@ struct Board::Impl
 	GeoscapeState *geo = nullptr;
 
 	glm::vec4 mapRect{0.f};    // world xz rect of the table area that shows the map
+	uint64_t unitFrame = 0;
 	float surfaceY() const { return layout.tableCenter.y - 0.02f; }
 	glm::mat4 boardMatrix() const
 	{
@@ -669,15 +671,19 @@ void Board::Impl::updateBattle(float dt)
 		for (BattleUnit *u : *battle->getUnits()) if (u == it->first) { alive = true; break; }
 		it = alive ? std::next(it) : cards.erase(it);
 	}
+	++unitFrame;
 	for (BattleUnit *u : *battle->getUnits())
 	{
 		if (u->isOut()) continue;
 		if (!(u->getFaction() == FACTION_PLAYER || u->getVisible() || battle->getDebugMode())) continue;
 		UnitCard &card = cards[u];
+		bool reappeared = card.seenFrame + 1 != unitFrame;
+		card.seenFrame = unitFrame;
 
-		// smooth movement (see below); jumps of more than 3 tiles (loading, teleports) snap
+		// smooth movement (see below); units coming back into view and jumps of more than
+		// 3 tiles (loading, teleports) snap instead of gliding from where they were last seen
 		glm::vec3 target = unitVoxelPos(u);
-		if (!card.visInit || glm::length(target - card.vis) > TILE_W * 3.f)
+		if (!card.visInit || reappeared || glm::length(target - card.vis) > TILE_W * 3.f)
 		{
 			card.vis = target;
 			card.visVel = glm::vec3(0.f);
@@ -687,9 +693,9 @@ void Board::Impl::updateBattle(float dt)
 		{
 			int stepMs = std::max(1, u->getFaction() == FACTION_PLAYER ? Options::battleXcomSpeed : Options::battleAlienSpeed);
 			bool moving = u->getStatus() == STATUS_WALKING || u->getStatus() == STATUS_FLYING;
-			// The game moves figures in 2-voxel steps on a timer that bunches up after slow frames.
-			// Follow it with a critically damped spring (time constant ~3 game steps) and a speed cap:
-			// figures glide at an even walking speed instead of hopping and sprinting.
+			// The game moves figures in 2-voxel steps (~33 a second) on a timer that bunches up after slow
+			// frames, while the headset draws 90-144 frames a second. Follow it with a critically damped
+			// spring (time constant ~3 game steps) so figures glide instead of ticking and hopping.
 			float stepS = stepMs / 1000.f;
 			float T = glm::clamp(3.f * stepS, 0.06f, 0.2f);
 			float w = 2.f / T;
@@ -699,7 +705,8 @@ void Board::Impl::updateBattle(float dt)
 			glm::vec3 vel = (card.visVel - w * tmp) * e;
 			glm::vec3 before = card.vis;
 			card.vis = target + (x0 + tmp) * e;
-			float maxSpeed = 2.f * 1.3f / stepS * (moving ? 1.f : 1.5f);
+			// cap at 1.6x walking pace: evens out catch-up bursts without lagging behind a unit that walks normally
+			float maxSpeed = 2.f * 1.6f / stepS * (moving ? 1.f : 1.5f);
 			float sp = glm::length(vel);
 			if (sp > maxSpeed) vel *= maxSpeed / sp;
 			card.visVel = vel;

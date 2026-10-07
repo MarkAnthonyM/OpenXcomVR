@@ -11,6 +11,7 @@ OPT bool fullscreen, asyncBlit, playIntro, useScaleFilter, useHQXFilter, useXBRZ
 	rootWindowedMode, lazyLoadResources, backgroundMute;
 OPT std::string language, useOpenGLShader;
 OPT int vrMode; // VR tabletop: 0 off, 1 headset (OpenXR), 2 desktop preview
+OPT int vrTableScale; // VR tabletop: war table size in percent of 1.9 x 1.2 m
 OPT KeyboardType keyboardMode;
 OPT SaveSort saveOrder;
 OPT MusicFormat preferredMusic;
