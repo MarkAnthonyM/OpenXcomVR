@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "ActionMenuState.h"
+#include <algorithm>
 #include "../Engine/Game.h"
 #include "../Engine/Options.h"
 #include "../Engine/LocalizedText.h"
@@ -535,6 +536,18 @@ void ActionMenuState::handleAction()
 void ActionMenuState::resize(int &dX, int &dY)
 {
 	State::recenter(dX, dY * 2);
+}
+
+/**
+ * VR tabletop: the visible menu entries, top to bottom, so the table can mirror them as keys.
+ */
+std::vector<InteractiveSurface*> ActionMenuState::vrItems() const
+{
+	std::vector<InteractiveSurface*> out;
+	for (auto *item : _actionMenu)
+		if (item && item->getVisible()) out.push_back((InteractiveSurface*)item);
+	std::sort(out.begin(), out.end(), [](InteractiveSurface *a, InteractiveSurface *b) { return a->getY() < b->getY(); });
+	return out;
 }
 
 }

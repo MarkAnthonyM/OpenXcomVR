@@ -49,6 +49,7 @@
 #include "../Battlescape/UnitSprite.h"
 #include "../Battlescape/Projectile.h"
 #include "../Battlescape/Explosion.h"
+#include "../Mod/RuleDamageType.h"
 #include "../Battlescape/Position.h"
 #include "../Battlescape/Pathfinding.h"
 #include "../Battlescape/BattlescapeGame.h"
@@ -132,6 +133,7 @@ struct Proto
 	std::vector<Vertex> verts;
 	std::vector<uint32_t> idx;
 	bool card = false; // no voxels: drawn as crossed cards
+	uint32_t avg = 0;  // average sprite colour (minimap)
 };
 
 struct Chunk
@@ -170,11 +172,17 @@ struct Board::Impl
 	int mx = 0, my = 0, mz = 0, cxN = 0, cyN = 0;
 	std::map<const MapData*, Proto> protos;
 	std::vector<Chunk> chunks;
+	std::vector<Chunk> fogChunks;  // fog of war volume, per chunk column (all levels)
+	int fogTop(int x, int y) const; // fogged levels in a column (0 = explored)
+	uint64_t fogHash(int cx, int cy);
+	void buildFog(int cx, int cy, Chunk &ch);
 	Atlas atlas;
 	int fogX = -1, fogY = -1;
 	const std::vector<Uint16> *voxels = nullptr;
 	SDL_Color pal[256];
 	glm::vec3 focus{0.f}, focusTarget{0.f};
+	Position camSet;             // camera centre the board itself last asked for
+	bool camSetValid = false;
 	bool focusInit = false;
 	float tileSize = 0.055f;
 	float yaw = 0.f;
@@ -191,7 +199,34 @@ struct Board::Impl
 
 	// meshes
 	Mesh quad, disk, ring, cursor, dot, nightCap;
-	Mesh wire[2], arrow, pointer, goal; // HUD: wireframe boxes (1 and 2 tiles), path arrow, selected-unit arrow, path end
+	Mesh wire[2], arrow, pointer, goal;
+	Mesh cube;                         // unit cube for voxel effects
+	bool shadowPass = false;           // drawing into the shadow map: terrain and figures only
+
+	// ---- voxel effects: particles (board voxel space), what spawned them, and lights for the room
+	struct Particle
+	{
+		glm::vec3 p, v;
+		float life, maxLife, size, spin;
+		glm::vec4 c0, c1;              // colour at birth and at death (alpha too)
+		bool glow, gravity;
+	};
+	std::vector<Particle> particles;
+	std::vector<const void*> seenExplosions;
+	const Projectile *lastProjectile = nullptr;
+	glm::vec3 lastProjPos{0.f};
+	int projStyle = 0;                 // 0 bullet, 1 laser, 2 plasma, 3 rocket, 4 thrown
+	glm::vec3 projColor{1.f};
+	glm::vec3 projOrigin{0.f};
+	float beamFade = 0.f;
+	glm::vec3 beamA{0.f}, beamB{0.f}, beamColor{1.f};
+	struct Flash { glm::vec3 p; glm::vec3 col; };
+	std::vector<Flash> flashes;        // world-space lights for the room this frame
+	std::map<int, glm::vec3> spriteColors;
+	glm::vec3 bulletColor(int sprite);
+	void updateEffects(float dt);
+	void spawnBurst(const glm::vec3 &at, bool big, bool hit);
+	void drawEffects(const Shader &sh, const glm::mat4 &M); // HUD: wireframe boxes (1 and 2 tiles), path arrow, selected-unit arrow, path end
 
 	// HUD: the game-style cursor, the selected unit marker, path preview, text readouts
 	Position cursorTile;
@@ -266,6 +301,7 @@ void Board::Impl::resetBattle()
 {
 	protos.clear();
 	chunks.clear();
+	fogChunks.clear();
 	cards.clear();
 	atlas.reset();
 	fogX = fogY = -1;
@@ -276,6 +312,10 @@ void Board::Impl::resetBattle()
 	cursorSet = false;
 	fingerFrames = 0;
 	labels.clear();
+	particles.clear();
+	seenExplosions.clear();
+	lastProjectile = nullptr;
+	beamFade = 0.f;
 }
 
 void Board::Impl::bindBattle(SavedBattleGame *save)
@@ -289,6 +329,8 @@ void Board::Impl::bindBattle(SavedBattleGame *save)
 	cxN = (mx + CHUNK - 1) / CHUNK;
 	cyN = (my + CHUNK - 1) / CHUNK;
 	chunks.resize((size_t)cxN * cyN * mz);
+	fogChunks.clear();
+	fogChunks.resize((size_t)cxN * cyN);
 	voxels = game->getMod()->getVoxelData();
 	// the palette the battlescape is drawn with (TFTD depth palettes included)
 	SDL_Color *p = bs ? bs->getPalette() : nullptr;
@@ -345,6 +387,7 @@ void Board::Impl::buildProto(const MapData *md, Proto &p)
 			if (Uint8 c = spr->getPixel(x, y)) { sr += pal[c].r; sg += pal[c].g; sb += pal[c].b; ++n; }
 	if (!n) return; // fully transparent sprite: nothing to show
 	uint32_t avg = (uint32_t)(sr / n) | ((uint32_t)(sg / n) << 8) | ((uint32_t)(sb / n) << 16) | 0xFF000000u;
+	p.avg = avg;
 
 	// voxel occupancy
 	static bool solid[TILE_W][TILE_W][TILE_H];
@@ -517,6 +560,86 @@ uint64_t Board::Impl::chunkHash(int cx, int cy, int z)
 	return h;
 }
 
+// ------------------------------------------------------------------ fog of war
+
+/// How many levels of this column are fog: the unexplored ground and every unexplored level
+/// straight above it, up to the level being viewed. 0 when the ground there has been seen.
+int Board::Impl::fogTop(int x, int y) const
+{
+	if (x < 0 || y < 0 || x >= mx || y >= my || battle->getDebugMode()) return 0;
+	int n = 0;
+	for (int z = 0; z <= std::min(viewLevel, mz - 1); ++z)
+	{
+		Tile *t = battle->getTile(Position(x, y, z));
+		if (!t || t->isDiscovered(O_FLOOR)) break;
+		++n;
+	}
+	return n;
+}
+
+uint64_t Board::Impl::fogHash(int cx, int cy)
+{
+	uint64_t h = 1469598103934665603ull ^ (uint64_t)viewLevel;
+	for (int y = cy * CHUNK - 1; y <= (cy + 1) * CHUNK; ++y)
+		for (int x = cx * CHUNK - 1; x <= (cx + 1) * CHUNK; ++x)
+		{
+			h ^= (uint64_t)fogTop(x, y) + 1;
+			h *= 1099511628211ull;
+		}
+	return h;
+}
+
+/// The fog volume: each fogged tile is a block of 4 x 4 little voxel columns with uneven tops, so
+/// the unexplored map reads as a bank of cloud. Only faces that can be seen are made.
+void Board::Impl::buildFog(int cx, int cy, Chunk &ch)
+{
+	const int SUB = 4;                 // columns per tile side
+	const float CW = TILE_W / (float)SUB;
+	auto hash = [](int a, int b) { uint32_t h = (uint32_t)(a * 73856093) ^ (uint32_t)(b * 19349663); h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15; return (h & 1023) / 1023.f; };
+	// height of a sub-column (voxels), 0 where there is no fog
+	auto colH = [&](int sx, int sy) -> float
+	{
+		int tx = sx >= 0 ? sx / SUB : -1, ty = sy >= 0 ? sy / SUB : -1;
+		int n = fogTop(tx, ty);
+		if (!n) return 0.f;
+		float top = (n - 1) * TILE_H + 15.f;
+		return top - std::floor(hash(sx, sy) * 6.f);
+	};
+	MeshData md;
+	for (int sy = cy * CHUNK * SUB; sy < std::min(my, (cy + 1) * CHUNK) * SUB; ++sy)
+		for (int sx = cx * CHUNK * SUB; sx < std::min(mx, (cx + 1) * CHUNK) * SUB; ++sx)
+		{
+			float h = colH(sx, sy);
+			if (h <= 0.f) continue;
+			float shade = 0.92f + 0.16f * hash(sx * 7 + 3, sy * 5 + 1);
+			glm::vec4 topC = glm::vec4(0.31f, 0.35f, 0.44f, 1.f) * shade, sideC = glm::vec4(0.22f, 0.25f, 0.33f, 1.f) * shade;
+			topC.a = sideC.a = 1.f;
+			float x0 = sx * CW, x1 = x0 + CW, z0 = sy * CW, z1 = z0 + CW;
+			const float y0 = 0.4f;
+			// top (uv.x = 1: these vertices drift)
+			md.addQuad({x0, h, z1}, {x1, h, z1}, {x1, h, z0}, {x0, h, z0}, topC, MAT_FOG, {1, 0}, {1, 0}, {1, 0}, {1, 0});
+			// sides facing lower neighbours
+			struct N { int dx, dy; };
+			for (N nb : {N{1, 0}, N{-1, 0}, N{0, 1}, N{0, -1}})
+			{
+				float hn = colH(sx + nb.dx, sy + nb.dy);
+				if (hn >= h) continue;
+				float lo = std::max(y0, hn);
+				glm::vec3 a, b; // edge on the ground plane, counter-clockwise seen from outside
+				if (nb.dx == 1) { a = {x1, 0, z1}; b = {x1, 0, z0}; }
+				else if (nb.dx == -1) { a = {x0, 0, z0}; b = {x0, 0, z1}; }
+				else if (nb.dy == 1) { a = {x0, 0, z1}; b = {x1, 0, z1}; }
+				else { a = {x1, 0, z0}; b = {x0, 0, z0}; }
+				glm::vec2 top = hn > 0.f ? glm::vec2(1, 0) : glm::vec2(1, 0);
+				md.addQuad(a + glm::vec3(0, lo, 0), b + glm::vec3(0, lo, 0), b + glm::vec3(0, h, 0), a + glm::vec3(0, h, 0), sideC, MAT_FOG,
+					{0, 0}, {0, 0}, top, top);
+			}
+		}
+	ch.empty = md.indices.empty();
+	if (!ch.mesh) ch.mesh.reset(new Mesh());
+	ch.mesh->upload(md);
+}
+
 void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 {
 	MeshData md;
@@ -528,11 +651,22 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 			glm::vec3 off((float)(x * TILE_W), (float)(z * TILE_H), (float)(y * TILE_W));
 			if (!t->isDiscovered(O_FLOOR))
 			{
-				// unexplored ground: a dark slab so the board keeps its shape
+				// unexplored ground: a dark slab so the board keeps its shape (the fog volume covers it)
 				if (z == 0 && fogX >= 0)
 				{
 					float u0 = fogX / (float)ATLAS, v0 = fogY / (float)ATLAS, u1 = (fogX + 16) / (float)ATLAS, v1 = (fogY + 16) / (float)ATLAS;
 					md.addQuad(off + glm::vec3(0, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, 0), off + glm::vec3(0, 0.5f, 0), glm::vec4(1.f), MAT_BOARD, {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0});
+				}
+				// walls already seen from outside stay standing (the flat map shows them too)
+				for (TilePart tp : {O_WESTWALL, O_NORTHWALL})
+				{
+					const MapData *d = t->getMapData(tp);
+					if (!d || !t->isDiscovered(tp) || t->isUfoDoorOpen(tp)) continue;
+					const Proto &p = proto(d);
+					uint32_t base = (uint32_t)md.verts.size();
+					float b = 1.f - glm::clamp(t->getShade(), 0, 15) / 15.f * 0.82f;
+					for (const Vertex &v : p.verts) { Vertex w = v; w.pos += off; w.color = glm::vec4(b, b, b, 1.f); md.verts.push_back(w); }
+					for (uint32_t i : p.idx) md.indices.push_back(base + i);
 				}
 				continue;
 			}
@@ -655,7 +789,31 @@ void Board::Impl::updateBattle(float dt)
 	{
 		viewLevel = cam->getViewLevel();
 		Position c = cam->getCenterPosition();
-		focusTarget = glm::vec3(c.x * TILE_W + TILE_W * 0.5f, 0.f, c.y * TILE_W + TILE_W * 0.5f);
+		// the game moved its camera (next soldier, alien spotted, ...): glide there. While the camera is
+		// still where the board put it, the board's own (sub-tile) focus stands.
+		if (!camSetValid || c.x != camSet.x || c.y != camSet.y)
+		{
+			focusTarget = glm::vec3(c.x * TILE_W + TILE_W * 0.5f, 0.f, c.y * TILE_W + TILE_W * 0.5f);
+			camSetValid = false;
+		}
+		// keep a walking soldier on the table: when it nears the edge of the visible area, follow it
+		BattleUnit *sel = battle->getSelectedUnit();
+		if (sel && !sel->isOut() && (sel->getStatus() == STATUS_WALKING || sel->getStatus() == STATUS_FLYING) && !held[0] && !held[1])
+		{
+			auto it = cards.find(sel);
+			glm::vec3 up = (it != cards.end() && it->second.visInit) ? it->second.vis : unitVoxelPos(sel);
+			float k = tileSize / TILE_W;
+			glm::vec3 ow = glm::vec3(glm::rotate(glm::mat4(1.f), yaw, {0, 1, 0}) * glm::vec4((up.x - focus.x) * k, 0.f, (up.z - focus.z) * k, 0.f));
+			float hw = (mapRect.z - mapRect.x) * 0.5f, hd = (mapRect.w - mapRect.y) * 0.5f;
+			if (std::fabs(ow.x) > hw * 0.7f || std::fabs(ow.z) > hd * 0.7f)
+			{
+				focusTarget = glm::vec3(up.x, 0.f, up.z);
+				Position fc((int)(up.x / TILE_W), (int)(up.z / TILE_W), viewLevel);
+				cam->centerOnPosition(fc, true);
+				camSet = cam->getCenterPosition();
+				camSetValid = true;
+			}
+		}
 	}
 	else
 	{
@@ -681,6 +839,18 @@ void Board::Impl::updateBattle(float dt)
 				buildChunk(cx, cy, z, ch);
 				ch.hash = h;
 			}
+	// fog volume, a few columns per frame after the first build
+	int fogBudget = 4;
+	for (int cy = 0; cy < cyN; ++cy)
+		for (int cx = 0; cx < cxN; ++cx)
+		{
+			Chunk &fc = fogChunks[(size_t)cy * cxN + cx];
+			uint64_t h = fogHash(cx, cy);
+			if (h == fc.hash) continue;
+			if (fc.mesh && fogBudget-- <= 0) continue;
+			buildFog(cx, cy, fc);
+			fc.hash = h;
+		}
 	if (atlas.full)
 	{
 		Log(LOG_WARNING) << "[VR] terrain atlas full; rebuilding";
@@ -700,6 +870,7 @@ void Board::Impl::updateBattle(float dt)
 		it = alive ? std::next(it) : cards.erase(it);
 	}
 	if (fingerFrames > 0) --fingerFrames;
+	updateEffects(dt);
 	++unitFrame;
 	for (BattleUnit *u : *battle->getUnits())
 	{
@@ -823,38 +994,391 @@ void Board::Impl::drawBattle(const Shader &sh)
 
 	drawUnits(sh);
 
-	if (bs && bs->getMap())
-	{
-		Map *map = bs->getMap();
-		// projectile in flight
-		if (Projectile *pr = map->getProjectile())
-		{
-			Position v = pr->getPosition(0);
-			sh.set("uModel", M * glm::translate(glm::mat4(1.f), glm::vec3(v.x, v.z, v.y)) * glm::scale(glm::mat4(1.f), glm::vec3(1.4f)));
-			sh.set("uTint", glm::vec4(3.f, 2.8f, 1.5f, 1.f));
-			dot.draw();
-		}
-		// explosions: expanding glowing balls
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-		glDepthMask(GL_FALSE);
-		for (Explosion *e : *map->getExplosions())
-		{
-			Position v = e->getPosition();
-			float f = (float)std::max(0, e->getCurrentFrame());
-			float r = e->isBig() ? 6.f + f * 3.f : 2.f + f * 1.2f;
-			float a = glm::clamp(1.f - f / (e->isBig() ? 8.f : 5.f), 0.1f, 1.f);
-			sh.set("uModel", M * glm::translate(glm::mat4(1.f), glm::vec3(v.x, v.z, v.y)) * glm::scale(glm::mat4(1.f), glm::vec3(r)));
-			sh.set("uTint", glm::vec4(1.f, 0.55f, 0.15f, a));
-			dot.draw();
-		}
-		glDepthMask(GL_TRUE);
-		glDisable(GL_BLEND);
-	}
+	if (shadowPass) { sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f)); return; } // only solid things cast shadows
+
+	// fog of war over the unexplored map
+	sh.set("uMode", 0);
+	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uModel", M);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	for (const Chunk &fc : fogChunks)
+		if (fc.mesh && !fc.empty) fc.mesh->draw();
+	glDisable(GL_BLEND);
+
+	drawEffects(sh, M);
 
 	drawHud(sh, M);
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
+}
+
+// ------------------------------------------------------------------ voxel effects
+
+static float frand(uint32_t &st) { st = st * 1664525u + 1013904223u; return (st >> 8) / 16777216.f; }
+
+/// The colour of a weapon's bullet sprite (so mods' projectiles keep their colours on the table).
+glm::vec3 Board::Impl::bulletColor(int sprite)
+{
+	auto it = spriteColors.find(sprite);
+	if (it != spriteColors.end()) return it->second;
+	glm::vec3 c(1.f, 0.8f, 0.4f);
+	SurfaceSet *set = game ? game->getMod()->getSurfaceSet("Projectiles", false) : nullptr;
+	if (set && sprite >= 0)
+		if (Surface *f = set->getFrame(sprite))
+		{
+			glm::vec3 sum(0.f);
+			float n = 0.f;
+			for (int y = 0; y < f->getHeight(); ++y)
+				for (int x = 0; x < f->getWidth(); ++x)
+					if (Uint8 v = f->getPixel(x, y))
+					{
+						// weight bright pixels: the core of the bullet
+						glm::vec3 k(pal[v].r / 255.f, pal[v].g / 255.f, pal[v].b / 255.f);
+						float w = 0.2f + glm::dot(k, glm::vec3(0.3f, 0.6f, 0.1f));
+						sum += k * w; n += w;
+					}
+			if (n > 0.f) c = sum / n;
+			float m = std::max(c.r, std::max(c.g, c.b));
+			if (m > 0.01f) c /= m; // full brightness, keep the hue
+		}
+	spriteColors[sprite] = c;
+	return c;
+}
+
+/// An explosion (or a bullet hit): a burst of glowing voxels, embers and rising smoke.
+void Board::Impl::spawnBurst(const glm::vec3 &at, bool big, bool hit)
+{
+	static uint32_t st = 12345u;
+	int fire = hit ? 10 : big ? 70 : 28, smoke = hit ? 3 : big ? 26 : 10, debris = hit ? 4 : big ? 18 : 8;
+	float speed = hit ? 18.f : big ? 55.f : 30.f;
+	for (int i = 0; i < fire; ++i)
+	{
+		glm::vec3 d = glm::normalize(glm::vec3(frand(st) - 0.5f, frand(st) * 0.9f - 0.2f, frand(st) - 0.5f) + glm::vec3(0, 0.05f, 0));
+		Particle p;
+		p.p = at + d * (frand(st) * 2.f);
+		p.v = d * speed * (0.4f + 0.6f * frand(st));
+		p.maxLife = p.life = (hit ? 0.25f : 0.45f) + frand(st) * (big ? 0.6f : 0.35f);
+		p.size = (hit ? 1.2f : big ? 3.f : 2.f) * (0.6f + frand(st) * 0.8f);
+		p.spin = frand(st) * 6.f;
+		p.c0 = glm::vec4(2.6f, 1.45f, 0.35f, 1.f);
+		p.c1 = glm::vec4(1.3f, 0.22f, 0.03f, 0.f);
+		p.glow = true; p.gravity = false;
+		particles.push_back(p);
+	}
+	// the fireball core: a few big voxels that swell and fade
+	for (int i = 0; hit ? false : i < (big ? 7 : 3); ++i)
+	{
+		Particle p;
+		p.p = at + glm::vec3(frand(st) - 0.5f, frand(st) - 0.3f, frand(st) - 0.5f) * (big ? 10.f : 5.f);
+		p.v = glm::vec3(0.f, 4.f, 0.f);
+		p.maxLife = p.life = (big ? 0.45f : 0.3f) + frand(st) * 0.15f;
+		p.size = (big ? 9.f : 5.f) * (0.7f + frand(st) * 0.5f);
+		p.spin = frand(st) * 6.f;
+		p.c0 = glm::vec4(2.4f, 1.6f, 0.5f, 0.9f);
+		p.c1 = glm::vec4(1.5f, 0.3f, 0.04f, 0.f);
+		p.glow = true; p.gravity = false;
+		particles.push_back(p);
+	}
+	for (int i = 0; i < smoke; ++i)
+	{
+		Particle p;
+		p.p = at + glm::vec3(frand(st) - 0.5f, frand(st) * 0.5f, frand(st) - 0.5f) * (big ? 16.f : 7.f);
+		p.v = glm::vec3((frand(st) - 0.5f) * 6.f, 6.f + frand(st) * 8.f, (frand(st) - 0.5f) * 6.f);
+		p.maxLife = p.life = 1.6f + frand(st) * (big ? 2.4f : 1.2f);
+		p.size = (big ? 4.5f : 3.f) * (0.7f + frand(st) * 0.6f);
+		p.spin = frand(st) * 6.f;
+		float g = 0.18f + frand(st) * 0.1f;
+		p.c0 = glm::vec4(g, g, g * 1.05f, 0.85f);
+		p.c1 = glm::vec4(g * 1.6f, g * 1.6f, g * 1.7f, 0.f);
+		p.glow = false; p.gravity = false;
+		particles.push_back(p);
+	}
+	for (int i = 0; i < debris; ++i)
+	{
+		Particle p;
+		glm::vec3 d = glm::normalize(glm::vec3(frand(st) - 0.5f, 0.6f + frand(st), frand(st) - 0.5f));
+		p.p = at;
+		p.v = d * speed * 0.9f;
+		p.maxLife = p.life = 0.8f + frand(st) * 0.6f;
+		p.size = 0.9f + frand(st) * 0.9f;
+		p.spin = frand(st) * 6.f;
+		p.c0 = glm::vec4(0.25f, 0.2f, 0.16f, 1.f);
+		p.c1 = glm::vec4(0.1f, 0.08f, 0.06f, 1.f);
+		p.glow = false; p.gravity = true;
+		particles.push_back(p);
+	}
+}
+
+void Board::Impl::updateEffects(float dt)
+{
+	flashes.clear();
+	glm::mat4 M = boardMatrix();
+	auto toWorld = [&](const glm::vec3 &v) { return glm::vec3(M * glm::vec4(v, 1.f)); };
+	static uint32_t st = 777u;
+	Map *map = (bs && bs->getMap()) ? bs->getMap() : nullptr;
+
+	// projectile: pick a style from what was fired; trails leave particles behind
+	const Projectile *pr = map ? map->getProjectile() : nullptr;
+	if (pr != lastProjectile)
+	{
+		lastProjectile = pr;
+		if (pr)
+		{
+			const BattleAction &a = pr->vrAction();
+			const BattleItem *ammo = pr->vrAmmo();
+			ItemDamageType dt2 = DT_AP;
+			if (ammo && ammo->getRules()->getDamageType()) dt2 = ammo->getRules()->getDamageType()->ResistType;
+			else if (a.weapon && a.weapon->getRules()->getDamageType()) dt2 = a.weapon->getRules()->getDamageType()->ResistType;
+			projStyle = a.type == BA_THROW ? 4 : (dt2 == DT_LASER ? 1 : (dt2 == DT_PLASMA || dt2 == DT_STUN || dt2 == DT_ACID) ? 2 : (dt2 == DT_HE || dt2 == DT_IN || dt2 == DT_SMOKE) ? 3 : 0);
+			glm::vec3 fallback[5] = {{1.f, 0.85f, 0.35f}, {1.f, 0.2f, 0.15f}, {0.3f, 1.f, 0.55f}, {1.f, 0.6f, 0.2f}, {0.7f, 0.75f, 0.6f}};
+			projColor = pr->vrBulletSprite() >= 0 && projStyle != 4 ? bulletColor(pr->vrBulletSprite()) : fallback[projStyle];
+			Position o = pr->getOrigin();
+			Position v0 = pr->getPosition(0);
+			projOrigin = glm::vec3(v0.x, v0.z, v0.y);
+			(void)o;
+			lastProjPos = projOrigin;
+			// muzzle flash
+			for (int i = 0; i < (projStyle == 4 ? 0 : 6); ++i)
+			{
+				Particle p;
+				glm::vec3 d = glm::normalize(glm::vec3(frand(st) - 0.5f, frand(st) - 0.5f, frand(st) - 0.5f));
+				p.p = projOrigin; p.v = d * 14.f;
+				p.maxLife = p.life = 0.12f + frand(st) * 0.08f;
+				p.size = 1.2f; p.spin = 0.f;
+				p.c0 = glm::vec4(projColor * 3.f, 1.f); p.c1 = glm::vec4(projColor, 0.f);
+				p.glow = true; p.gravity = false;
+				particles.push_back(p);
+			}
+		}
+		else if (projStyle == 1)
+		{
+			beamFade = 0.18f; // the laser beam lingers for a moment after the shot lands
+		}
+	}
+	if (pr)
+	{
+		Position v = pr->getPosition(0);
+		glm::vec3 now(v.x, v.z, v.y);
+		glm::vec3 seg = now - lastProjPos;
+		float len = glm::length(seg);
+		int n = (int)std::min(12.f, len / 3.f);
+		for (int i = 0; i < n; ++i)
+		{
+			glm::vec3 at = lastProjPos + seg * ((i + frand(st)) / std::max(1, n));
+			Particle p;
+			p.p = at;
+			p.spin = frand(st) * 6.f;
+			p.gravity = false;
+			if (projStyle == 3)
+			{
+				// rocket: a smoke trail
+				p.v = glm::vec3((frand(st) - 0.5f) * 3.f, 2.f + frand(st) * 2.f, (frand(st) - 0.5f) * 3.f);
+				p.maxLife = p.life = 0.9f + frand(st) * 0.8f;
+				p.size = 2.f + frand(st) * 1.5f;
+				p.c0 = glm::vec4(0.35f, 0.33f, 0.31f, 0.8f); p.c1 = glm::vec4(0.6f, 0.6f, 0.62f, 0.f);
+				p.glow = false;
+			}
+			else if (projStyle == 2)
+			{
+				// plasma: sparks that drift off
+				p.v = glm::vec3(frand(st) - 0.5f, frand(st) - 0.5f, frand(st) - 0.5f) * 10.f;
+				p.maxLife = p.life = 0.2f + frand(st) * 0.25f;
+				p.size = 0.7f + frand(st) * 0.7f;
+				p.c0 = glm::vec4(projColor * 2.6f, 1.f); p.c1 = glm::vec4(projColor, 0.f);
+				p.glow = true;
+			}
+			else if (projStyle == 0)
+			{
+				// tracer: a short streak of fading voxels
+				p.v = glm::vec3(0.f);
+				p.maxLife = p.life = 0.08f;
+				p.size = 0.8f;
+				p.c0 = glm::vec4(projColor * 2.4f, 0.9f); p.c1 = glm::vec4(projColor, 0.f);
+				p.glow = true;
+			}
+			else continue;
+			particles.push_back(p);
+		}
+		if (projStyle == 1) { beamA = projOrigin; beamB = now; beamColor = projColor; }
+		lastProjPos = now;
+		if (projStyle != 4) flashes.push_back({toWorld(now), projColor * (projStyle == 1 ? 0.6f : 0.35f)});
+	}
+	if (beamFade > 0.f) beamFade -= dt;
+
+	// explosions: a burst the first time each one shows up
+	if (map)
+	{
+		std::vector<const void*> now;
+		for (Explosion *e : *map->getExplosions())
+		{
+			now.push_back(e);
+			Position v = e->getPosition();
+			glm::vec3 at(v.x, v.z, v.y);
+			if (std::find(seenExplosions.begin(), seenExplosions.end(), (const void*)e) == seenExplosions.end())
+				spawnBurst(at, e->isBig(), e->isHit());
+			float f = (float)std::max(0, e->getCurrentFrame());
+			float k = glm::clamp(1.f - f / (e->isBig() ? 8.f : 5.f), 0.f, 1.f);
+			if (!e->isHit()) flashes.push_back({toWorld(at + glm::vec3(0, 6, 0)), glm::vec3(1.f, 0.55f, 0.18f) * (e->isBig() ? 2.5f : 1.2f) * k});
+		}
+		seenExplosions.swap(now);
+	}
+
+	// particles
+	for (Particle &p : particles)
+	{
+		p.life -= dt;
+		if (p.gravity) p.v.y -= 120.f * dt;
+		else if (!p.glow) p.v *= std::exp(-dt * 0.8f);
+		else p.v *= std::exp(-dt * 3.f);
+		p.p += p.v * dt;
+		if (p.gravity && p.p.y < 0.5f) { p.p.y = 0.5f; p.v = glm::vec3(0.f); }
+		p.spin += dt * 2.f;
+	}
+	particles.erase(std::remove_if(particles.begin(), particles.end(), [](const Particle &p) { return p.life <= 0.f; }), particles.end());
+	if (particles.size() > 3000) particles.erase(particles.begin(), particles.begin() + (particles.size() - 3000));
+}
+
+void Board::Impl::drawEffects(const Shader &sh, const glm::mat4 &M)
+{
+	Map *map = (bs && bs->getMap()) ? bs->getMap() : nullptr;
+	auto cubeAt = [&](const glm::vec3 &p, float size, float spin, const glm::vec4 &c)
+	{
+		sh.set("uTint", c);
+		sh.set("uModel", M * glm::translate(glm::mat4(1.f), p) * glm::rotate(glm::mat4(1.f), spin, {0.3f, 1.f, 0.2f}) * glm::scale(glm::mat4(1.f), glm::vec3(size)));
+		cube.draw();
+	};
+	auto boxAlong = [&](const glm::vec3 &a, const glm::vec3 &b, float thick, const glm::vec4 &c)
+	{
+		glm::vec3 d = b - a;
+		float l = glm::length(d);
+		if (l < 1e-3f) return;
+		glm::quat q = glm::rotation(glm::vec3(0, 0, 1), d / l);
+		sh.set("uTint", c);
+		sh.set("uModel", M * glm::translate(glm::mat4(1.f), (a + b) * 0.5f) * glm::mat4_cast(q) * glm::scale(glm::mat4(1.f), {thick, thick, l}));
+		cube.draw();
+	};
+	double t = animTime;
+
+	// smoke and fire lingering on tiles: drifting voxel clouds and flickering voxel flames
+	if (battle)
+	{
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		for (int z = 0; z <= std::min(viewLevel, mz - 1); ++z)
+			for (int y = 0; y < my; ++y)
+				for (int x = 0; x < mx; ++x)
+				{
+					Tile *tl = battle->getTile(Position(x, y, z));
+					if (!tl || (!tl->isDiscovered(O_FLOOR) && !battle->getDebugMode())) continue;
+					int smoke = tl->getSmoke(), fire = tl->getFire();
+					if (!smoke && !fire) continue;
+					uint32_t h = (uint32_t)(x * 73856093) ^ (uint32_t)(y * 19349663) ^ (uint32_t)(z * 83492791);
+					glm::vec3 base(x * TILE_W + 8.f, z * TILE_H - tl->getTerrainLevel(), y * TILE_W + 8.f);
+					int puffs = smoke ? std::min(6, 1 + smoke / 3) : 0;
+					sh.set("uMode", 0);
+					for (int i = 0; i < puffs; ++i)
+					{
+						uint32_t r = h + i * 2654435761u;
+						float a = frand(r), b = frand(r), c = frand(r), sp = 0.08f + 0.06f * frand(r);
+						float ph = (float)std::fmod(t * sp + a, 1.0);
+						glm::vec3 p = base + glm::vec3((b - 0.5f) * 12.f + std::sin((float)t * 0.7f + c * 6.f) * 2.f, 2.f + ph * 26.f, (c - 0.5f) * 12.f + std::cos((float)t * 0.6f + b * 6.f) * 2.f);
+						float g = 0.30f + 0.12f * a;
+						float alpha = std::min(1.f, smoke / 10.f + 0.3f) * std::sin(ph * 3.14159f) * 0.75f;
+						cubeAt(p, 4.f + 3.f * c + ph * 3.f, b * 3.f + (float)t * 0.2f, glm::vec4(g, g, g * 1.04f, alpha));
+					}
+					if (fire)
+					{
+						sh.set("uMode", 2);
+						for (int i = 0; i < 5; ++i)
+						{
+							uint32_t r = h + i * 40503u + 99u;
+							float a = frand(r), b = frand(r), sp = 0.9f + 0.6f * frand(r);
+							float ph = (float)std::fmod(t * sp + a, 1.0);
+							glm::vec3 p = base + glm::vec3((a - 0.5f) * 10.f, 1.f + ph * 12.f, (b - 0.5f) * 10.f);
+							glm::vec3 col = glm::mix(glm::vec3(3.f, 2.2f, 0.6f), glm::vec3(2.2f, 0.4f, 0.05f), ph);
+							cubeAt(p, (2.6f - ph * 1.8f) * (0.8f + 0.4f * b), ph * 4.f, glm::vec4(col, 1.f - ph));
+						}
+						if (fire && ((x + y) & 3) == 0) flashes.push_back({glm::vec3(M * glm::vec4(base + glm::vec3(0, 6, 0), 1.f)), glm::vec3(1.f, 0.45f, 0.12f) * 0.25f});
+					}
+				}
+		glDisable(GL_BLEND);
+	}
+
+	// particles: glowing ones additive, smoke and debris normal
+	glEnable(GL_BLEND);
+	glDepthMask(GL_FALSE);
+	for (int pass = 0; pass < 2; ++pass)
+	{
+		if (pass == 0) { glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); sh.set("uMode", 0); }
+		else { glBlendFunc(GL_SRC_ALPHA, GL_ONE); sh.set("uMode", 2); }
+		for (const Particle &p : particles)
+		{
+			if (p.glow != (pass == 1)) continue;
+			float k = 1.f - glm::clamp(p.life / p.maxLife, 0.f, 1.f);
+			glm::vec4 c = glm::mix(p.c0, p.c1, k);
+			float size = p.glow ? p.size * (1.f - 0.5f * k) : p.size * (1.f + 1.2f * k);
+			cubeAt(p.p, size, p.spin, c);
+		}
+	}
+
+	// the projectile itself
+	if (const Projectile *pr = map ? map->getProjectile() : nullptr)
+	{
+		Position v = pr->getPosition(0), v2 = pr->getPosition(-2);
+		glm::vec3 now(v.x, v.z, v.y), prev(v2.x, v2.z, v2.y);
+		glm::vec3 dir = now - prev;
+		if (glm::length(dir) < 1e-3f) dir = now - projOrigin;
+		dir = glm::length(dir) > 1e-3f ? glm::normalize(dir) : glm::vec3(1, 0, 0);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+		sh.set("uMode", 2);
+		switch (projStyle)
+		{
+		case 0: // bullet: a short bright streak
+			boxAlong(now - dir * 6.f, now, 0.9f, glm::vec4(projColor * 3.f, 1.f));
+			break;
+		case 1: // laser: a beam from the muzzle
+			boxAlong(projOrigin, now, 0.7f, glm::vec4(projColor * 2.6f, 0.9f));
+			boxAlong(projOrigin, now, 1.8f, glm::vec4(projColor * 1.2f, 0.25f));
+			break;
+		case 2: // plasma: a tumbling cluster of glowing voxels
+			for (int i = 0; i < 7; ++i)
+			{
+				glm::vec3 o(i == 1 ? 1.f : i == 2 ? -1.f : 0.f, i == 3 ? 1.f : i == 4 ? -1.f : 0.f, i == 5 ? 1.f : i == 6 ? -1.f : 0.f);
+				glm::vec3 r = glm::vec3(glm::rotate(glm::mat4(1.f), (float)t * 9.f, glm::vec3(0.4f, 1.f, 0.3f)) * glm::vec4(o * 1.4f, 0.f));
+				cubeAt(now + r, i == 0 ? 1.9f : 1.1f, (float)t * 5.f, glm::vec4(projColor * (i == 0 ? 3.2f : 2.2f), 1.f));
+			}
+			break;
+		case 3: // rocket: body, fins and a flame
+		{
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			sh.set("uMode", 0);
+			boxAlong(now - dir * 7.f, now, 1.6f, glm::vec4(0.55f, 0.57f, 0.6f, 1.f));
+			boxAlong(now - dir * 1.5f, now + dir * 0.5f, 1.2f, glm::vec4(0.8f, 0.25f, 0.15f, 1.f));
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+			sh.set("uMode", 2);
+			float fl = 0.7f + 0.3f * std::sin((float)t * 60.f);
+			boxAlong(now - dir * (10.f + 2.f * fl), now - dir * 7.f, 1.3f * fl, glm::vec4(3.f, 1.8f, 0.4f, 1.f));
+			break;
+		}
+		default: // thrown item: a tumbling block
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			sh.set("uMode", 0);
+			cubeAt(now, 2.6f, (float)t * 8.f, glm::vec4(0.35f, 0.42f, 0.3f, 1.f));
+			break;
+		}
+	}
+	// a laser beam fades out after it lands
+	if (beamFade > 0.f && projStyle == 1 && !(map && map->getProjectile()))
+	{
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+		sh.set("uMode", 2);
+		float k = beamFade / 0.18f;
+		boxAlong(beamA, beamB, 0.7f * k, glm::vec4(beamColor * 2.6f, k));
+	}
+	glDepthMask(GL_TRUE);
+	glDisable(GL_BLEND);
+	sh.set("uTint", glm::vec4(1.f));
 }
 
 // ------------------------------------------------------------------ HUD: cursor, selection, path preview
@@ -1304,6 +1828,11 @@ void Board::init(const RoomLayout &layout)
 		for (float pz : {0.f, L - t})
 			c.addBox({px, 0, pz}, {px + t, 5.f, pz + t}, glm::vec4(1), 0);
 	_p->cursor.upload(c);
+	{
+		MeshData cb;
+		cb.addBox({-0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}, glm::vec4(1), 0);
+		_p->cube.upload(cb);
+	}
 	// HUD meshes: wireframe boxes for one and two tiles (thin bars along the 12 edges)
 	for (int n = 0; n < 2; ++n)
 	{
@@ -1397,6 +1926,14 @@ bool Board::tileUnder(const glm::vec3 &world, int &tx, int &ty, int &tz, float &
 	glm::vec3 l = glm::vec3(glm::inverse(M) * glm::vec4(world, 1.f));
 	int x = (int)std::floor(l.x / TILE_W), y = (int)std::floor(l.z / TILE_W);
 	if (x < 0 || y < 0 || x >= p.mx || y >= p.my) return false;
+	// fog: the top of the fog bank is the tile at the highest fogged level (as on the flat map,
+	// clicking into the dark picks the tile at the level being viewed)
+	if (int f = p.fogTop(x, y))
+	{
+		tx = x; ty = y; tz = f - 1;
+		floorY = glm::vec3(M * glm::vec4(l.x, (float)((f - 1) * TILE_H + 13), l.z, 1.f)).y;
+		return true;
+	}
 	for (int z = std::min(p.viewLevel, p.mz - 1); z >= 0; --z)
 	{
 		Tile *t = p.battle->getTile(Position(x, y, z));
@@ -1487,6 +2024,38 @@ void Board::update(Game *game, float dt)
 	}
 }
 
+void Board::setShadowPass(bool on, const glm::vec3 &light)
+{
+	// standees turn toward whoever looks at them: in the shadow pass that is the light, so they
+	// cast their full silhouette
+	static glm::vec3 saved;
+	if (on && !_p->shadowPass) { saved = _p->viewer; _p->viewer = light; }
+	else if (!on && _p->shadowPass) _p->viewer = saved;
+	_p->shadowPass = on;
+}
+
+void Board::lights(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const
+{
+	for (const auto &f : _p->flashes) out.push_back({f.p, f.col});
+}
+
+bool Board::alert() const
+{
+	const Impl &p = *_p;
+	if (!p.hasBattle || !p.battle) return false;
+	if (p.battle->getSide() != FACTION_PLAYER) return true;
+	for (BattleUnit *u : *p.battle->getUnits())
+		if (u->getFaction() == FACTION_HOSTILE && !u->isOut() && u->getVisible()) return true;
+	return false;
+}
+
+float Board::nightLevel() const
+{
+	const Impl &p = *_p;
+	if (!p.hasBattle || !p.battle) return 0.f;
+	return glm::clamp(p.battle->getGlobalShade() / 15.f, 0.f, 1.f);
+}
+
 void Board::draw(const Shader &sh, const glm::mat4 &, const glm::vec3 &, double)
 {
 	if (_p->hasBattle && _p->atlas.tex.valid()) _p->drawBattle(sh);
@@ -1514,6 +2083,7 @@ bool Board::raycast(const glm::vec3 &o, const glm::vec3 &d, BoardHit &hit) const
 			if (tx < 0 || ty < 0 || tx >= p.mx || ty >= p.my) continue;
 			Tile *tile = p.battle->getTile(Position(tx, ty, z));
 			bool standable = tile && tile->isDiscovered(O_FLOOR) && (tile->getMapData(O_FLOOR) || tile->getMapData(O_OBJECT) || tile->getUnit());
+			if (p.fogTop(tx, ty) == z + 1) standable = true; // the top of the fog bank
 			if (!standable && z > 0) continue;
 			glm::vec3 w = o + d * t;
 			if (w.x < clip.x || w.x > clip.z || w.z < clip.y || w.z > clip.w) return false;
@@ -1610,6 +2180,184 @@ void Board::wheel(int dir)
 	}
 }
 
+/// Points the game's camera at the board's focus, and remembers that the board did it, so the
+/// next update does not snap the focus back to the camera's whole-tile centre.
+static void syncCamera(Board::Impl &p)
+{
+	if (!p.bs || !p.bs->getMap()) return;
+	Position c((int)(p.focus.x / TILE_W), (int)(p.focus.z / TILE_W), p.viewLevel);
+	p.bs->getMap()->getCamera()->centerOnPosition(c, true);
+	p.camSet = p.bs->getMap()->getCamera()->getCenterPosition();
+	p.camSetValid = true;
+	p.focusTarget = p.focus;
+}
+
+void Board::pan(const glm::vec2 &d)
+{
+	Impl &p = *_p;
+	revalidate(p);
+	if (p.hasBattle)
+	{
+		float k = p.tileSize / TILE_W;
+		glm::vec3 dl = glm::vec3(glm::rotate(glm::mat4(1.f), -p.yaw, {0, 1, 0}) * glm::vec4(d.x, 0.f, d.y, 0.f)) / k;
+		p.focus.x = glm::clamp(p.focus.x + dl.x, 0.f, (float)(p.mx * TILE_W));
+		p.focus.z = glm::clamp(p.focus.z + dl.z, 0.f, (float)(p.my * TILE_W));
+		syncCamera(p);
+	}
+	else if (p.hasGlobe && p.globe)
+	{
+		double cl, ca;
+		p.globe->getCenter(&cl, &ca);
+		cl += d.x / p.globeRadius;
+		ca = glm::clamp(ca + (double)d.y / p.globeRadius, -1.5, 1.5);
+		p.globe->center(cl, ca);
+	}
+}
+
+void Board::rotate(float r)
+{
+	Impl &p = *_p;
+	if (p.hasBattle) p.yaw += r;
+	else if (p.hasGlobe && p.globe)
+	{
+		double cl, ca;
+		p.globe->getCenter(&cl, &ca);
+		p.globe->center(cl - r, ca);
+	}
+}
+
+void Board::zoom(float f)
+{
+	Impl &p = *_p;
+	if (p.hasBattle) p.tileSize = glm::clamp(p.tileSize * f, 0.02f, 0.14f);
+	else if (p.hasGlobe) p.globeRadius = glm::clamp(p.globeRadius * f, 0.18f, 0.45f);
+}
+
+// ------------------------------------------------------------------ minimap (wrist pad, wall screen)
+
+/// The minimap's square: the whole map, turned like the table when align is set (the table's far
+/// side is up). Returns centre (tiles), right and up directions (tiles per unit of the square).
+static void minimapFrame(const Board::Impl &p, bool align, glm::vec2 &centre, glm::vec2 &right, glm::vec2 &up)
+{
+	float yaw = align ? p.yaw : 0.f;
+	float c = std::cos(yaw), sn = std::sin(yaw);
+	// board-local directions (tile x, tile y) of world +x and world -z: the board matrix turns local
+	// into world by yaw about +Y, so these are world +x / -z turned back by -yaw
+	glm::vec2 r(c, sn), u(sn, -c);
+	float ext = (float)std::max(p.mx, p.my) * (std::fabs(c) + std::fabs(sn)) * 1.04f;
+	centre = glm::vec2(p.mx * 0.5f, p.my * 0.5f);
+	right = r * ext;
+	up = u * ext;
+}
+
+bool Board::renderMinimap(std::vector<uint32_t> &px, int S, bool align)
+{
+	Impl &p = *_p;
+	revalidate(p);
+	if (!p.hasBattle || !p.battle || S <= 0) return false;
+	glm::vec2 c, r, u;
+	minimapFrame(p, align, c, r, u);
+	const uint32_t fog = 0xFF2A2018u, outside = 0xFF0C0806u;
+	px.assign((size_t)S * S, outside);
+	int top = std::min(p.viewLevel, p.mz - 1);
+	for (int j = 0; j < S; ++j)
+		for (int i = 0; i < S; ++i)
+		{
+			float uu = (i + 0.5f) / S - 0.5f, vv = 0.5f - (j + 0.5f) / S;
+			glm::vec2 t = c + r * uu + u * vv;
+			int tx = (int)std::floor(t.x), ty = (int)std::floor(t.y);
+			if (tx < 0 || ty < 0 || tx >= p.mx || ty >= p.my) continue;
+			uint32_t col = fog;
+			bool seen = false;
+			for (int z = top; z >= 0; --z)
+			{
+				Tile *tl = p.battle->getTile(Position(tx, ty, z));
+				if (!tl) continue;
+				if (!tl->isDiscovered(O_FLOOR) && !p.battle->getDebugMode()) continue;
+				seen = true;
+				const MapData *md = nullptr;
+				for (TilePart part : {O_OBJECT, O_NORTHWALL, O_WESTWALL, O_FLOOR})
+					if ((md = tl->getMapData(part))) break;
+				if (!md) continue;
+				uint32_t a = p.proto(md).avg;
+				if (!a) continue;
+				// lower levels a little darker, so roofs read above the ground
+				float k = 0.55f + 0.45f * (float)(z + 1) / (float)(top + 1);
+				uint32_t rr = (uint32_t)((a & 255) * k), gg = (uint32_t)(((a >> 8) & 255) * k), bb = (uint32_t)(((a >> 16) & 255) * k);
+				col = rr | (gg << 8) | (bb << 16) | 0xFF000000u;
+				break;
+			}
+			if (!seen) col = fog;
+			px[(size_t)j * S + i] = col;
+		}
+	// tile -> pixel
+	glm::vec2 rn = r / glm::dot(r, r), un = u / glm::dot(u, u);
+	auto toPx = [&](glm::vec2 t) { glm::vec2 d = t - c; return glm::vec2((glm::dot(d, rn) + 0.5f) * S, (0.5f - glm::dot(d, un)) * S); };
+	auto dot = [&](glm::vec2 q, float rad, uint32_t col)
+	{
+		for (int y = (int)(q.y - rad - 1); y <= (int)(q.y + rad + 1); ++y)
+			for (int x = (int)(q.x - rad - 1); x <= (int)(q.x + rad + 1); ++x)
+				if (x >= 0 && y >= 0 && x < S && y < S && (x + 0.5f - q.x) * (x + 0.5f - q.x) + (y + 0.5f - q.y) * (y + 0.5f - q.y) <= rad * rad)
+					px[(size_t)y * S + x] = col;
+	};
+	auto line = [&](glm::vec2 a, glm::vec2 b, uint32_t col)
+	{
+		int n = (int)std::max(std::fabs(b.x - a.x), std::fabs(b.y - a.y)) + 1;
+		for (int k = 0; k <= n; ++k)
+		{
+			glm::vec2 q = glm::mix(a, b, (float)k / n);
+			int x = (int)q.x, y = (int)q.y;
+			if (x >= 0 && y >= 0 && x < S && y < S) px[(size_t)y * S + x] = col;
+		}
+	};
+	// the part of the map the table shows
+	{
+		glm::mat4 inv = glm::inverse(p.boardMatrix());
+		glm::vec4 m = p.mapRect;
+		glm::vec3 cw[4] = {{m.x, p.surfaceY(), m.y}, {m.z, p.surfaceY(), m.y}, {m.z, p.surfaceY(), m.w}, {m.x, p.surfaceY(), m.w}};
+		glm::vec2 q[4];
+		for (int k = 0; k < 4; ++k) { glm::vec3 l = glm::vec3(inv * glm::vec4(cw[k], 1.f)); q[k] = toPx(glm::vec2(l.x, l.z) / (float)TILE_W); }
+		for (int k = 0; k < 4; ++k) line(q[k], q[(k + 1) % 4], 0xFFE0D040u);
+	}
+	// units
+	float rad = std::max(1.2f, S / 90.f);
+	BattleUnit *sel = p.battle->getSelectedUnit();
+	for (BattleUnit *un2 : *p.battle->getUnits())
+	{
+		if (un2->isOut()) continue;
+		bool ours = un2->getFaction() == FACTION_PLAYER;
+		if (!ours && !un2->getVisible() && !p.battle->getDebugMode()) continue;
+		auto it = p.cards.find(un2);
+		glm::vec3 v = (it != p.cards.end() && it->second.visInit) ? it->second.vis : p.unitVoxelPos(un2);
+		glm::vec2 q = toPx(glm::vec2(v.x, v.z) / (float)TILE_W);
+		uint32_t col = un2 == sel ? 0xFF30E8FFu : ours ? 0xFFFF9030u : un2->getFaction() == FACTION_HOSTILE ? 0xFF3030FFu : 0xFF40E040u;
+		dot(q, un2 == sel ? rad * 1.6f : rad, 0xFF000000u);
+		dot(q, (un2 == sel ? rad * 1.6f : rad) - 0.8f, col);
+	}
+	return true;
+}
+
+glm::vec2 Board::minimapTile(const glm::vec2 &uv, bool align) const
+{
+	glm::vec2 c, r, u;
+	minimapFrame(*_p, align, c, r, u);
+	return c + r * uv.x + u * uv.y;
+}
+
+void Board::testBurst(int tx, int ty, int tz, bool big)
+{
+	_p->spawnBurst(glm::vec3(tx * TILE_W + 8.f, tz * TILE_H + 6.f, ty * TILE_W + 8.f), big, false);
+}
+
+void Board::centerOnTile(const glm::vec2 &tile)
+{
+	Impl &p = *_p;
+	revalidate(p);
+	if (!p.hasBattle) return;
+	p.focus = glm::vec3(glm::clamp(tile.x, 0.f, (float)p.mx) * TILE_W, 0.f, glm::clamp(tile.y, 0.f, (float)p.my) * TILE_W);
+	syncCamera(p);
+}
+
 bool Board::canGrab(const glm::vec3 &hand) const
 {
 	const Impl &p = *_p;
@@ -1657,12 +2405,7 @@ void Board::updateGrab(int hand, const glm::vec3 &pos)
 			glm::vec3 dl = glm::vec3(glm::rotate(glm::mat4(1.f), -p.yaw, {0, 1, 0}) * glm::vec4(dw, 0.f)) / k;
 			p.focus.x = glm::clamp(p.focus.x - dl.x, 0.f, (float)(p.mx * TILE_W));
 			p.focus.z = glm::clamp(p.focus.z - dl.z, 0.f, (float)(p.my * TILE_W));
-			if (p.bs && p.bs->getMap())
-			{
-				Position c((int)(p.focus.x / TILE_W), (int)(p.focus.z / TILE_W), p.viewLevel);
-				p.bs->getMap()->getCamera()->centerOnPosition(c, true);
-				p.focusTarget = p.focus;
-			}
+			syncCamera(p);
 		}
 	}
 	else if (p.hasGlobe && p.globe && !p.held[other])

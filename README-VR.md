@@ -1,7 +1,7 @@
 # OpenXcom Extended — VR Tabletop (prototype)
 
-Play OpenXcom Extended in VR as if it were a tabletop wargame. You stand in an
-X-COM command center at a holographic war table:
+Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
+stand) in an X-COM command center at a holographic war table:
 
 - **Battlescape** – the mission map is rebuilt in 3D on the table as a
   diorama. Soldiers and aliens are cardboard stand-up figures on colored bases
@@ -13,7 +13,10 @@ X-COM command center at a holographic war table:
   head, and the path preview arrows and TU / energy numbers appear on the tiles
   when the game's path preview option is on. The hit chance the flat screen
   shows next to the aiming cursor (UFO Extender accuracy option) floats next
-  to the box.
+  to the box. Unexplored ground is buried under a bank of voxel fog (you can
+  still tap into it to target a wall); projectiles, explosions, smoke and fire
+  are voxel effects styled after the weapon (tracers, laser beams, plasma
+  bolts, rockets with smoke trails).
 - **Geoscape** – a physical globe hovers over the table, with bases, craft,
   UFOs and mission sites as markers and the real day/night terminator.
 - **The table is a control panel.** Right in front of you along the near edge
@@ -24,14 +27,23 @@ X-COM command center at a holographic war table:
   buttons is an inventory tray for the selected soldier, about as deep as the
   buttons: the game's sections (hands, shoulders, legs, backpack, belt, ground)
   repacked into one row, with small floating voxel models of the items; pinch
-  one to move it.
+  one to move it. When the game asks how to fire (aimed / snap / auto, throw),
+  a board of keys unfolds over the console, and spotted aliens show up as red
+  buttons right of the bay (press one to centre the view on that alien), so
+  you never need to look up at the screen for those.
 - **Your hands** are tracked finger by finger (Valve Index knuckles) and collide
   with the table and the buttons: a finger pressed against the table edge stops
   there and bends. Tap a soldier's head to select it, tap a tile to walk there.
-- **Wall screens** show the selected soldier's stats, a top-down minimap and the
-  squad roster during a battle.
-- **Everything else** (menus, inventory, research, base management) is on the
-  big game screen behind the table. Point at it and use the trigger as a mouse.
+- **Your right wrist** carries a minimap of the whole battlefield: turn the back
+  of your wrist toward you like checking a watch, and tap the map with your left
+  index finger to move the table there.
+- **The back wall** holds the game screen (menus, research, base management:
+  point at it and use the trigger as a mouse) with the selected soldier's stats,
+  the squad roster and a minimap beside it.
+- **The room reacts**: the light over the table casts shadows of the figures and
+  your hands onto the map, the table glows up onto everything above it, the
+  screens tint the room, muzzle flashes and explosions light it up, night
+  missions dim it, and red alert lights sweep round while aliens are in sight.
 
 This is an engine fork (a ruleset mod can't add a VR renderer), but it reads the
 game state generically, so content mods such as X-Com Files should work.
@@ -54,28 +66,34 @@ The war table is 1.9 × 1.2 m with a 3.5 cm rim; `vrTableScale` (percent,
 60–150, default 100) makes it bigger or smaller. Its near edge and the control
 console stay where they are, sized for your hands.
 
+**Seat height:** rest both hands where you want the tabletop to be (as if they
+lay flat on it) and hold **Left B** for a second. The room moves so the table
+meets your palms; the result is saved as `vrSeatOffset` (millimetres), so a tall
+chair is a one-time setup. `vrShadows` (default on) turns the table shadows off
+if your PC needs the frame time.
+
 ## Controls (Valve Index / Touch / Vive wands)
 
 | Input | What it does |
 |---|---|
-| Trigger | Click on the screen, pick a tile on the table, click the globe |
-| A (right) | Right-click (turn a soldier, cancel) |
+| Left stick | Slide the view across the map (push forward = travel forward from where you look); spins the globe on the geoscape |
+| Right stick left/right | Turn the map |
+| Trackpad swipe up/down (either hand) | Zoom the map / globe |
+| Right stick up/down at the screen | Scroll lists |
+| Trigger | Laser click on the screen, a tile, the globe, a table button or key |
+| A (right) | Right-click with the laser (turn a soldier, cancel) |
 | B (right) | Back / Escape |
-| Stick up/down | Scroll lists; over the table: map level up/down; over the globe: zoom |
-| Grip over the table | Slide the map (one hand), zoom + turn it (both hands) |
-| Grip on the globe | Spin the globe |
-| Grip on the grab bar under the screen | Pick the screen up and put it somewhere else |
-| Grip elsewhere | Move yourself (one hand), turn the room (both hands) |
-| Left A | Put the screen on your left hand as a tablet (again to put it back) |
-| Left B | Recenter |
-| Other stick left/right | Snap turn |
+| Left B | Recenter; hold for a second to set the seat height |
+| Squeeze grip over the table | Slide the map by hand (one hand), zoom + turn (both hands) |
+| Squeeze grip elsewhere | Move yourself (one hand), turn the room (both hands) |
 
-Whichever hand pulled its trigger last is the pointing hand.
+Whichever hand pulled its trigger last is the pointing hand. The table follows
+the game's camera (next soldier, alien spotted) and keeps a walking soldier in
+view on its own.
 
 Grabbing is deliberate: on the Index the grip has to be **squeezed** (force
 sensor, not just touched) for about a tenth of a second; on other controllers
-it has to be pulled most of the way. The screen can only be picked up by the
-glowing bar underneath it.
+it has to be pulled most of the way.
 
 **With your hands** (anywhere the laser is off, i.e. over the table):
 
@@ -85,7 +103,10 @@ glowing bar underneath it.
 | Point your index finger just above the map | The game's cursor follows your fingertip (with its hit chance when aiming) |
 | Tap a soldier's head with your index finger | Select that soldier |
 | Tap a tile on the map with your index finger | Move the selected soldier there (with path preview on, tap again to confirm) |
-| Pinch an item in the inventory tray | Pick it up; let go over a slot or hand to move it there (costs TU like in the game). Dropping onto an occupied hand swaps the items. |
+| Pinch an item in the inventory tray: rest your index finger on the trigger and your thumb on A | The fingers close on the nearest item (it lights up as your hand approaches) and pick it up; lift either finger over a slot or hand to drop it there (costs TU like in the game). Dropping onto an occupied hand swaps the items. |
+| Press a key on the action board | Choose that firing mode / action, or Cancel |
+| Press a red alien button | Centre the view on that spotted alien |
+| Turn your right wrist toward you, tap the minimap with your left index | Move the table to that part of the map |
 
 If SteamVR offers skeletal finger data (`XR_EXT_hand_tracking`), the hands use
 it; otherwise each hand is posed from the controller (trigger = index finger,
@@ -114,8 +135,10 @@ headset on.
   ground area on the tray is five columns wide and shows the floor items that
   fit; the rest are on the big screen's inventory.
 - Typing (base names, save names) needs the real keyboard.
-- Projectiles and explosions on the table are simple glowing markers; smoke,
-  fire and floor items are not shown on the table yet (they are on the screen).
+- Items lying on the floor are not shown on the table map yet (they are in the
+  tray's ground area and on the screen).
+- The fog hides unexplored ground up to the level you are viewing; walls seen
+  from outside stay visible, as on the flat map.
 - Windows only for now. The code still compiles on Linux (that build drives
   the automated desktop-preview tests), but it is not packaged or supported.
 
@@ -129,10 +152,10 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrXr.*` | OpenXR: instance, session on the engine's GL context (Xlib or Win32 binding), stereo swapchains, action bindings for Index/Touch/Vive/simple controllers, haptics. |
 | `VrSystem.cpp` | Frame loop, tracking-space → world "rig", the controller → mouse bridge (synthetic SDL events), grabbing, desktop preview camera, test automation (`OXCE_VR_SCRIPT`). |
 | `VrRoom.*` | Procedural command-center room, war table, controller models. |
-| `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (a critically damped follower turns the game's ~33 steps a second into smooth motion at the headset's frame rate), tile picking, the HUD (wireframe cursor, selected-unit marker, path preview, readouts in the game's font), globe. |
+| `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (a critically damped follower turns the game's ~33 steps a second into smooth motion at the headset's frame rate), tile picking, the HUD (wireframe cursor, selected-unit marker, path preview, readouts in the game's font), voxel fog of war, voxel effects (projectiles, explosions, smoke, fire), the whole-map minimap, globe. |
 | `VrHands.*` | Hand skeletons (from XR hand tracking or posed from controller inputs), collision against box colliders with per-finger joint solving, pinch / point gestures. |
-| `VrTable.*` | The table's control panel: hatches and spring buttons, the inventory tray with voxel item models, head/tile taps, and the live wall screens. |
-| `VrGL.*`, `VrShaders.h` | Tiny GL helper layer and the single scene shader (linear lighting into an sRGB target). |
+| `VrTable.*` | The table's control panel: hatches and spring buttons, spotted-alien buttons, the pop-up action board, the inventory tray with voxel item models, head/tile taps, the wrist minimap and the live wall screens. |
+| `VrGL.*`, `VrShaders.h` | Tiny GL helper layer (incl. a shadow map target) and the single scene shader: linear lighting into an sRGB target, up to 12 point lights per frame, shadows from the key light, soft room-corner shading, the table's up-glow, the fog material. |
 
 Key ideas:
 
@@ -165,16 +188,27 @@ Key ideas:
   the cursor comes from `Map::getCursorInfo`, which is the flat map's own
   accuracy / damage code moved into a function both use. Readouts are drawn
   with the game's small font and palette and turned to face you.
+- **Pop-up controls mirror the game's own widgets.** `ActionMenuState::vrItems`
+  lists the visible action menu entries and `BattlescapeState::vrVisibleUnitButton`
+  the red spotted-alien indicators. The table copies their pictures from the game
+  frame and clicks their screen rectangles, so mods' custom actions just appear.
+- **The pinch is a controller gesture, the animation follows it.** Finger on the
+  trigger + thumb on A is the pinch (instant and reliable); the virtual index and
+  thumb are bent toward each other with a small IK solver (FABRIK) and eased over
+  a few frames, and the pinch point is where their pads meet.
 - **The flat camera and the table stay in sync.** The table follows the game's
   camera center and view level, and sliding the map on the table moves the
   game's camera.
 
 Engine hooks: `Game.cpp` (startup, event filter, per-loop `VR::frame`),
-`Screen.cpp` (hand the composed frame to VR), `Options` (`vrMode`, `vrTableScale`),
+`Screen.cpp` (hand the composed frame to VR), `Options` (`vrMode`, `vrTableScale`,
+`vrSeatOffset`, `vrShadows`),
 `UnitWalkBState` (in VR every visible unit counts as on screen: the engine
 otherwise skips most of the walk animation, and runs at timer interval 0, for
 units outside the flat camera's view, which made them sprint across the table),
 `BattlescapeState::vrTileClick` / `vrSelectUnit` / `vrButtons` / `vrIcons`,
+`BattlescapeState::vrVisibleUnitButton`, `ActionMenuState::vrItems`,
+`Projectile::vrAction` / `vrAmmo` / `vrBulletSprite` (style the projectile),
 `State::vrBlitTo` / `vrMute`, `FlcPlayer` and `VideoState` (keep VR frames
 going during the intro and cutscenes), `Map::setSelectorTile` /
 `getCursorSize` / `getCursorInfo` (the cursor readout code, moved out of

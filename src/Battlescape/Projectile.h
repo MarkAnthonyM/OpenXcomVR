@@ -72,6 +72,10 @@ public:
 	int calculateThrow(double accuracy);
 	/// Moves the projectile one step in its trajectory.
 	bool move();
+	/// VR tabletop: what was fired, to style the projectile on the table.
+	const BattleAction &vrAction() const { return _action; }
+	const BattleItem *vrAmmo() const { return _ammo; }
+	int vrBulletSprite() const { return _bulletSprite; }
 	/// Gets the current position in voxel space.
 	Position getPosition(int offset = 0) const;
 	/// Gets the two last position in voxel space.

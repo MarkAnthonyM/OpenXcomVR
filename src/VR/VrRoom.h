@@ -17,6 +17,7 @@ enum Material
 	MAT_CEILING = 5,
 	MAT_DISPLAY = 6,
 	MAT_GLOSSY = 7,
+	MAT_FOG = 9,      // fog of war on the table (8 is the board's textured terrain)
 };
 
 /// Where things are in the command center (meters, y up, player starts at the origin facing -Z).
@@ -32,11 +33,20 @@ struct RoomLayout
 		tableSize *= s;
 		tableCenter.z = nearZ - tableSize.y * 0.5f;
 	}
+	// room shell (x0, z0) .. (x1, z1), ceiling height; the back wall (z0) carries the game screens
+	float roomX0 = -3.4f, roomX1 = 3.4f, roomZ0 = -2.7f, roomZ1 = 2.2f, roomH = 3.2f;
 	glm::vec3 lightPos[4];
 	glm::vec3 lightCol[4];
-	glm::vec3 panelPos{0.f, 1.62f, -2.05f};     // default game screen placement
+	glm::vec3 panelPos{0.f, 1.62f, -2.66f};     // the game screen, fixed on the back wall
 	float panelTiltDeg = 0.f;
-	float panelWidth = 1.7f;
+	float panelWidth = 2.0f;
+	/// Live screens beside the game screen on the back wall (centre, width, height).
+	glm::vec3 statsPos{-2.05f, 1.86f, -2.665f};
+	glm::vec2 statsSize{1.36f, 0.85f};
+	glm::vec3 rosterPos{-2.05f, 0.98f, -2.665f};
+	glm::vec2 rosterSize{1.36f, 0.68f};
+	glm::vec3 minimapPos{2.05f, 1.62f, -2.665f};
+	glm::vec2 minimapSize{1.1f, 1.1f};
 };
 
 /// Builds the static X-COM style command center: room shell, consoles, war table.

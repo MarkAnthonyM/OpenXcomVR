@@ -97,6 +97,7 @@ struct XrRuntime::Impl
 	PFN_xrDestroyHandTrackerEXT destroyHandTracker = nullptr;
 	PFN_xrLocateHandJointsEXT locateHandJoints = nullptr;
 	XrAction squeezeForce = XR_NULL_HANDLE, triggerTouch = XR_NULL_HANDLE, thumbTouch = XR_NULL_HANDLE;
+	XrAction aTouch = XR_NULL_HANDLE, trackpad = XR_NULL_HANDLE, trackpadTouch = XR_NULL_HANDLE;
 	XrAction aimPose = XR_NULL_HANDLE, gripPose = XR_NULL_HANDLE, trigger = XR_NULL_HANDLE, squeeze = XR_NULL_HANDLE,
 		stick = XR_NULL_HANDLE, btnA = XR_NULL_HANDLE, btnB = XR_NULL_HANDLE, stickClick = XR_NULL_HANDLE, vibrate = XR_NULL_HANDLE;
 	XrPath hand[2] = {XR_NULL_PATH, XR_NULL_PATH};
@@ -296,6 +297,9 @@ bool XrRuntime::init(const std::string &appName)
 	_p->squeezeForce = makeAction(_p.get(), XR_ACTION_TYPE_FLOAT_INPUT, "grab_force", "Grab force (Index)");
 	_p->triggerTouch = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "trigger_touch", "Index finger on trigger");
 	_p->thumbTouch = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "thumb_touch", "Thumb resting");
+	_p->aTouch = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "a_touch", "Thumb on A (pinch)");
+	_p->trackpad = makeAction(_p.get(), XR_ACTION_TYPE_VECTOR2F_INPUT, "trackpad", "Trackpad (zoom)");
+	_p->trackpadTouch = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "trackpad_touch", "Trackpad touched");
 
 	struct B { XrAction a; const char *p; };
 	auto suggest = [&](const char *profile, std::vector<B> list)
@@ -334,6 +338,9 @@ bool XrRuntime::init(const std::string &appName)
 		both(v, _p->thumbTouch, "/input/a/touch");
 		both(v, _p->thumbTouch, "/input/b/touch");
 		both(v, _p->thumbTouch, "/input/trackpad/touch");
+		both(v, _p->aTouch, "/input/a/touch");
+		both(v, _p->trackpad, "/input/trackpad");
+		both(v, _p->trackpadTouch, "/input/trackpad/touch");
 		suggest("/interaction_profiles/valve/index_controller", v);
 	}
 	{
@@ -355,6 +362,8 @@ bool XrRuntime::init(const std::string &appName)
 		v.push_back({_p->thumbTouch, "/user/hand/left/input/y/touch"});
 		v.push_back({_p->thumbTouch, "/user/hand/right/input/a/touch"});
 		v.push_back({_p->thumbTouch, "/user/hand/right/input/b/touch"});
+		v.push_back({_p->aTouch, "/user/hand/left/input/x/touch"});
+		v.push_back({_p->aTouch, "/user/hand/right/input/a/touch"});
 		suggest("/interaction_profiles/oculus/touch_controller", v);
 	}
 	{
@@ -521,6 +530,9 @@ bool XrRuntime::beginFrame(EyeView views[2], HandState hands[2], bool &shouldRen
 		hs.squeezeForce = hs.hasForce ? f.currentState : 0.f;
 		gi.action = _p->triggerTouch; hs.triggerTouch = synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState;
 		gi.action = _p->thumbTouch; hs.thumbTouch = synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState;
+		gi.action = _p->aTouch; hs.aTouch = synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState;
+		gi.action = _p->trackpadTouch; hs.trackpadTouch = synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState;
+		gi.action = _p->trackpad; hs.trackpad = (synced && xrGetActionStateVector2f(_p->session, &gi, &v) == XR_SUCCESS && v.isActive) ? glm::vec2(v.currentState.x, v.currentState.y) : glm::vec2(0.f);
 		hs.triggerBtn.update(hs.trigger > hs.triggerHyst(hs.triggerBtn.down));
 		hs.squeezeBtn.update(hs.squeeze > (hs.squeezeBtn.down ? 0.3f : 0.6f));
 

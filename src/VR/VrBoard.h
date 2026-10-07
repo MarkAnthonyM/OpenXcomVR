@@ -68,6 +68,24 @@ public:
 	void hoverNone();
 	void click(int button);
 	void wheel(int dir);
+	/// Stick / trackpad movement: slide the view across the map by a table-space distance (xz, metres),
+	/// turn it, zoom it. On the geoscape the same calls spin and zoom the globe.
+	void pan(const glm::vec2 &worldDelta);
+	void rotate(float radians);
+	void zoom(float factor);
+	/// Whole-map overview for the wrist pad and the wall screen: S x S RGBA, turned like the table when
+	/// align is set. uv in [-0.5, 0.5] (up = +v) maps back to a tile; centerOnTile moves the table there.
+	bool renderMinimap(std::vector<uint32_t> &px, int S, bool align);
+	glm::vec2 minimapTile(const glm::vec2 &uv, bool align) const;
+	void centerOnTile(const glm::vec2 &tile);
+	/// Test helper: an explosion effect at a tile (no damage, effect only).
+	void testBurst(int tx, int ty, int tz, bool big);
+	/// Lighting: draw only what casts shadows; this frame's flashes (world position, colour);
+	/// whether aliens are in sight or it is their turn; how dark the mission is (0 day .. 1 night).
+	void setShadowPass(bool on, const glm::vec3 &light = glm::vec3(0.f));
+	void lights(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const;
+	bool alert() const;
+	float nightLevel() const;
 	bool canGrab(const glm::vec3 &handWorld) const;
 	void beginGrab(int hand, const glm::vec3 &handWorld);
 	void updateGrab(int hand, const glm::vec3 &handWorld);

@@ -36,11 +36,13 @@ struct TableContext
 	std::function<void(int, int, int)> clickScreen; // game pixel x, y, SDL button
 	std::function<void(int, float, float)> haptic;  // hand, amplitude, seconds
 	bool handBusy[2] = {false, false};              // hand is grabbing something else
+	std::function<void(int)> pressKey;              // SDL key (e.g. Escape to close a menu)
+	glm::vec3 eye{0.f, 1.3f, 0.f};                  // player's head (world)
 };
 
 struct TableHit
 {
-	enum Kind { NONE, BUTTON, ITEM, TRAY } kind = NONE;
+	enum Kind { NONE, BUTTON, ITEM, TRAY, MENU } kind = NONE;
 	float t = 1e9f;
 	int index = -1;
 	glm::vec3 point{0.f};
@@ -63,6 +65,8 @@ public:
 	float surfaceY() const;
 	void draw(const Shader &sh) const;
 	void drawWalls(const Shader &sh) const;
+	/// The live wall screens as lights: a point in front of each and its average colour.
+	void screenGlow(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const;
 	/// Laser / mouse.
 	bool raycast(const glm::vec3 &o, const glm::vec3 &d, TableHit &hit) const;
 	void pointerMove(const TableHit *hit);
@@ -73,6 +77,8 @@ public:
 	bool itemCenter(int index, glm::vec3 &world) const;
 	bool cellCenter(const std::string &slot, float cx, float cy, glm::vec3 &world) const;
 	bool buttonCenter(const std::string &name, glm::vec3 &world) const;
+	/// Test helper: a key of the pop-up action board (front face centre and its normal).
+	bool menuKeyCenter(int index, glm::vec3 &world, glm::vec3 &normal) const;
 	struct Impl;
 private:
 	std::unique_ptr<Impl> _p;

@@ -33,6 +33,7 @@
 #include "../Battlescape/MiniMapView.h"
 #include "../Battlescape/Map.h"
 #include "../Battlescape/Camera.h"
+#include "../Battlescape/ActionMenuState.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <map>
 #include <cmath>
@@ -64,7 +65,7 @@ static float smooth01(float e0, float e1, float x)
 struct Btn
 {
 	std::string name;
-	glm::ivec4 px;              // x, y, w, h inside the icon panel
+	glm::ivec4 px{0};           // x, y, w, h inside the icon panel
 	glm::vec4 rect{0.f};        // world xz rect of the well
 	float open = 0.f, wait = 0.f, delay = 0.f;
 	float depress = 0.f;
@@ -73,6 +74,8 @@ struct Btn
 	bool visible = true;
 	bool target = false;
 	int pressHand = -1;
+	int alert = -1;             // >= 0: a spotted-enemy indicator; its picture and click come from the screen
+	glm::ivec4 scr{0};          // alerts: the indicator's rectangle on the game screen
 };
 
 struct ItemView
@@ -114,6 +117,7 @@ struct Wall
 	int tw = 0, th = 0;
 	bool live = false;
 	float timer = 0.f;
+	glm::vec3 avg{0.f};         // average colour (the light the screen throws into the room)
 };
 
 struct Table::Impl
@@ -163,6 +167,50 @@ struct Table::Impl
 	float cooldown[2] = {0.f, 0.f};
 	std::string lastEvent;
 
+	// wrist pad (right hand): whole-map minimap, tap with the other hand to move the table there
+	struct Wrist
+	{
+		float show = 0.f;           // fade 0..1
+		glm::vec3 c{0.f}, right{1, 0, 0}, up{0, 1, 0}, n{0, 0, 1};
+		float size = 0.11f;
+		Texture tex;
+		std::vector<uint32_t> px;
+		float timer = 0.f;
+		bool armed = false;         // the other fingertip was in front of the pad last frame
+		float cooldown = 0.f;
+	} wrist;
+	void updateWrist(TableContext &ctx, const Hands &hands, float dt);
+	void drawWrist(const Shader &sh) const;
+
+	// spotted-enemy indicators: red buttons right of the bay
+	static const int ALERTS = 10;
+	Texture alertTex[ALERTS];
+	glm::vec4 alertArea{0.f};
+	float stripFar = 0.f;
+
+	// the action menu (aim / snap / auto / throw ...): keys on a board that unfolds over the console
+	struct MenuKey
+	{
+		glm::ivec4 scr{0};          // screen rectangle; w == 0 for the cancel key
+		glm::vec2 c{0.f}, half{0.f}; // centre and half size on the board (metres; u right, v up)
+		Texture tex;
+		float depress = 0.f;
+		bool latched = false;
+		int hand = -1;
+		float laserTimer = 0.f;
+	};
+	std::vector<MenuKey> menuKeys;
+	ActionMenuState *menuState = nullptr;
+	float menuOpen = 0.f;
+	glm::vec3 mO{0.f}, mRight{1, 0, 0}, mUp{0, 1, 0}, mN{0, 0, 1}; // board origin (bottom centre) and axes
+	glm::vec2 mSize{0.f};
+	Texture cancelTex;
+	int cancelW = 0, cancelH = 0;
+	void updateMenu(TableContext &ctx, const Hands &hands, float dt);
+	void pressMenuKey(int i, int hand, TableContext &ctx);
+	glm::vec3 menuKeyWorld(const MenuKey &k, float lift) const { return mO + mRight * k.c.x + mUp * (k.c.y * menuOpen) + mN * lift; }
+	void drawMenu(const Shader &sh) const;
+
 	// wall screens
 	Wall walls[3];
 	UnitInfoState *stats = nullptr;
@@ -211,6 +259,10 @@ struct Table::Impl
 	glm::vec3 itemOrigin(int i) const;
 	void updateItems(TableContext &ctx, const Hands &hands);
 	void grab(int i, int hand, const glm::vec3 &at);
+	int pickItem(const glm::vec3 &pinchPoint) const;
+	int handHover = -1;
+	float pinchAge[2] = {0.f, 0.f};
+	float frameDt = 0.f;
 	void drop(TableContext &ctx);
 	void warn(TableContext &ctx, const std::string &id);
 	void updateTaps(TableContext &ctx, const Hands &hands, float dt);
@@ -268,6 +320,30 @@ void Table::init(const RoomLayout &layout)
 		b.px = {d.x, d.y, d.w, d.h};
 		p.btns.push_back(b);
 	}
+	// spotted-enemy indicators: two rows of red buttons between the bay and the table's right edge
+	p.stripFar = stripFar;
+	{
+		float x0 = p.bay.z + 0.025f, x1 = p.table.z - 0.03f;
+		float z0 = p.bay.y, z1 = p.bay.w;
+		p.alertArea = {x0 - 0.008f, z0 - 0.008f, x1 + 0.008f, z1 + 0.008f};
+		const int cols = 5;
+		float cw = (x1 - x0) / cols, rh = (z1 - z0) / 2.f;
+		for (int i = 0; i < Impl::ALERTS; ++i)
+		{
+			Btn b;
+			b.name = "alert" + std::to_string(i);
+			b.alert = i;
+			b.visible = false;
+			int row = i / cols, col = i % cols;
+			// nearest row first, left to right
+			float bx = x0 + col * cw, bz = z1 - (row + 1) * rh;
+			const float m = 0.004f;
+			b.rect = {bx + m, bz + m, bx + cw - m, bz + rh - m};
+			b.delay = 0.05f * i;
+			p.btns.push_back(b);
+		}
+	}
+
 	p.layoutButtons();
 
 	// meshes
@@ -291,9 +367,11 @@ void Table::init(const RoomLayout &layout)
 	p.cavity.upload(c);
 
 	// wall screens, in front of the decorative displays the room already has
-	p.walls[0] = {{-4.972f, 1.8f, -3.2f}, {0, 0, -1}, {1, 0, 0}, 2.08f, 1.3f};      // left: soldier stats
-	p.walls[1] = {{4.972f, 1.8f, -3.2f}, {0, 0, 1}, {-1, 0, 0}, 1.3f, 1.3f};        // right: minimap
-	p.walls[2] = {{-2.15f, 2.25f, -6.972f}, {1, 0, 0}, {0, 0, 1}, 1.6f, 1.0f};      // back: squad roster
+	// live screens on the back wall, around the game screen
+	const glm::vec3 R(1, 0, 0), N(0, 0, 1);
+	p.walls[0] = {layout.statsPos, R, N, layout.statsSize.x, layout.statsSize.y};       // soldier stats
+	p.walls[1] = {layout.minimapPos, R, N, layout.minimapSize.x, layout.minimapSize.y}; // minimap
+	p.walls[2] = {layout.rosterPos, R, N, layout.rosterSize.x, layout.rosterSize.y};    // squad roster
 }
 
 void Table::Impl::updateRemap()
@@ -311,7 +389,7 @@ void Table::Impl::updateRemap()
 	// only when the right hand really is to the right of everything else in the way
 	if (at >= from || to <= from) return;
 	for (const Btn &b : btns)
-		if (&b != R && b.px.x < to && b.px.x + b.px.z > from) return; // something else shares those columns
+		if (&b != R && b.alert < 0 && b.px.x < to && b.px.x + b.px.z > from) return; // something else shares those columns
 	moveFrom = from; moveTo = to; insertAt = at;
 }
 
@@ -322,6 +400,7 @@ void Table::Impl::layoutButtons()
 	float halfW = (bay.z - bay.x) * 0.5f;
 	for (Btn &b : btns)
 	{
+		if (b.alert >= 0) continue; // placed once in init()
 		float vx = (float)visX(b.px.x);
 		glm::vec3 a = bayWorld(vx, (float)b.px.y, sy);
 		glm::vec3 c = bayWorld(vx + b.px.z, (float)(b.px.y + b.px.w), sy);
@@ -364,6 +443,25 @@ void Table::Impl::syncBattle(TableContext &ctx)
 	}
 	if (moved) layoutButtons();
 
+	// spotted-enemy indicators: shown while the game shows them, picture copied from the screen
+	for (Btn &b : btns)
+	{
+		if (b.alert < 0) continue;
+		InteractiveSurface *ind = bs->vrVisibleUnitButton(b.alert);
+		b.visible = ind && ind->getVisible();
+		if (!b.visible) continue;
+		b.scr = {ind->getX(), ind->getY(), ind->getWidth(), ind->getHeight()};
+		if (bsTop && ctx.pixels && b.scr.z > 0 && b.scr.x + b.scr.z <= ctx.surfW && b.scr.y + b.scr.w <= ctx.surfH)
+		{
+			std::vector<uint32_t> px((size_t)b.scr.z * b.scr.w);
+			for (int y = 0; y < b.scr.w; ++y)
+				std::copy_n(&(*ctx.pixels)[(size_t)(b.scr.y + y) * ctx.surfW + b.scr.x], b.scr.z, &px[(size_t)y * b.scr.z]);
+			Texture &t = alertTex[b.alert];
+			if (!t.valid() || t.width() != b.scr.z || t.height() != b.scr.w) t.create(b.scr.z, b.scr.w, false, true);
+			t.update(px.data(), b.scr.z, b.scr.w);
+		}
+	}
+
 	// copy the icon panel out of the game frame while the battlescape is on top
 	if (bsTop && ctx.pixels && ctx.surfW >= icons.x + icons.z && ctx.surfH >= icons.y + icons.w)
 	{
@@ -387,6 +485,7 @@ void Table::Impl::pressButton(int i, int hand, TableContext &ctx)
 	Btn &b = btns[i];
 	if (!usable(b)) return;
 	int gx = icons.x + b.px.x + b.px.z / 2, gy = icons.y + b.px.y + b.px.w / 2;
+	if (b.alert >= 0) { gx = b.scr.x + b.scr.z / 2; gy = b.scr.y + b.scr.w / 2; }
 	ctx.clickScreen(gx, gy, SDL_BUTTON_LEFT);
 	if (hand >= 0 && hand < 2) ctx.haptic(hand, 0.7f, 0.025f);
 	if (battle)
@@ -859,6 +958,7 @@ void Table::Impl::updateItems(TableContext &ctx, const Hands &hands)
 		for (const ItemView &v : items) if (v.item == held.item) present = true;
 		if (!present || !inBattle) { held.item = nullptr; held.hand = -1; }
 	}
+	handHover = -1;
 	if (!inBattle) return;
 	for (int h = 0; h < 2; ++h)
 	{
@@ -871,33 +971,49 @@ void Table::Impl::updateItems(TableContext &ctx, const Hands &hands)
 		if (held.hand == h)
 		{
 			// follow while pinched; on release keep the last pinched position (opening fingers move the midpoint)
-			if (P.pinch) held.origin = P.pinchPoint + held.offset;
+			if (P.pinch)
+			{
+				glm::vec3 goal = P.pinchPoint + held.offset;
+				held.origin += (goal - held.origin) * 0.55f; // a little smoothing against tracking jitter
+			}
 			else drop(ctx);
 			continue;
 		}
-		if (P.pinchStarted && !held.item)
+		// the item the fingers are closest to: highlighted while the hand approaches, taken on a pinch
+		int best = pickItem(P.pinchPoint);
+		if (best >= 0) handHover = best;
+		// (while the fingers are still closing, the pinch can still take an item)
+		pinchAge[h] = P.pinch ? pinchAge[h] + frameDt : 0.f;
+		if (P.pinch && pinchAge[h] < 0.25f && !held.item && best >= 0)
 		{
-			// the item under the pinch, if it is close to its float height
-			int best = -1;
-			float bestD = 1e9f;
-			for (int i = 0; i < (int)items.size(); ++i)
-			{
-				glm::vec2 a = invToWorld({items[i].foot.x, items[i].foot.y});
-				glm::vec2 b = invToWorld({items[i].foot.x + items[i].foot.z, items[i].foot.y + items[i].foot.w});
-				const float m = 0.012f;
-				glm::vec3 pp = P.pinchPoint;
-				if (pp.x < a.x - m || pp.x > b.x + m || pp.z < a.y - m || pp.z > b.y + m) continue;
-				if (pp.y < sy - 0.01f || pp.y > sy + 0.09f) continue;
-				float d = glm::length(glm::vec2(pp.x, pp.z) - (a + b) * 0.5f);
-				if (d < bestD) { bestD = d; best = i; }
-			}
-			if (best >= 0)
-			{
-				grab(best, h, P.pinchPoint);
-				ctx.haptic(h, 0.35f, 0.02f);
-			}
+			grab(best, h, P.pinchPoint);
+			ctx.haptic(h, 0.35f, 0.02f);
 		}
 	}
+}
+
+/// Nearest floating item to a point (3D, to the middle of its footprint at float height), if close enough.
+int Table::Impl::pickItem(const glm::vec3 &pp) const
+{
+	int best = -1;
+	float bestD = 1e9f;
+	for (int i = 0; i < (int)items.size(); ++i)
+	{
+		glm::vec2 a = invToWorld({items[i].foot.x, items[i].foot.y});
+		glm::vec2 b = invToWorld({items[i].foot.x + items[i].foot.z, items[i].foot.y + items[i].foot.w});
+		glm::vec2 lo = glm::min(a, b), hi = glm::max(a, b);
+		// distance to the footprint rectangle (0 inside), and height above the float level
+		glm::vec2 q = glm::clamp(glm::vec2(pp.x, pp.z), lo, hi);
+		float dxz = glm::length(glm::vec2(pp.x, pp.z) - q);
+		float dy = pp.y - itemY(i);
+		if (dy < -0.03f || dy > 0.10f) continue;
+		float d = dxz + std::max(0.f, std::fabs(dy) - 0.015f) * 0.5f;
+		if (d > 0.022f) continue;
+		// prefer the item whose centre is nearest when footprints touch
+		d += glm::length(glm::vec2(pp.x, pp.z) - (lo + hi) * 0.5f) * 0.05f;
+		if (d < bestD) { bestD = d; best = i; }
+	}
+	return best;
 }
 
 // ------------------------------------------------------------------ finger taps on the map
@@ -954,6 +1070,305 @@ void Table::Impl::updateTaps(TableContext &ctx, const Hands &hands, float dt)
 		}
 		touching[h] = now;
 	}
+}
+
+// ------------------------------------------------------------------ action menu board
+
+/// While the game's action menu is open (aimed / snap / auto shot, throw, ...), its entries become keys
+/// on a board that unfolds over the console, right where the weapon buttons are. Each key shows the
+/// entry exactly as the game draws it; pressing one clicks that entry. A cancel key closes the menu.
+void Table::Impl::updateMenu(TableContext &ctx, const Hands &hands, float dt)
+{
+	ActionMenuState *am = nullptr;
+	if (inBattle && !game->getStates().empty())
+		am = dynamic_cast<ActionMenuState*>(game->getStates().back());
+	std::vector<InteractiveSurface*> items;
+	if (am) items = am->vrItems();
+	bool want = am && !items.empty();
+	if (want && (am != menuState || items.size() + 1 != menuKeys.size()))
+	{
+		// (re)build the layout for this menu
+		menuState = am;
+		menuKeys.clear();
+		int minX = 1 << 30, minY = 1 << 30, maxX = -(1 << 30), maxY = -(1 << 30);
+		for (InteractiveSurface *it : items)
+		{
+			minX = std::min(minX, it->getX()); minY = std::min(minY, it->getY());
+			maxX = std::max(maxX, it->getX() + it->getWidth()); maxY = std::max(maxY, it->getY() + it->getHeight());
+		}
+		const float K = 0.0011f, pad = 0.012f, gap = 0.003f; // 1.1 mm per screen pixel
+		const float cancelW = 0.065f;
+		float w = (maxX - minX) * K, h = (maxY - minY) * K;
+		mSize = glm::vec2(w + cancelW + pad * 3.f, h + pad * 2.f);
+		float left = -mSize.x * 0.5f + pad;
+		for (InteractiveSurface *it : items)
+		{
+			MenuKey k;
+			k.scr = {it->getX(), it->getY(), it->getWidth(), it->getHeight()};
+			float cx = left + ((it->getX() - minX) + it->getWidth() * 0.5f) * K;
+			float cy = pad + (maxY - (it->getY() + it->getHeight() * 0.5f)) * K;
+			k.c = {cx, cy};
+			k.half = glm::vec2(it->getWidth() * K * 0.5f - gap, it->getHeight() * K * 0.5f - gap);
+			menuKeys.push_back(std::move(k));
+		}
+		MenuKey c; // cancel, right of the entries, level with the top one
+		c.scr = {0, 0, 0, 0};
+		c.c = {left + w + pad + cancelW * 0.5f, pad + h - std::min(h, 0.03f) * 0.5f};
+		c.half = {cancelW * 0.5f - gap, std::min(h, 0.03f) * 0.5f - gap};
+		menuKeys.push_back(std::move(c));
+		if (!cancelTex.valid())
+		{
+			Mod *mod = ctx.game->getMod();
+			Font *big = mod->getFont("FONT_BIG", false), *small = mod->getFont("FONT_SMALL", false);
+			if (big && small && bs)
+			{
+				const int W = 44, H = 11;
+				Text t(W, H, 0, 0);
+				t.initText(big, small, ctx.game->getLanguage());
+				t.setPalette(bs->getPalette());
+				t.setColor(1);
+				t.setAlign(ALIGN_CENTER);
+				t.setText(ctx.game->getLanguage()->getString("STR_CANCEL_UC"));
+				t.draw();
+				std::vector<uint32_t> px((size_t)W * H, 0xFF101040u);
+				for (int y = 0; y < H; ++y)
+					for (int x = 0; x < W; ++x)
+					{
+						int v = t.getPixel(x, y);
+						if (v) px[(size_t)y * W + x] = v <= 2 ? 0xFFB0D0FFu : 0xFF000010u;
+					}
+				cancelTex.create(W, H, false, true);
+				cancelTex.update(px.data(), W, H);
+			}
+		}
+	}
+	if (!want) menuState = nullptr;
+	float target = want ? 1.f : 0.f;
+	menuOpen = want ? std::min(1.f, menuOpen + dt / 0.18f) : std::max(0.f, menuOpen - dt / 0.12f);
+	(void)target;
+	if (menuOpen <= 0.f) { if (!want) menuKeys.clear(); return; }
+
+	// the board: standing at the far edge of the console over the bay's right half, leaning back
+	const float lean = glm::radians(22.f);
+	mRight = glm::vec3(1, 0, 0);
+	mUp = glm::vec3(0, std::cos(lean), -std::sin(lean));
+	mN = glm::vec3(0, std::sin(lean), std::cos(lean));
+	mO = glm::vec3(std::max(bay.x + mSize.x * 0.5f, std::min(bay.z, table.z - 0.03f) - mSize.x * 0.5f), sy + 0.01f, stripFar - 0.005f);
+
+	// pictures straight from the game screen
+	if (ctx.pixels)
+		for (MenuKey &k : menuKeys)
+		{
+			if (k.scr.z <= 0 || k.scr.x < 0 || k.scr.y < 0 || k.scr.x + k.scr.z > ctx.surfW || k.scr.y + k.scr.w > ctx.surfH) continue;
+			std::vector<uint32_t> px((size_t)k.scr.z * k.scr.w);
+			for (int y = 0; y < k.scr.w; ++y)
+				std::copy_n(&(*ctx.pixels)[(size_t)(k.scr.y + y) * ctx.surfW + k.scr.x], k.scr.z, &px[(size_t)y * k.scr.z]);
+			if (!k.tex.valid() || k.tex.width() != k.scr.z || k.tex.height() != k.scr.w) k.tex.create(k.scr.z, k.scr.w, false, true);
+			k.tex.update(px.data(), k.scr.z, k.scr.w);
+		}
+
+	// fingertips push the keys in; a key clicks near the bottom of its travel
+	const float LIFT = 0.006f, TRAVEL_K = 0.005f;
+	for (int i = 0; i < (int)menuKeys.size(); ++i)
+	{
+		MenuKey &k = menuKeys[i];
+		float pushed = 0.f;
+		int by = -1;
+		if (menuOpen > 0.95f)
+			for (int h = 0; h < 2; ++h)
+			{
+				const HandPose &P = hands.pose[h];
+				if (!P.valid || P.ghost) continue;
+				glm::vec3 tip = P.raw[fingerTip(F_INDEX)];
+				float r = P.radius[fingerTip(F_INDEX)];
+				glm::vec3 d = tip - mO;
+				glm::vec2 uv(glm::dot(d, mRight), glm::dot(d, mUp));
+				if (std::fabs(uv.x - k.c.x) > k.half.x + r * 0.5f || std::fabs(uv.y - k.c.y) > k.half.y + r * 0.5f) continue;
+				float depth = LIFT - (glm::dot(d, mN) - r); // how far the fingertip is past the key face
+				if (depth > 0.f && depth < 0.05f && depth > pushed) { pushed = depth; by = h; }
+			}
+		if (k.laserTimer > 0.f) { k.laserTimer -= dt; pushed = TRAVEL_K; }
+		pushed = std::min(pushed, TRAVEL_K);
+		if (pushed > k.depress) { k.depress = pushed; if (by >= 0) k.hand = by; }
+		else k.depress = std::max(pushed, k.depress - 0.1f * dt);
+		if (!k.latched && k.depress > TRAVEL_K * 0.7f)
+		{
+			k.latched = true;
+			if (k.laserTimer <= 0.f) pressMenuKey(i, k.hand, ctx);
+		}
+		else if (k.latched && k.depress < TRAVEL_K * 0.3f)
+		{
+			k.latched = false;
+			k.hand = -1;
+		}
+	}
+}
+
+void Table::Impl::pressMenuKey(int i, int hand, TableContext &ctx)
+{
+	if (i < 0 || i >= (int)menuKeys.size() || !menuState) return;
+	const MenuKey &k = menuKeys[i];
+	if (k.scr.z <= 0)
+	{
+		if (ctx.pressKey) ctx.pressKey(SDLK_ESCAPE);
+		lastEvent = "action menu cancelled";
+	}
+	else
+	{
+		ctx.clickScreen(k.scr.x + k.scr.z / 2, k.scr.y + k.scr.w / 2, SDL_BUTTON_LEFT);
+		std::ostringstream ss;
+		ss << "action menu entry " << i;
+		lastEvent = ss.str();
+	}
+	if (hand >= 0 && hand < 2) ctx.haptic(hand, 0.7f, 0.025f);
+	if (battle)
+		if (Sound *snd = game->getMod()->getSoundByDepth(battle->getDepth(), Mod::BUTTON_PRESS)) snd->play();
+	Log(LOG_INFO) << "[VR] " << lastEvent;
+}
+
+void Table::Impl::drawMenu(const Shader &sh) const
+{
+	if (menuOpen <= 0.f || menuKeys.empty()) return;
+	auto frameAt = [&](glm::vec2 c, glm::vec2 half, float lift) -> glm::mat4
+	{
+		glm::mat4 m(1.f);
+		m[0] = glm::vec4(mRight * (half.x * 2.f), 0.f);
+		m[1] = glm::vec4(mUp * (half.y * 2.f * menuOpen), 0.f);
+		m[2] = glm::vec4(mN, 0.f);
+		m[3] = glm::vec4(mO + mRight * c.x + mUp * (c.y * menuOpen) + mN * lift, 1.f);
+		return m;
+	};
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// backing glass with a glowing rim
+	glm::vec2 bc(0.f, mSize.y * 0.5f), bh = mSize * 0.5f;
+	sh.set("uMode", 2);
+	sh.set("uTint", glm::vec4(0.2f, 1.1f, 1.3f, 0.75f * menuOpen));
+	sh.set("uModel", frameAt(bc, bh + glm::vec2(0.003f), -0.001f));
+	quadFront.draw();
+	sh.set("uTint", glm::vec4(0.015f, 0.03f, 0.04f, 0.92f * menuOpen));
+	sh.set("uModel", frameAt(bc, bh, 0.f));
+	quadFront.draw();
+	glDisable(GL_BLEND);
+	for (const MenuKey &k : menuKeys)
+	{
+		float lift = 0.006f - k.depress;
+		// key body
+		sh.set("uMode", 0);
+		sh.set("uTint", glm::vec4(0.12f, 0.13f, 0.15f, 1.f));
+		glm::mat4 body = frameAt(k.c, k.half, lift) * glm::scale(glm::mat4(1.f), {1.f, 1.f, std::max(0.001f, lift)});
+		sh.set("uModel", body * glm::translate(glm::mat4(1.f), {0.f, 0.f, -0.5f}));
+		box.draw();
+		// face
+		const Texture &t = k.scr.z > 0 ? k.tex : cancelTex;
+		if (!t.valid()) continue;
+		sh.set("uMode", 1);
+		float lit = k.latched ? 1.5f : 1.1f;
+		sh.set("uTint", glm::vec4(lit, lit, lit, 1.f));
+		sh.set("uTexSize", glm::vec2((float)t.width(), (float)t.height()));
+		sh.set("uModel", frameAt(k.c, k.half, lift + 0.0005f));
+		t.bind(0);
+		quadFront.draw();
+	}
+	sh.set("uTint", glm::vec4(1.f));
+}
+
+// ------------------------------------------------------------------ wrist minimap
+
+void Table::Impl::updateWrist(TableContext &ctx, const Hands &hands, float dt)
+{
+	Wrist &w = wrist;
+	w.cooldown = std::max(0.f, w.cooldown - dt);
+	const HandPose &R = hands.pose[1];
+	bool want = false;
+	if (inBattle && R.valid && !R.ghost)
+	{
+		// joints (XR_EXT_hand_tracking order): wrist 1, index knuckle 7, middle knuckle 12, little knuckle 22
+		glm::vec3 wr = R.pos[1], ik = R.pos[7], mk = R.pos[12], lk = R.pos[22];
+		glm::vec3 back = -glm::cross(ik - wr, lk - wr); // back of the right hand
+		if (glm::length(back) > 1e-6f)
+		{
+			back = glm::normalize(back);
+			glm::vec3 toEye = ctx.eye - wr;
+			float dist = glm::length(toEye);
+			// like checking a watch: the back of the wrist turned toward the eyes, held fairly close
+			float facing = dist > 1e-3f ? glm::dot(back, toEye / dist) : 0.f;
+			want = facing > (w.show > 0.5f ? 0.45f : 0.62f) && dist < 0.8f;
+			glm::vec3 f = glm::normalize(mk - wr);
+			// keep the map upright: "up" on the pad is world up laid into the pad's plane
+			// (falls back to across the forearm when the pad lies flat)
+			glm::vec3 up = glm::vec3(0, 1, 0) - back * back.y;
+			if (glm::length(up) < 0.2f) up = glm::cross(back, f);
+			if (glm::length(up) > 1e-6f)
+			{
+				up = glm::normalize(up);
+				glm::vec3 right = glm::normalize(glm::cross(up, back));
+				w.n = back; w.up = up; w.right = right;
+				w.c = wr + back * 0.03f - f * 0.035f;
+			}
+		}
+	}
+	float a = 1.f - std::exp(-dt * 10.f);
+	w.show += ((want ? 1.f : 0.f) - w.show) * a;
+	if (w.show < 0.02f) { w.armed = false; return; }
+
+	w.timer -= dt;
+	if (w.timer <= 0.f)
+	{
+		w.timer = 1.f / 30.f;
+		if (board->renderMinimap(w.px, 160, true))
+		{
+			if (!w.tex.valid()) w.tex.create(160, 160, true, true);
+			w.tex.update(w.px.data(), 160, 160);
+		}
+	}
+
+	// tap with the left index fingertip: the table glides there
+	const HandPose &L = hands.pose[0];
+	if (L.valid && !L.ghost && w.show > 0.6f)
+	{
+		glm::vec3 tip = L.tip(F_INDEX);
+		glm::vec3 d = tip - w.c;
+		float depth = glm::dot(d, w.n);
+		glm::vec2 uv(glm::dot(d, w.right) / w.size, glm::dot(d, w.up) / w.size);
+		bool inside = std::fabs(uv.x) < 0.5f && std::fabs(uv.y) < 0.5f;
+		bool touching = inside && depth < 0.006f && depth > -0.03f;
+		if (touching && w.armed && w.cooldown <= 0.f)
+		{
+			board->centerOnTile(board->minimapTile(uv, true));
+			ctx.haptic(0, 0.45f, 0.02f);
+			ctx.haptic(1, 0.25f, 0.02f);
+			w.cooldown = 0.25f;
+			lastEvent = "wrist minimap tap";
+		}
+		w.armed = inside && depth > 0.006f && depth < 0.06f ? true : (touching ? false : w.armed && inside);
+	}
+}
+
+void Table::Impl::drawWrist(const Shader &sh) const
+{
+	const Wrist &w = wrist;
+	if (w.show < 0.02f || !w.tex.valid()) return;
+	glm::mat4 m(1.f);
+	m[0] = glm::vec4(w.right, 0.f);
+	m[1] = glm::vec4(w.up, 0.f);
+	m[2] = glm::vec4(w.n, 0.f);
+	m[3] = glm::vec4(w.c, 1.f);
+	float s = w.size * (0.6f + 0.4f * w.show);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// a thin dark plate with a glowing edge, then the map
+	sh.set("uMode", 2);
+	sh.set("uTint", glm::vec4(0.25f, 1.2f, 1.4f, 0.8f * w.show));
+	sh.set("uModel", m * glm::translate(glm::mat4(1.f), {0.f, 0.f, -0.001f}) * glm::scale(glm::mat4(1.f), {s * 1.06f, s * 1.06f, 1.f}));
+	quadFront.draw();
+	sh.set("uMode", 4);
+	sh.set("uTint", glm::vec4(1.15f, 1.15f, 1.15f, w.show));
+	sh.set("uModel", m * glm::scale(glm::mat4(1.f), {s, s, 1.f}));
+	w.tex.bind(0);
+	quadFront.draw();
+	glDisable(GL_BLEND);
+	sh.set("uTint", glm::vec4(1.f));
 }
 
 // ------------------------------------------------------------------ wall screens
@@ -1026,24 +1441,15 @@ void Table::Impl::updateWalls(TableContext &ctx, float dt)
 	}
 	if (!stats) walls[0].live = false;
 
-	// right: the minimap, centred where the game camera is
-	if (minimapFor != battle)
+	// the minimap: the whole map, turned like the table, with the table's view outlined
+	if (walls[1].timer <= 0.f)
 	{
-		delete minimap;
-		minimap = nullptr;
-		minimapFor = battle;
-		if (bs->getMap())
-			minimap = new MiniMapView(256, 256, 0, 0, g, bs->getMap()->getCamera(), battle, bs->getMap()->reShadeMinimap(7));
-	}
-	if (minimap && walls[1].timer <= 0.f)
-	{
-		walls[1].timer = 0.15f;
-		minimap->setPalette(bpal);
-		minimap->animate();
-		minimap->draw();
-		surfaceToRGBA(minimap, bpal, 0, 0, 256, 256, walls[1].px);
-		walls[1].tw = walls[1].th = 256;
-		walls[1].live = true;
+		walls[1].timer = 0.2f;
+		if (board->renderMinimap(walls[1].px, 256, true))
+		{
+			walls[1].tw = walls[1].th = 256;
+			walls[1].live = true;
+		}
 	}
 
 	// back: squad roster with time units, health, energy and morale
@@ -1108,7 +1514,21 @@ void Table::Impl::updateWalls(TableContext &ctx, float dt)
 		{
 			if (!w.tex.valid() || w.tex.width() != w.tw || w.tex.height() != w.th) w.tex.create(w.tw, w.th, true, true);
 			w.tex.update(w.px.data(), w.tw, w.th);
+			glm::vec3 sum(0.f);
+			int n = 0;
+			for (size_t i = 0; i < w.px.size(); i += 7, ++n)
+			{
+				uint32_t c = w.px[i];
+				sum += glm::vec3((c & 255) / 255.f, ((c >> 8) & 255) / 255.f, ((c >> 16) & 255) / 255.f);
+			}
+			w.avg = n ? sum / (float)n : glm::vec3(0.f);
 		}
+}
+
+void Table::screenGlow(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const
+{
+	for (const Wall &w : _p->walls)
+		if (w.live) out.push_back({w.center + w.normal * 0.55f, w.avg});
 }
 
 // ------------------------------------------------------------------ per frame
@@ -1117,11 +1537,14 @@ void Table::update(TableContext &ctx, const Hands &hands, float dt)
 {
 	Impl &p = *_p;
 	p.time += dt;
+	p.frameDt = dt;
 	p.syncBattle(ctx);
 	p.updateButtons(ctx, hands, dt);
 	p.updateItems(ctx, hands);
 	p.updateTaps(ctx, hands, dt);
 	p.updateWalls(ctx, dt);
+	p.updateWrist(ctx, hands, dt);
+	p.updateMenu(ctx, hands, dt);
 	if (p.warnTimer > 0.f) p.warnTimer -= dt;
 }
 
@@ -1176,8 +1599,8 @@ void Table::draw(const Shader &sh) const
 	flat({p.table.x, p.map.w + 0.004f, p.table.z, p.map.w + 0.008f}, p.sy + 0.0006f);
 
 	// ---- button bay: panel picture with holes, wells, hatches, caps
-	sh.set("uHoleCount", (int)std::min<size_t>(p.holes.size(), 24));
-	for (size_t i = 0; i < p.holes.size() && i < 24; ++i)
+	sh.set("uHoleCount", (int)std::min<size_t>(p.holes.size(), 40));
+	for (size_t i = 0; i < p.holes.size() && i < 40; ++i)
 		sh.set(("uHoles[" + std::to_string(i) + "]").c_str(), p.holes[i]);
 	sh.set("uHoleY", glm::vec2(p.sy - 0.002f, p.sy + 0.003f));
 	if (p.panelValid && p.inBattle)
@@ -1193,6 +1616,12 @@ void Table::draw(const Shader &sh) const
 		sh.set("uMode", 0);
 		sh.set("uTint", glm::vec4(0.09f, 0.1f, 0.12f, 1.f));
 		flat(p.bay, p.sy + 0.0008f);
+	}
+	{
+		// the plate under the spotted-enemy buttons
+		sh.set("uMode", 0);
+		sh.set("uTint", glm::vec4(0.16f, 0.07f, 0.07f, 1.f));
+		flat(p.alertArea, p.sy + 0.0008f);
 	}
 	sh.set("uHoleCount", 0);
 	for (const Btn &b : p.btns)
@@ -1234,7 +1663,19 @@ void Table::draw(const Shader &sh) const
 			sh.set("uMode", 0);
 			sh.set("uTint", glm::vec4(0.13f, 0.14f, 0.16f, 1.f));
 			boxAt(mn, mx);
-			if (p.panelValid)
+			if (b.alert >= 0)
+			{
+				if (p.alertTex[b.alert].valid())
+				{
+					sh.set("uMode", 1);
+					float lit = p.usable(b) ? (b.latched ? 1.5f : 1.15f) : 0.45f;
+					sh.set("uTint", glm::vec4(lit, lit, lit, 1.f));
+					sh.set("uTexSize", glm::vec2((float)p.alertTex[b.alert].width(), (float)p.alertTex[b.alert].height()));
+					p.alertTex[b.alert].bind(0);
+					flat({mn.x, mn.z, mx.x, mx.z}, top);
+				}
+			}
+			else if (p.panelValid)
 			{
 				sh.set("uMode", 1);
 				float lit = p.usable(b) ? (b.latched ? 1.35f : 1.f) : 0.45f;
@@ -1326,7 +1767,7 @@ void Table::draw(const Shader &sh) const
 		if (!m) continue;
 		bool isHeld = v.item == p.held.item;
 		glm::vec3 o = isHeld ? p.held.origin : p.itemOrigin(i);
-		float glow = isHeld ? 1.6f : (i == p.hoverItem ? 1.35f : 1.12f);
+		float glow = isHeld ? 1.6f : ((i == p.hoverItem || i == p.handHover) ? 1.45f : 1.12f);
 		sh.set("uTint", glm::vec4(glow, glow, glow, 0.82f));
 		sh.set("uModel", glm::translate(glm::mat4(1.f), o) * glm::scale(glm::mat4(1.f), glm::vec3(p.invScale)));
 		m->draw();
@@ -1359,6 +1800,8 @@ void Table::drawWalls(const Shader &sh) const
 {
 	for (const Wall &w : _p->walls)
 		if (w.live && w.tex.valid()) _p->drawWall(sh, w);
+	_p->drawWrist(sh);
+	_p->drawMenu(sh);
 	sh.set("uTint", glm::vec4(1.f));
 }
 
@@ -1375,6 +1818,22 @@ bool Table::raycast(const glm::vec3 &o, const glm::vec3 &d, TableHit &hit) const
 		return t;
 	};
 	bool any = false;
+	if (p.menuOpen > 0.95f)
+		for (int i = 0; i < (int)p.menuKeys.size(); ++i)
+		{
+			const Impl::MenuKey &k = p.menuKeys[i];
+			float dn = glm::dot(d, p.mN);
+			if (std::fabs(dn) < 1e-6f) break;
+			glm::vec3 face = p.menuKeyWorld(k, 0.006f);
+			float t = glm::dot(face - o, p.mN) / dn;
+			if (t <= 0.f || t >= hit.t) continue;
+			glm::vec3 at = o + d * t;
+			glm::vec3 rel = at - p.mO;
+			glm::vec2 uv(glm::dot(rel, p.mRight), glm::dot(rel, p.mUp));
+			if (std::fabs(uv.x - k.c.x) > k.half.x || std::fabs(uv.y - k.c.y) > k.half.y) continue;
+			hit = {TableHit::MENU, t, i, at};
+			any = true;
+		}
 	for (size_t i = 0; i < p.btns.size(); ++i)
 	{
 		const Btn &b = p.btns[i];
@@ -1428,6 +1887,12 @@ void Table::pointerClick(const TableHit &hit, int button, TableContext &ctx)
 		p.drop(ctx);
 		return;
 	}
+	if (hit.kind == TableHit::MENU && hit.index >= 0 && hit.index < (int)p.menuKeys.size())
+	{
+		p.menuKeys[hit.index].laserTimer = 0.14f;
+		p.pressMenuKey(hit.index, -1, ctx);
+		return;
+	}
 	if (hit.kind == TableHit::BUTTON && hit.index >= 0)
 	{
 		p.btns[hit.index].laserTimer = 0.14f;
@@ -1445,6 +1910,15 @@ bool Table::itemCenter(int i, glm::vec3 &w) const
 	if (i < 0 || i >= (int)p.items.size()) return false;
 	glm::vec2 c = p.invToWorld({p.items[i].foot.x + p.items[i].foot.z * 0.5f, p.items[i].foot.y + p.items[i].foot.w * 0.5f});
 	w = {c.x, p.itemY(i), c.y};
+	return true;
+}
+
+bool Table::menuKeyCenter(int i, glm::vec3 &w, glm::vec3 &n) const
+{
+	const Impl &p = *_p;
+	if (p.menuOpen < 0.95f || i < 0 || i >= (int)p.menuKeys.size()) return false;
+	w = p.menuKeyWorld(p.menuKeys[i], 0.006f);
+	n = p.mN;
 	return true;
 }
 

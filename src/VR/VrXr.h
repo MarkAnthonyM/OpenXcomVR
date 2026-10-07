@@ -40,6 +40,9 @@ struct HandState
 	float squeezeForce = 0.f;  // Index only: how hard the grip is actually squeezed
 	bool hasForce = false;     // squeezeForce is meaningful (Index controllers)
 	bool triggerTouch = false, thumbTouch = false;
+	bool aTouch = false;       // thumb resting on A (X on the left Touch controller): with triggerTouch this is a pinch
+	glm::vec2 trackpad{0.f};   // Index trackpad position while touched
+	bool trackpadTouch = false;
 	// skeletal hand from XR_EXT_hand_tracking (tracking space); jointsValid false = not available
 	bool jointsValid = false;
 	glm::vec3 jointPos[HAND_JOINTS];

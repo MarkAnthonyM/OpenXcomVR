@@ -19,6 +19,7 @@ in vec4 aColor;
 in float aMat;
 uniform mat4 uModel;
 uniform mat4 uViewProj;
+uniform float uTime;
 uniform vec4 uUVRect;        // uv = aUV * zw + xy (a sub-rectangle of a texture)
 out vec3 vWorld;
 out vec3 vNormal;
@@ -33,6 +34,13 @@ void main()
 	vUV = aUV * uUVRect.zw + uUVRect.xy;
 	vColor = vec4(pow(aColor.rgb, vec3(2.2)), aColor.a);
 	vMat = int(aMat + 0.5);
+	if (vMat == 9)
+	{
+		// fog of war: the top of each fog column drifts up and down a little
+		float ph = fract(sin(dot(floor(w.xz * 180.0), vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
+		w.y += aUV.x * sin(uTime * 0.9 + ph) * 0.0016;
+		vWorld = w.xyz;
+	}
 	gl_Position = uViewProj * w;
 }
 )GLSL";
@@ -50,10 +58,24 @@ uniform vec2 uTexSize;
 uniform vec3 uEye;
 uniform float uTime;
 uniform vec4 uTint;
-uniform vec3 uLightPos[4];
-uniform vec3 uLightCol[4];
+uniform int uLightCount;
+uniform vec3 uLightPos[12];  // light 0 is the overhead light over the table and casts the shadows
+uniform vec3 uLightCol[12];
+uniform float uAmbient;      // room ambient scale (night missions are darker)
+uniform float uAlert;        // 0..1: aliens in sight / alien turn, light strips go red
+uniform int uShadowOn;
+uniform int uShadowPass;     // rendering the shadow map: depth only
+uniform mat4 uShadowVP;
+uniform sampler2D uShadowMap;
+uniform float uShadowTexel;
+uniform vec3 uRoomMin;       // the room shell, for soft shading where surfaces meet
+uniform vec3 uRoomMax;
+uniform vec4 uPedestal;      // xz rect of the table's foot (floor contact shadow)
+uniform vec4 uTableRect;     // the holo table's glow: xz rect, lights undersides of things above it
+uniform float uTableY;
+uniform vec3 uTableGlow;
 uniform int uHoleCount;      // open hatches in the table: these xz rects are cut out...
-uniform vec4 uHoles[24];
+uniform vec4 uHoles[40];
 uniform vec2 uHoleY;         // ...but only between these heights
 uniform vec3 uSun;           // globe mode: world-space direction towards the sun
 uniform vec4 uClip;          // world-space xz clip rectangle (xmin, zmin, xmax, zmax); disabled when xmin > xmax
@@ -78,23 +100,66 @@ float gridLine(float x, float period, float width)
 	return 1.0 - smoothstep(0.0, width, d);
 }
 
+float shadowFactor(vec3 n)
+{
+	if (uShadowOn == 0) return 1.0;
+	vec4 p = uShadowVP * vec4(vWorld + n * 0.006, 1.0);
+	vec3 q = p.xyz / p.w * 0.5 + 0.5;
+	if (q.x <= 0.0 || q.x >= 1.0 || q.y <= 0.0 || q.y >= 1.0 || q.z >= 1.0) return 1.0;
+	float lit = 0.0;
+	for (int y = -1; y <= 1; ++y)
+		for (int x = -1; x <= 1; ++x)
+		{
+			float d = texture(uShadowMap, q.xy + vec2(x, y) * uShadowTexel).r;
+			lit += (q.z - 0.0025 <= d) ? 1.0 : 0.0;
+		}
+	return mix(0.25, 1.0, lit / 9.0);
+}
+
 vec3 lighting(vec3 base, vec3 n, float spec, float rough)
 {
 	vec3 v = normalize(uEye - vWorld);
 	// cool ambient from above, warm-ish bounce from below
 	float hemi = n.y * 0.5 + 0.5;
-	vec3 col = base * mix(vec3(0.020, 0.022, 0.028), vec3(0.060, 0.070, 0.085), hemi);
-	for (int i = 0; i < 4; ++i)
+	vec3 col = base * mix(vec3(0.020, 0.022, 0.028), vec3(0.060, 0.070, 0.085), hemi) * uAmbient;
+	for (int i = 0; i < 12; ++i)
 	{
+		if (i >= uLightCount) break;
 		vec3 L = uLightPos[i] - vWorld;
 		float d2 = max(dot(L, L), 0.05);
 		L *= inversesqrt(d2);
 		float ndl = max(dot(n, L), 0.0);
 		vec3 h = normalize(L + v);
 		float s = pow(max(dot(n, h), 0.0), mix(80.0, 8.0, rough)) * spec;
-		col += (base * ndl + s) * uLightCol[i] / d2;
+		vec3 c = (base * ndl + s) * uLightCol[i] / d2;
+		if (i == 0) c *= shadowFactor(n);
+		col += c;
+	}
+	// the holo table lights from below: undersides of hands and figures, fading with height
+	float h = vWorld.y - uTableY;
+	if (h > -0.01 && vWorld.x > uTableRect.x - 0.1 && vWorld.x < uTableRect.z + 0.1 && vWorld.z > uTableRect.y - 0.1 && vWorld.z < uTableRect.w + 0.1)
+	{
+		float under = clamp(-n.y * 0.8 + 0.2, 0.0, 1.0);
+		col += base * uTableGlow * under * exp(-max(h, 0.0) / 0.25);
 	}
 	return col;
+}
+
+/// Soft darkening where the room's floor, walls and ceiling meet, and under the table.
+float roomOcclusion(vec3 p)
+{
+	vec3 a = p - uRoomMin, b = uRoomMax - p;
+	float dx = min(a.x, b.x), dy0 = a.y, dy1 = b.y, dz = min(a.z, b.z);
+	const float r = 0.45;
+	float e = exp(-dx / r) * exp(-dy0 / r) + exp(-dz / r) * exp(-dy0 / r) + exp(-dx / r) * exp(-dz / r)
+		+ 0.6 * (exp(-dx / r) * exp(-dy1 / r) + exp(-dz / r) * exp(-dy1 / r));
+	float occ = 1.0 - 0.6 * clamp(e, 0.0, 1.0);
+	if (p.y < 0.02)
+	{
+		vec2 q = max(max(uPedestal.xy - p.xz, p.xz - uPedestal.zw), vec2(0.0));
+		occ *= 1.0 - 0.55 * exp(-length(q) / 0.35);
+	}
+	return occ;
 }
 
 vec3 displayContent(vec2 uv)
@@ -131,8 +196,15 @@ void main()
 			if (vWorld.x > h.x && vWorld.x < h.z && vWorld.z > h.y && vWorld.z < h.w) discard;
 		}
 	}
+	if (uShadowPass == 1)
+	{
+		if ((uMode == 3 || uMode == 4) && texture(uTex, vUV).a < 0.5) discard;
+		fragColor = vec4(0.0);
+		return;
+	}
 	vec3 n = normalize(vNormal);
-	if (!gl_FrontFacing) n = -n;
+	// two-sided surfaces: turn the normal toward the viewer (independent of triangle winding)
+	if (dot(n, uEye - vWorld) < 0.0) n = -n;
 
 	if (uMode == 1)
 	{
@@ -171,7 +243,7 @@ void main()
 		if (t.a < 0.02) discard;
 		vec3 base = t.rgb * vColor.rgb * uTint.rgb;
 		if (uMode == 4) { fragColor = vec4(base, t.a * uTint.a); return; }
-		fragColor = vec4(lighting(base, n, 0.1, 0.8) + base * 0.35, 1.0);
+		fragColor = vec4(lighting(base, n, 0.1, 0.8) + base * 0.22, 1.0);
 		return;
 	}
 
@@ -205,9 +277,10 @@ void main()
 		base = vec3(0.010, 0.016, 0.022);
 		spec = 1.0; rough = 0.1;
 	}
-	else if (vMat == 4) // light strips
+	else if (vMat == 4) // light strips (red alert while aliens are in sight)
 	{
-		fragColor = vec4(base * 4.0 * uTint.rgb, 1.0);
+		vec3 alert = vec3(1.0, 0.012, 0.006) * (0.45 + 0.55 * max(0.0, sin(uTime * 3.0))) * 0.6;
+		fragColor = vec4(mix(base, alert, smoothstep(0.0, 0.6, uAlert)) * 4.0 * uTint.rgb, 1.0);
 		return;
 	}
 	else if (vMat == 5) // ceiling
@@ -226,7 +299,20 @@ void main()
 	{
 		spec = 0.6; rough = 0.25;
 	}
+	else if (vMat == 9) // fog of war: voxel cloud, slowly churning
+	{
+		vec3 q = floor(vWorld / 0.006);              // ~2 board voxels per cell at the default zoom
+		float n1 = noise(q.xz * 0.21 + vec2(uTime * 0.18, -uTime * 0.11) + q.y * 0.37);
+		float n2 = noise(q.xz * 0.53 - vec2(uTime * 0.07, uTime * 0.13) + q.y * 0.91);
+		float k = 0.72 + 0.38 * n1 + 0.18 * n2;
+		vec3 fogCol = base * k;
+		float top = smoothstep(0.6, 0.95, n.y);
+		vec3 c = lighting(fogCol, n, 0.05, 0.9) * 0.6 + fogCol * (0.22 + 0.10 * top) + vec3(0.010, 0.022, 0.035) * n1;
+		fragColor = vec4(c * uTint.rgb, 0.94 * uTint.a);
+		return;
+	}
 
+	if (vMat == 1 || vMat == 2 || vMat == 5) base *= roomOcclusion(vWorld);
 	vec3 col = lighting(base, n, spec, rough) + emissive;
 	fragColor = vec4(col * uTint.rgb, vColor.a * uTint.a);
 }

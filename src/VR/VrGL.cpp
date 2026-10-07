@@ -392,6 +392,46 @@ void RenderTarget::resolveToDefault(int dstW, int dstH) const
 
 // ---------------------------------------------------------------- GLStateGuard
 
+ShadowMap::~ShadowMap()
+{
+	if (_fbo) gl.DeleteFramebuffers(1, &_fbo);
+	if (_tex) glDeleteTextures(1, &_tex);
+}
+
+bool ShadowMap::create(int size)
+{
+	_size = size;
+	glGenTextures(1, &_tex);
+	glBindTexture(GL_TEXTURE_2D, _tex);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, size, size, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	gl.GenFramebuffers(1, &_fbo);
+	gl.BindFramebuffer(GL_FRAMEBUFFER, _fbo);
+	gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, _tex, 0);
+	glDrawBuffer(GL_NONE);
+	glReadBuffer(GL_NONE);
+	GLenum st = gl.CheckFramebufferStatus(GL_FRAMEBUFFER);
+	gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+	if (st != GL_FRAMEBUFFER_COMPLETE)
+	{
+		Log(LOG_ERROR) << "[VR] shadow map incomplete: 0x" << std::hex << st;
+		gl.DeleteFramebuffers(1, &_fbo);
+		_fbo = 0;
+		return false;
+	}
+	return true;
+}
+
+void ShadowMap::bind() const
+{
+	gl.BindFramebuffer(GL_FRAMEBUFFER, _fbo);
+	glViewport(0, 0, _size, _size);
+}
+
 GLStateGuard::GLStateGuard()
 {
 	glGetIntegerv(GL_TEXTURE_BINDING_2D, &_tex2d);

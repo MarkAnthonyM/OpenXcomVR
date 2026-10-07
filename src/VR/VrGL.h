@@ -189,6 +189,21 @@ private:
 	int _w = 0, _h = 0;
 };
 
+/// A depth-only render target for shadows (sampled as a plain depth texture).
+class ShadowMap
+{
+public:
+	~ShadowMap();
+	bool create(int size);
+	void bind() const;
+	GLuint depthTex() const { return _tex; }
+	int size() const { return _size; }
+	bool valid() const { return _fbo != 0; }
+private:
+	GLuint _fbo = 0, _tex = 0;
+	int _size = 0;
+};
+
 /// Saves and restores the GL state the engine's own presenter depends on.
 class GLStateGuard
 {

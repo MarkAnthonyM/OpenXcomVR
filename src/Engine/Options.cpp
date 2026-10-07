@@ -373,6 +373,8 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "vrMode", &vrMode, 0));
 #endif
 	_info.push_back(OptionInfo(OPTION_OXCE, "vrTableScale", &vrTableScale, 100));
+	_info.push_back(OptionInfo(OPTION_OXCE, "vrSeatOffset", &vrSeatOffset, 0));
+	_info.push_back(OptionInfo(OPTION_OXCE, "vrShadows", &vrShadows, true));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceDisableThinkingProgressBar", &oxceDisableThinkingProgressBar, false));
 
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceEmbeddedOnly", &oxceEmbeddedOnly, true));

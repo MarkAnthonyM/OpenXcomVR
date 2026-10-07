@@ -48,7 +48,7 @@ static void console(MeshData &m, const glm::mat4 &xf)
 
 void buildCommandCenter(MeshData &m, RoomLayout &L)
 {
-	const float x0 = -5.f, x1 = 5.f, z0 = -7.f, z1 = 3.5f, h = 3.4f;
+	const float x0 = L.roomX0, x1 = L.roomX1, z0 = L.roomZ0, z1 = L.roomZ1, h = L.roomH;
 
 	// ---- shell
 	m.addQuad({x0, 0, z1}, {x1, 0, z1}, {x1, 0, z0}, {x0, 0, z0}, kFloor, MAT_FLOOR, {x0, z1}, {x1, z1}, {x1, z0}, {x0, z0});
@@ -75,27 +75,37 @@ void buildCommandCenter(MeshData &m, RoomLayout &L)
 		m.addQuad(a + o + y1, b + o + y1, b + o + y2, a + o + y2, kCyan * 0.6f, MAT_LIGHT);
 	}
 
-	// pillars
-	for (float px : {x0 + 0.3f, x1 - 0.3f})
-		for (float pz : {z0 + 0.3f, -1.8f, z1 - 0.3f})
+	// pillars in the corners and halfway down the side walls
+	for (float px : {x0 + 0.25f, x1 - 0.25f})
+		for (float pz : {z0 + 0.25f, -0.6f, z1 - 0.25f})
 		{
-			m.addBox({px - 0.3f, 0, pz - 0.3f}, {px + 0.3f, h, pz + 0.3f}, kMetal * 0.9f, MAT_PLAIN);
+			m.addBox({px - 0.25f, 0, pz - 0.25f}, {px + 0.25f, h, pz + 0.25f}, kMetal * 0.9f, MAT_PLAIN);
 			float s = px < 0 ? 1.f : -1.f;
-			m.addBox({px + s * 0.301f - 0.005f, 0.4f, pz - 0.02f}, {px + s * 0.301f + 0.005f, h - 0.4f, pz + 0.02f}, kAmber * 0.5f, MAT_LIGHT);
+			m.addBox({px + s * 0.251f - 0.005f, 0.4f, pz - 0.02f}, {px + s * 0.251f + 0.005f, h - 0.4f, pz + 0.02f}, kAmber * 0.5f, MAT_LIGHT);
 		}
 
-	// ---- decorative displays
-	wallDisplay(m, {0.f, 1.95f, z0}, {1, 0, 0}, 6.0f, 2.1f);
-	wallDisplay(m, {x0, 1.8f, -3.2f}, {0, 0, -1}, 2.6f, 1.3f);
-	wallDisplay(m, {x1, 1.8f, -3.2f}, {0, 0, 1}, 2.6f, 1.3f);
-
-	// consoles along the back wall and sides
-	for (float cx : {-3.3f, -2.1f, 2.1f, 3.3f})
-		console(m, glm::translate(glm::mat4(1), {cx, 0.f, z0 + 0.8f}));
-	for (float cz : {-5.0f, -1.2f, 0.8f})
+	// ---- back wall: bezels for the game screen and the live screens (their pictures are drawn by VR code)
+	auto bezel = [&](const glm::vec3 &c, glm::vec2 size)
 	{
-		console(m, glm::translate(glm::mat4(1), {x0 + 0.8f, 0.f, cz}) * glm::rotate(glm::mat4(1), glm::radians(90.f), {0, 1, 0}));
-		console(m, glm::translate(glm::mat4(1), {x1 - 0.8f, 0.f, cz}) * glm::rotate(glm::mat4(1), glm::radians(-90.f), {0, 1, 0}));
+		glm::vec3 fr(size.x * 0.5f + 0.05f, 0, 0), fu(0, size.y * 0.5f + 0.05f, 0);
+		glm::vec3 b = glm::vec3(c.x, c.y, z0 + 0.012f);
+		m.addBox(b - fr - fu, b + fr + fu + glm::vec3(0, 0, 0.02f), kDark, MAT_GLOSSY);
+	};
+	bezel(L.statsPos, L.statsSize);
+	bezel(L.rosterPos, L.rosterSize);
+	bezel(L.minimapPos, L.minimapSize);
+	// a strip light under the screens
+	m.addBox({x0 + 0.6f, 0.42f, z0 + 0.01f}, {x1 - 0.6f, 0.45f, z0 + 0.03f}, kCyan * 0.7f, MAT_LIGHT);
+
+	// ---- decorative displays on the side walls (none where a game screen is)
+	wallDisplay(m, {x0, 1.9f, -1.6f}, {0, 0, -1}, 1.5f, 0.9f);
+	wallDisplay(m, {x1, 1.9f, -1.6f}, {0, 0, 1}, 1.5f, 0.9f);
+
+	// consoles along the side walls
+	for (float cz : {-1.6f, 0.9f})
+	{
+		console(m, glm::translate(glm::mat4(1), {x0 + 0.75f, 0.f, cz}) * glm::rotate(glm::mat4(1), glm::radians(90.f), {0, 1, 0}));
+		console(m, glm::translate(glm::mat4(1), {x1 - 0.75f, 0.f, cz}) * glm::rotate(glm::mat4(1), glm::radians(-90.f), {0, 1, 0}));
 	}
 
 	// ---- war table
@@ -120,7 +130,7 @@ void buildCommandCenter(MeshData &m, RoomLayout &L)
 	m.addQuad({T.x - hx, T.y - 0.025f, T.z + hz}, {T.x + hx, T.y - 0.025f, T.z + hz}, {T.x + hx, T.y - 0.025f, T.z - hz}, {T.x - hx, T.y - 0.025f, T.z - hz}, glm::vec4(1), MAT_HOLOGLASS);
 
 	// floor ring light around the table
-	float r0 = 2.0f;
+	float r0 = 1.45f;
 	for (int i = 0; i < 48; ++i)
 	{
 		float a0 = i / 48.f * 6.2831853f, a1 = (i + 0.6f) / 48.f * 6.2831853f;
@@ -144,12 +154,12 @@ void buildCommandCenter(MeshData &m, RoomLayout &L)
 
 	L.lightPos[0] = {T.x, h - 0.4f, T.z};
 	L.lightCol[0] = {2.2f, 2.3f, 2.5f};
-	L.lightPos[1] = {-3.0f, h - 0.3f, -4.5f};
-	L.lightCol[1] = {0.9f, 1.3f, 1.5f};
-	L.lightPos[2] = {3.0f, h - 0.3f, -4.5f};
-	L.lightCol[2] = {0.9f, 1.3f, 1.5f};
-	L.lightPos[3] = {0.0f, h - 0.3f, 2.0f};
-	L.lightCol[3] = {1.2f, 1.0f, 0.8f};
+	L.lightPos[1] = {x0 + 0.8f, h - 0.3f, z0 + 0.8f};
+	L.lightCol[1] = {0.6f, 0.9f, 1.1f};
+	L.lightPos[2] = {x1 - 0.8f, h - 0.3f, z0 + 0.8f};
+	L.lightCol[2] = {0.6f, 0.9f, 1.1f};
+	L.lightPos[3] = {0.0f, h - 0.3f, z1 - 0.6f};
+	L.lightCol[3] = {0.9f, 0.75f, 0.6f};
 }
 
 void buildController(MeshData &m, bool left)

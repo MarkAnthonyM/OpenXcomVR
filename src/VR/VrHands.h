@@ -65,6 +65,7 @@ public:
 	/// Builds both hands for this frame. rig = tracking space -> world.
 	void update(const HandState in[2], const glm::mat4 &rig, float dt, const std::vector<Collider> &colliders);
 	/// Desktop preview: pose a simulated right hand (grip pose in world) with finger curls.
+	/// (A curled index with the thumb down counts as resting on trigger and A: a pinch.)
 	void simulate(int hand, const Pose &gripWorld, float indexCurl, float othersCurl, bool thumbDown, float dt, const std::vector<Collider> &colliders);
 	void hide(int hand) { pose[hand].valid = false; }
 	void draw(const Shader &sh) const;
@@ -72,11 +73,15 @@ public:
 private:
 	void solve(int hand, float dt, const std::vector<Collider> &colliders);
 	void buildProcedural(int hand, const glm::mat4 &gripWorld, const float curl[5]);
+	void shapePinch(int hand, float dt);
 	Mesh _sphere, _cyl;
 	glm::vec3 _lastRawTip[2];
 	bool _lastValid[2] = {false, false};
 	int _side[2][HAND_JOINTS] = {};    // per joint: which face it was outside of last frame
 	float _smoothCurl[2][5] = {{0}};
+	bool _pinchIntent[2] = {false, false}; // index resting on the trigger and thumb resting on A
+	float _pinchBlend[2] = {0.f, 0.f};     // 0 open .. 1 tips together (eased)
+	glm::vec3 _pinchMeet[2];
 };
 
 }

@@ -140,15 +140,6 @@ void Hands::buildProcedural(int h, const glm::mat4 &G, const float curl[5])
 	}
 	R[J_THUMB_MC] = 0.012f; R[J_THUMB_PROX] = 0.0105f; R[J_THUMB_DIST] = 0.0095f; R[J_THUMB_TIP] = 0.0085f;
 
-	// pinch: the thumb tip meets the index tip as the trigger is pulled
-	float pinchAmt = glm::clamp((curl[F_INDEX] - 0.45f) / 0.4f, 0.f, 1.f) * tc;
-	if (pinchAmt > 0.f)
-	{
-		glm::vec3 target = L[J_INDEX_MC + 4] + palmN * 0.004f;
-		L[J_THUMB_TIP] = glm::mix(L[J_THUMB_TIP], target, pinchAmt);
-		L[J_THUMB_DIST] = glm::mix(L[J_THUMB_DIST], (L[J_THUMB_PROX] + target) * 0.5f + palmN * 0.006f, pinchAmt);
-	}
-
 	for (int j = 0; j < HAND_JOINTS; ++j)
 	{
 		P.raw[j] = glm::vec3(G * glm::vec4(L[j], 1.f));
@@ -193,6 +184,7 @@ void Hands::update(const HandState in[2], const glm::mat4 &rig, float dt, const 
 			const HandState &s = in[h];
 			float target[5];
 			target[F_INDEX] = (s.triggerTouch || s.trigger > 0.02f) ? 0.18f + 0.82f * s.trigger : 0.f;
+			if (s.triggerTouch && s.aTouch) target[F_INDEX] = std::max(target[F_INDEX], 0.42f); // pinch posture
 			float others = s.squeeze;
 			target[F_MIDDLE] = others;
 			target[F_RING] = others;
@@ -202,6 +194,8 @@ void Hands::update(const HandState in[2], const glm::mat4 &rig, float dt, const 
 			for (int f = 0; f < 5; ++f) _smoothCurl[h][f] += (target[f] - _smoothCurl[h][f]) * a;
 			buildProcedural(h, rig * s.grip.matrix(), _smoothCurl[h]);
 		}
+		_pinchIntent[h] = in[h].triggerTouch && in[h].aTouch;
+		shapePinch(h, dt);
 		solve(h, dt, colliders);
 	}
 }
@@ -211,11 +205,66 @@ void Hands::simulate(int h, const Pose &gripWorld, float indexCurl, float others
 	HandPose &P = pose[h];
 	P.valid = true;
 	P.skeletal = false;
-	float target[5] = {thumbDown ? 1.f : 0.f, indexCurl, othersCurl, othersCurl, othersCurl};
+	_pinchIntent[h] = indexCurl > 0.5f && thumbDown;
+	float target[5] = {thumbDown ? 1.f : 0.f, _pinchIntent[h] ? 0.42f : indexCurl, othersCurl, othersCurl, othersCurl};
 	float a = dt <= 0.f ? 1.f : 1.f - std::exp(-dt * 22.f);
 	for (int f = 0; f < 5; ++f) _smoothCurl[h][f] += (target[f] - _smoothCurl[h][f]) * a;
 	buildProcedural(h, gripWorld.matrix(), _smoothCurl[h]);
+	shapePinch(h, dt);
 	solve(h, dt, colliders);
+}
+
+/// FABRIK: bends a joint chain (root fixed, bone lengths kept) so its end reaches a target.
+static void fabrik(glm::vec3 *p, int n, const glm::vec3 &target)
+{
+	float len[4];
+	for (int i = 0; i < n; ++i) len[i] = glm::length(p[i + 1] - p[i]);
+	glm::vec3 root = p[0];
+	for (int it = 0; it < 6; ++it)
+	{
+		p[n] = target;
+		for (int i = n - 1; i >= 0; --i)
+		{
+			glm::vec3 d = p[i] - p[i + 1];
+			float l = glm::length(d);
+			p[i] = p[i + 1] + (l > 1e-6f ? d / l : glm::vec3(0, 1, 0)) * len[i];
+		}
+		p[0] = root;
+		for (int i = 0; i < n; ++i)
+		{
+			glm::vec3 d = p[i + 1] - p[i];
+			float l = glm::length(d);
+			p[i + 1] = p[i] + (l > 1e-6f ? d / l : glm::vec3(0, -1, 0)) * len[i];
+		}
+	}
+}
+
+/// The pinch: thumb and index bend toward each other until their pads meet, eased over a few
+/// frames so the fingers close (and open) smoothly instead of snapping.
+void Hands::shapePinch(int h, float dt)
+{
+	HandPose &P = pose[h];
+	float target = _pinchIntent[h] ? 1.f : 0.f;
+	float a = dt <= 0.f ? 1.f : 1.f - std::exp(-dt * 16.f);
+	_pinchBlend[h] += (target - _pinchBlend[h]) * a;
+	int it = fingerTip(F_INDEX);
+	glm::vec3 iTip = P.raw[it], tTip = P.raw[J_THUMB_TIP];
+	// where the pads meet: nearer the index, the thumb travels further (as real hands do)
+	glm::vec3 meet = glm::mix(iTip, tTip, 0.35f);
+	glm::vec3 n = iTip - tTip;
+	n = glm::length(n) > 1e-5f ? glm::normalize(n) : glm::vec3(0, 1, 0);
+	_pinchMeet[h] = meet;
+	float b = _pinchBlend[h];
+	b = b * b * (3.f - 2.f * b);
+	if (b < 1e-3f) return;
+	glm::vec3 iGoal = glm::mix(iTip, meet + n * P.radius[it] * 0.8f, b);
+	glm::vec3 tGoal = glm::mix(tTip, meet - n * P.radius[J_THUMB_TIP] * 0.8f, b);
+	glm::vec3 ic[4] = {P.raw[J_INDEX_MC + 1], P.raw[J_INDEX_MC + 2], P.raw[J_INDEX_MC + 3], P.raw[J_INDEX_MC + 4]};
+	fabrik(ic, 3, iGoal);
+	for (int k = 0; k < 4; ++k) P.raw[J_INDEX_MC + 1 + k] = ic[k];
+	glm::vec3 tc[4] = {P.raw[J_THUMB_MC], P.raw[J_THUMB_PROX], P.raw[J_THUMB_DIST], P.raw[J_THUMB_TIP]};
+	fabrik(tc, 3, tGoal);
+	for (int k = 0; k < 4; ++k) P.raw[J_THUMB_MC + k] = tc[k];
 }
 
 void Hands::solve(int h, float dt, const std::vector<Collider> &colliders)
@@ -315,13 +364,13 @@ void Hands::solve(int h, float dt, const std::vector<Collider> &colliders)
 		chain(fj, 4);
 	}
 
-	// 3. gestures
-	float pinchDist = glm::length(P.raw[J_THUMB_TIP] - P.raw[fingerTip(F_INDEX)]);
+	// 3. gestures: the pinch is the controller state (index on trigger + thumb on A), so it is
+	//    instant and reliable; the pinch point is where the pads meet (also while they close)
 	bool was = P.pinch;
-	P.pinch = was ? pinchDist < 0.040f : pinchDist < 0.024f;
+	P.pinch = _pinchIntent[h];
 	P.pinchStarted = P.pinch && !was;
 	P.pinchEnded = !P.pinch && was;
-	P.pinchPoint = (P.pos[J_THUMB_TIP] + P.pos[fingerTip(F_INDEX)]) * 0.5f;
+	P.pinchPoint = _pinchMeet[h] + (P.pos[J_PALM] - P.raw[J_PALM]);
 	P.indexExtended = P.curl[F_INDEX] < 0.35f;
 }
 

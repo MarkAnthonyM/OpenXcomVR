@@ -24,6 +24,7 @@ namespace OpenXcom
 {
 
 class ActionMenuItem;
+class InteractiveSurface;
 
 /**
  * Window that allows the player
@@ -51,6 +52,8 @@ public:
 	void handle(Action *action) override;
 	/// Handler for clicking a action menu item.
 	virtual void btnActionMenuItemClick(Action *action);
+	/// VR tabletop: the menu entries currently shown (top to bottom on screen).
+	std::vector<InteractiveSurface*> vrItems() const;
 	/// Update the resolution settings, we just resized the window.
 	void resize(int &dX, int &dY) override;
 };

@@ -137,7 +137,6 @@ public:
 	void btnUnitUpClick(Action *action);
 	/// Handler for clicking the Unit Down button.
 	void btnUnitDownClick(Action *action);
-	/// Handler for clicking the Map Up button.
 	/// VR tabletop: a tile was clicked on the table diorama.
 	void vrTileClick(Position pos, bool rightClick);
 	/// VR tabletop: select one of our units directly (tapped on the table).
@@ -146,6 +145,9 @@ public:
 	std::vector<std::pair<std::string, InteractiveSurface*>> vrButtons() const;
 	/// VR tabletop: the icon panel area.
 	InteractiveSurface *vrIcons() const { return _icons; }
+	/// VR tabletop: the red "enemy in sight" indicators (null past the last one).
+	InteractiveSurface *vrVisibleUnitButton(int i) const { return i >= 0 && i < VISIBLE_MAX ? _btnVisibleUnit[i] : nullptr; }
+	/// Handler for clicking the Map Up button.
 	void btnMapUpClick(Action *action);
 	/// Handler for clicking the Map Down button.
 	void btnMapDownClick(Action *action);
