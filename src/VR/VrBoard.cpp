@@ -50,6 +50,13 @@
 #include "../Battlescape/Projectile.h"
 #include "../Battlescape/Explosion.h"
 #include "../Battlescape/Position.h"
+#include "../Battlescape/Pathfinding.h"
+#include "../Battlescape/BattlescapeGame.h"
+#include "../Interface/Text.h"
+#include "../Engine/Font.h"
+#include "../Engine/Language.h"
+#include "../Mod/RuleInterface.h"
+#include "../Mod/RuleItem.h"
 #include "../Geoscape/GeoscapeState.h"
 #include "../Geoscape/Globe.h"
 #include <glm/gtc/matrix_transform.hpp>
@@ -184,6 +191,24 @@ struct Board::Impl
 
 	// meshes
 	Mesh quad, disk, ring, cursor, dot, nightCap;
+	Mesh wire[2], arrow, pointer, goal; // HUD: wireframe boxes (1 and 2 tiles), path arrow, selected-unit arrow, path end
+
+	// HUD: the game-style cursor, the selected unit marker, path preview, text readouts
+	Position cursorTile;
+	bool cursorSet = false;            // last tile picked or hovered (laser, finger, tap)
+	Position fingerTile;
+	int fingerFrames = 0;              // >0 while a fingertip hovers over the map
+	struct Label { std::unique_ptr<Texture> tex; int w = 0, h = 0; double used = 0.0; };
+	std::map<std::string, Label> labels;
+	const Label &label(const std::string &text, Uint8 color);
+	glm::vec4 palColor(int index, float glow) const
+	{
+		const SDL_Color &c = pal[index & 255];
+		return glm::vec4(c.r / 255.f * glow, c.g / 255.f * glow, c.b / 255.f * glow, 1.f);
+	}
+	void drawWire(const Shader &sh, const glm::mat4 &M, const glm::vec3 &at, int size, const glm::vec4 &col, float xray) const;
+	void drawLabel(const Shader &sh, const glm::mat4 &M, const glm::vec3 &at, const glm::vec3 &viewerVox, const Label &l, float pxSize) const;
+	void drawHud(const Shader &sh, const glm::mat4 &M);
 
 	// grabbing
 	bool held[2] = {false, false};
@@ -248,6 +273,9 @@ void Board::Impl::resetBattle()
 	firstTile = nullptr;
 	focusInit = false;
 	hoverValid = false;
+	cursorSet = false;
+	fingerFrames = 0;
+	labels.clear();
 }
 
 void Board::Impl::bindBattle(SavedBattleGame *save)
@@ -671,6 +699,7 @@ void Board::Impl::updateBattle(float dt)
 		for (BattleUnit *u : *battle->getUnits()) if (u == it->first) { alive = true; break; }
 		it = alive ? std::next(it) : cards.erase(it);
 	}
+	if (fingerFrames > 0) --fingerFrames;
 	++unitFrame;
 	for (BattleUnit *u : *battle->getUnits())
 	{
@@ -736,7 +765,6 @@ void Board::Impl::drawUnits(const Shader &sh)
 	glm::mat4 M = boardMatrix();
 	glm::mat4 inv = glm::inverse(M);
 	glm::vec3 viewerVox = glm::vec3(inv * glm::vec4(viewer, 1.f));
-	BattleUnit *sel = battle->getSelectedUnit();
 	for (BattleUnit *u : *battle->getUnits())
 	{
 		auto it = cards.find(u);
@@ -756,13 +784,6 @@ void Board::Impl::drawUnits(const Shader &sh)
 		sh.set("uModel", M * glm::translate(glm::mat4(1.f), p + glm::vec3(0, 0.1f, 0)) * glm::scale(glm::mat4(1.f), {r, 1.2f, r}));
 		sh.set("uTint", fc * glm::vec4(0.6f, 0.6f, 0.6f, 1.f));
 		disk.draw();
-		if (u == sel)
-		{
-			float pulse = 0.75f + 0.25f * (float)std::sin(time * 5.0);
-			sh.set("uModel", M * glm::translate(glm::mat4(1.f), p + glm::vec3(0, 1.4f, 0)) * glm::scale(glm::mat4(1.f), glm::vec3(r * 1.3f, 1.f, r * 1.3f)));
-			sh.set("uTint", glm::vec4(1.f, 0.9f, 0.3f, 1.f) * pulse);
-			ring.draw();
-		}
 
 		// the standee, turned to face the viewer
 		glm::vec2 tv(viewerVox.x - p.x, viewerVox.z - p.z);
@@ -802,21 +823,6 @@ void Board::Impl::drawBattle(const Shader &sh)
 
 	drawUnits(sh);
 
-	// path preview markers
-	sh.set("uMode", 2);
-	for (int z = 0; z <= std::min(viewLevel, mz - 1); ++z)
-		for (int y = 0; y < my; ++y)
-			for (int x = 0; x < mx; ++x)
-			{
-				Tile *t = battle->getTile(Position(x, y, z));
-				if (!t || t->getPreview() == -1 || !t->isDiscovered(O_FLOOR)) continue;
-				glm::vec3 c(x * TILE_W + 8.f, z * TILE_H - t->getTerrainLevel() + 1.2f, y * TILE_W + 8.f);
-				glm::vec4 col = t->getTUMarker() >= 0 ? glm::vec4(0.3f, 1.f, 0.5f, 1.f) : glm::vec4(1.f, 0.35f, 0.2f, 1.f);
-				sh.set("uModel", M * glm::translate(glm::mat4(1.f), c) * glm::scale(glm::mat4(1.f), glm::vec3(1.6f, 0.6f, 1.6f)));
-				sh.set("uTint", col);
-				dot.draw();
-			}
-
 	if (bs && bs->getMap())
 	{
 		Map *map = bs->getMap();
@@ -846,22 +852,255 @@ void Board::Impl::drawBattle(const Shader &sh)
 		glDisable(GL_BLEND);
 	}
 
-	// hover cursor
-	if (hoverValid && !hoverGlobe)
-	{
-		Tile *t = battle->getTile(hoverTile);
-		float lvl = t ? (float)t->getTerrainLevel() : 0.f;
-		glm::vec3 c(hoverTile.x * TILE_W, hoverTile.z * TILE_H - lvl + 0.6f, hoverTile.y * TILE_W);
-		CursorType ct = (bs && bs->getMap()) ? bs->getMap()->getCursorType() : CT_NORMAL;
-		bool aim = ct == CT_AIM || ct == CT_PSI || ct == CT_THROW || ct == CT_WAYPOINT;
-		glm::vec4 col = aim ? glm::vec4(2.5f, 0.5f, 0.4f, 1.f) : glm::vec4(2.2f, 2.0f, 0.6f, 1.f);
-		sh.set("uMode", 2);
-		sh.set("uModel", M * glm::translate(glm::mat4(1.f), c));
-		sh.set("uTint", col);
-		cursor.draw();
-	}
+	drawHud(sh, M);
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
+}
+
+// ------------------------------------------------------------------ HUD: cursor, selection, path preview
+
+/// A text readout in the game's small font and palette colour, cached by content.
+const Board::Impl::Label &Board::Impl::label(const std::string &text, Uint8 color)
+{
+	std::string key = text + '\x01' + std::to_string((int)color);
+	auto it = labels.find(key);
+	if (it != labels.end()) { it->second.used = time; return it->second; }
+	if (labels.size() > 200)
+	{
+		for (auto i = labels.begin(); i != labels.end();)
+			i = (time - i->second.used > 5.0) ? labels.erase(i) : std::next(i);
+	}
+	Label &l = labels[key];
+	l.used = time;
+	Mod *mod = game->getMod();
+	Font *big = mod->getFont("FONT_BIG", false), *small = mod->getFont("FONT_SMALL", false);
+	if (!big || !small) return l;
+	const int W = 128, H = 20;
+	Text t(W, H, 0, 0);
+	SDL_Color sp[256];
+	for (int i = 0; i < 256; ++i) sp[i] = pal[i];
+	t.setPalette(sp);
+	t.initText(big, small, game->getLanguage());
+	t.setSmall();
+	t.setHighContrast(true);
+	t.setColor(color);
+	t.setText(text);
+	t.draw();
+	int w = std::max(1, std::min(W, t.getTextWidth() + 1)), h = std::max(1, std::min(H, t.getTextHeight() + 1));
+	std::vector<uint32_t> px((size_t)w * h, 0u);
+	for (int y = 0; y < h; ++y)
+		for (int x = 0; x < w; ++x)
+		{
+			Uint8 c = t.getPixel(x, y);
+			if (c) { const SDL_Color &k = pal[c]; px[(size_t)y * w + x] = 0xFF000000u | ((uint32_t)k.b << 16) | ((uint32_t)k.g << 8) | k.r; }
+		}
+	l.tex = std::make_unique<Texture>();
+	l.tex->create(w, h, true, true);
+	l.tex->update(px.data(), w, h);
+	l.w = w;
+	l.h = h;
+	return l;
+}
+
+/// A wireframe box over a tile, like the game's 3D cursor. With xray > 0 a faint copy shows through walls.
+void Board::Impl::drawWire(const Shader &sh, const glm::mat4 &M, const glm::vec3 &at, int size, const glm::vec4 &col, float xray) const
+{
+	const Mesh &m = wire[size > 1 ? 1 : 0];
+	sh.set("uMode", 2);
+	sh.set("uModel", M * glm::translate(glm::mat4(1.f), at));
+	if (xray > 0.f)
+	{
+		glDisable(GL_DEPTH_TEST);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+		sh.set("uTint", glm::vec4(glm::vec3(col), xray));
+		m.draw();
+		glDisable(GL_BLEND);
+		glEnable(GL_DEPTH_TEST);
+	}
+	sh.set("uTint", col);
+	m.draw();
+}
+
+/// A readout floating at a point (board voxels), turned to face the player, drawn over everything.
+void Board::Impl::drawLabel(const Shader &sh, const glm::mat4 &M, const glm::vec3 &at, const glm::vec3 &viewerVox, const Label &l, float pxSize) const
+{
+	if (!l.tex) return;
+	glm::vec3 toV = viewerVox - at;
+	if (glm::length(toV) < 1e-3f) return;
+	toV = glm::normalize(toV);
+	glm::vec3 right = glm::cross(glm::vec3(0, 1, 0), toV);
+	if (glm::length(right) < 1e-3f) right = glm::vec3(1, 0, 0);
+	right = glm::normalize(right);
+	glm::vec3 up = glm::normalize(glm::cross(toV, right));
+	glm::mat4 B(1.f);
+	B[0] = glm::vec4(right * (l.w * pxSize), 0.f);
+	B[1] = glm::vec4(up * (l.h * pxSize), 0.f);
+	B[2] = glm::vec4(toV, 0.f);
+	B[3] = glm::vec4(at + up * (l.h * pxSize * 0.5f), 1.f);
+	sh.set("uMode", 4);
+	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uModel", M * B);
+	l.tex->bind(0);
+	quad.draw();
+}
+
+void Board::Impl::drawHud(const Shader &sh, const glm::mat4 &M)
+{
+	if (!bs || !bs->getMap()) return;
+	Map *map = bs->getMap();
+	glm::vec3 viewerVox = glm::vec3(glm::inverse(M) * glm::vec4(viewer, 1.f));
+	const float PX = 0.75f; // label pixel size in voxels (about 2.5 mm on the table at the default zoom)
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	auto floorAt = [&](const Position &p) -> float
+	{
+		Tile *t = battle->getTile(p);
+		return p.z * TILE_H - (t ? (float)t->getTerrainLevel() : 0.f);
+	};
+	auto markerIndex = [](int marker) -> int { return Palette::blockOffset(marker - 1) - 1; };
+	// a HUD mesh, plus a faint copy that shows through walls and roofs
+	auto xrayDraw = [&](const Mesh &mesh, const glm::mat4 &model, const glm::vec4 &col)
+	{
+		sh.set("uMode", 2);
+		sh.set("uModel", model);
+		glDisable(GL_DEPTH_TEST);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+		sh.set("uTint", glm::vec4(glm::vec3(col), 0.3f));
+		mesh.draw();
+		glEnable(GL_DEPTH_TEST);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		sh.set("uTint", col);
+		mesh.draw();
+	};
+	std::vector<std::pair<glm::vec3, const Label*>> texts;
+
+	// ---- path preview, as the flat map shows it (Options: battleNewPreviewPath)
+	PathPreview ps = Options::traceAI ? PATH_ARROW_TU : Options::battleNewPreviewPath;
+	bool arrowsOn = ps & PATH_ARROWS, tuOn = ps & PATH_TU_COST, enOn = ps & PATH_ENERGY_COST;
+	if (battle->getPathfinding() && battle->getPathfinding()->isPathPreviewed())
+	{
+		int msg = 0;
+		if (RuleInterface *ri = game->getMod()->getInterface("battlescape", false))
+			if (const Element *el = ri->getElement("messageWindows")) msg = el->color + 1;
+		for (int z = 0; z <= std::min(viewLevel, mz - 1); ++z)
+			for (int y = 0; y < my; ++y)
+				for (int x = 0; x < mx; ++x)
+				{
+					Tile *t = battle->getTile(Position(x, y, z));
+					if (!t || t->getPreview() == -1 || !t->isDiscovered(O_FLOOR)) continue;
+					int ci = markerIndex(t->getMarkerColor());   // text colour (the font adds its shades on top)
+					glm::vec4 col = palColor(Palette::blockOffset(t->getMarkerColor() - 1) + 3, 1.0f); // a bright shade of that colour
+					glm::vec3 c(x * TILE_W + 8.f, floorAt(Position(x, y, z)) + 0.9f, y * TILE_W + 8.f);
+					int pv = t->getPreview();
+					if (arrowsOn)
+					{
+						glm::mat4 m = M * glm::translate(glm::mat4(1.f), c);
+						if (pv >= 0 && pv < 8) m = m * glm::rotate(glm::mat4(1.f), glm::radians(-45.f * pv), {0, 1, 0});
+						else if (pv == Pathfinding::DIR_UP) m = glm::translate(m, {0, 7, 0}) * glm::rotate(glm::mat4(1.f), glm::radians(90.f), {1, 0, 0});
+						else if (pv == Pathfinding::DIR_DOWN) m = glm::translate(m, {0, 7, 0}) * glm::rotate(glm::mat4(1.f), glm::radians(-90.f), {1, 0, 0});
+						if (pv == 10) xrayDraw(ring, m * glm::scale(glm::mat4(1.f), glm::vec3(6.f, 1.f, 6.f)), col);
+						else xrayDraw(arrow, m, col);
+					}
+					if ((tuOn || enOn) && (t->getTUMarker() > -1 || t->getEnergyMarker() > -1))
+					{
+						std::string txt;
+						if (tuOn) txt = std::to_string(std::max(0, t->getTUMarker()));
+						if (enOn) txt += (txt.empty() ? "" : "\n") + std::to_string(std::max(0, t->getEnergyMarker()));
+						const Label &l = label(txt, (Uint8)(arrowsOn ? msg : ci));
+						texts.push_back({c + glm::vec3(0.f, arrowsOn ? 3.5f : 1.5f, 0.f), &l});
+					}
+				}
+	}
+
+	CursorType ct = map->getCursorType();
+	bool show = ct != CT_NONE && (battle->getSide() == FACTION_PLAYER || battle->getDebugMode());
+
+	// ---- the selected soldier: a yellow wireframe box and the game's bobbing arrow over its head
+	BattleUnit *sel = battle->getSelectedUnit();
+	if (show && sel && !sel->isOut() && sel->getPosition().z <= viewLevel)
+	{
+		auto it = cards.find(sel);
+		glm::vec3 p = (it != cards.end() && it->second.visInit) ? it->second.vis : unitVoxelPos(sel);
+		int size = sel->getArmor()->getSize();
+		glm::vec3 corner(p.x - TILE_W * size * 0.5f, p.y, p.z - TILE_W * size * 0.5f);
+		drawWire(sh, M, corner, size, glm::vec4(2.0f, 1.7f, 0.2f, 1.f), 0.35f);
+		float head = (float)(sel->getHeight() + sel->getFloatHeight());
+		float bob = 1.2f * (float)std::sin(time * 4.0);
+		xrayDraw(pointer, M * glm::translate(glm::mat4(1.f), p + glm::vec3(0.f, head + 9.f + bob, 0.f)), glm::vec4(2.0f, 1.7f, 0.2f, 1.f));
+	}
+
+	// ---- the cursor: last tile hovered (laser or finger) or picked
+	// (a hovering fingertip wins over the laser / mouse)
+	if (fingerFrames > 0) { cursorTile = fingerTile; cursorSet = true; }
+	else if (hoverValid && !hoverGlobe) { cursorTile = hoverTile; cursorSet = true; }
+	if (show && cursorSet && battle->getTile(cursorTile))
+	{
+		Tile *t = battle->getTile(cursorTile);
+		BattleUnit *u = t->getUnit();
+		bool unitThere = u && (u->getVisible() || battle->getDebugMode());
+		bool flash = std::fmod(time * 4.0, 1.0) < 0.5;
+		glm::vec4 red(2.2f, 0.12f, 0.08f, 1.f), yellow(2.0f, 1.7f, 0.2f, 1.f), blue(0.4f, 0.8f, 2.4f, 1.f);
+		glm::vec4 col = cursorTile.z < viewLevel ? blue : unitThere ? (flash ? yellow : red) : red;
+		int size = std::max(1, map->getCursorSize());
+		glm::vec3 corner(cursorTile.x * TILE_W, floorAt(cursorTile) + 0.3f, cursorTile.y * TILE_W);
+		drawWire(sh, M, corner, size, col, 0.3f);
+		if (ct != CT_NORMAL)
+		{
+			// aiming / throwing / psi / waypoint: a crosshair ring over the box, spinning when on a target
+			glm::vec4 rc = ct == CT_AIM ? (unitThere ? yellow : red)
+				: ct == CT_THROW ? glm::vec4(2.4f, 1.4f, 0.3f, 1.f)
+				: ct == CT_PSI ? glm::vec4(1.6f, 0.6f, 2.4f, 1.f) : glm::vec4(0.5f, 2.3f, 0.8f, 1.f);
+			float spin = unitThere ? (float)time * 2.f : 0.f;
+			float half = TILE_W * size * 0.5f;
+			xrayDraw(ring, M * glm::translate(glm::mat4(1.f), corner + glm::vec3(half, TILE_H + 1.f, half))
+				* glm::rotate(glm::mat4(1.f), spin, {0, 1, 0}) * glm::scale(glm::mat4(1.f), glm::vec3(half * 0.8f, 1.f, half * 0.8f)), rc);
+		}
+		// the readout the flat map prints next to the cursor (hit chance, damage with Alt, out of range)
+		std::string info;
+		Uint8 infoColor = 0;
+		bool hasInfo = map->getCursorInfo(cursorTile, info, infoColor);
+		if (!hasInfo && !map->isAltPressed() && (ct == CT_PSI || ct == CT_WAYPOINT))
+		{
+			BattleAction *action = bs->getBattleGame()->getCurrentAction();
+			if (action && action->actor && action->weapon
+				&& action->weapon->getRules()->isOutOfRange(action->actor->distance3dToPositionSq(cursorTile)))
+			{
+				info = "0%";
+				infoColor = (Uint8)markerIndex(Pathfinding::red);
+				hasInfo = true;
+			}
+		}
+		if (hasInfo && !info.empty())
+		{
+			// beside the box on the player's right, so the pointing hand does not cover it
+			const Label &l = label(info, infoColor);
+			float half = TILE_W * size * 0.5f;
+			glm::vec3 centre = corner + glm::vec3(half, 0.f, half);
+			glm::vec3 toV = viewerVox - centre;
+			toV.y = 0.f;
+			glm::vec3 right = glm::length(toV) > 1e-3f ? glm::normalize(glm::cross(glm::vec3(0, 1, 0), toV)) : glm::vec3(1, 0, 0);
+			texts.push_back({centre + right * (half * 1.45f + l.w * PX * 0.5f) + glm::vec3(0.f, TILE_H * 0.45f, 0.f), &l});
+		}
+	}
+
+	// waypoints set for a guided weapon, numbered like on the flat map
+	if (show)
+		if (std::vector<Position> *wps = map->getWaypoints())
+			for (size_t i = 0; i < wps->size(); ++i)
+			{
+				const Position &w = (*wps)[i];
+				glm::vec3 corner(w.x * TILE_W, floorAt(w) + 0.3f, w.y * TILE_W);
+				drawWire(sh, M, corner, 1, glm::vec4(2.0f, 1.7f, 0.2f, 1.f), 0.3f);
+				texts.push_back({corner + glm::vec3(8.f, TILE_H + 2.f, 8.f), &label(std::to_string(i + 1), (Uint8)markerIndex(Pathfinding::yellow))});
+			}
+
+	// readouts last, over everything, so they stay legible
+	glDisable(GL_DEPTH_TEST);
+	for (auto &tx : texts) drawLabel(sh, M, tx.first, viewerVox, *tx.second, PX);
+	glEnable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
 }
 
 // ================================================================== geoscape globe
@@ -1065,6 +1304,44 @@ void Board::init(const RoomLayout &layout)
 		for (float pz : {0.f, L - t})
 			c.addBox({px, 0, pz}, {px + t, 5.f, pz + t}, glm::vec4(1), 0);
 	_p->cursor.upload(c);
+	// HUD meshes: wireframe boxes for one and two tiles (thin bars along the 12 edges)
+	for (int n = 0; n < 2; ++n)
+	{
+		MeshData w;
+		const float E = 0.7f, X = TILE_W * (n + 1.f), Y = (float)TILE_H, Z = TILE_W * (n + 1.f);
+		for (float yy : {0.f, Y - E})
+			for (float zz : {0.f, Z - E}) w.addBox({0, yy, zz}, {X, yy + E, zz + E}, glm::vec4(1), 0);
+		for (float yy : {0.f, Y - E})
+			for (float xx : {0.f, X - E}) w.addBox({xx, yy, 0}, {xx + E, yy + E, Z}, glm::vec4(1), 0);
+		for (float xx : {0.f, X - E})
+			for (float zz : {0.f, Z - E}) w.addBox({xx, 0, zz}, {xx + E, Y, zz + E}, glm::vec4(1), 0);
+		_p->wire[n].upload(w);
+	}
+	{
+		// path arrow lying on the floor, pointing -Z (map north)
+		MeshData a;
+		const float T = 0.8f;
+		a.addBox({-1.2f, 0, -1.f}, {1.2f, T, 5.f}, glm::vec4(1), 0);
+		glm::vec3 l(-3.6f, 0, -1.f), r(3.6f, 0, -1.f), tip(0, 0, -6.5f), up(0, T, 0);
+		a.addQuad(l + up, r + up, tip + up, tip + up, glm::vec4(1), 0);
+		a.addQuad(l, tip, tip, r, glm::vec4(1), 0);
+		a.addQuad(l, l + up, tip + up, tip, glm::vec4(1), 0);
+		a.addQuad(tip, tip + up, r + up, r, glm::vec4(1), 0);
+		a.addQuad(r, r + up, l + up, l, glm::vec4(1), 0);
+		_p->arrow.upload(a);
+		// selected-unit arrow: a downward pointer
+		MeshData d;
+		glm::vec3 apex(0, 0, 0);
+		float s = 2.6f, h = 4.5f;
+		glm::vec3 c0(-s, h, -s), c1(s, h, -s), c2(s, h, s), c3(-s, h, s);
+		d.addQuad(apex, apex, c1, c0, glm::vec4(1), 0);
+		d.addQuad(apex, apex, c2, c1, glm::vec4(1), 0);
+		d.addQuad(apex, apex, c3, c2, glm::vec4(1), 0);
+		d.addQuad(apex, apex, c0, c3, glm::vec4(1), 0);
+		d.addQuad(c0, c1, c2, c3, glm::vec4(1), 0);
+		d.addBox({-1.f, h, -1.f}, {1.f, h + 3.5f, 1.f}, glm::vec4(1), 0);
+		_p->pointer.upload(d);
+	}
 	MeshData s;
 	s.addSphere({0, 0, 0}, 1.f, 12, 8, glm::vec4(1), 0);
 	_p->dot.upload(s);
@@ -1144,10 +1421,18 @@ glm::vec3 Board::tileCenter(int tx, int ty, int tz) const
 	return glm::vec3(p.boardMatrix() * glm::vec4(tx * TILE_W + 8.f, tz * TILE_H - lvl, ty * TILE_W + 8.f, 1.f));
 }
 
+void Board::fingerHover(int tx, int ty, int tz)
+{
+	_p->fingerTile = Position(tx, ty, tz);
+	_p->fingerFrames = 2;
+}
+
 void Board::clickTile(int tx, int ty, int tz, bool right)
 {
 	Impl &p = *_p;
 	revalidate(p);
+	p.cursorTile = Position(tx, ty, tz);
+	p.cursorSet = true;
 	if (p.bs) p.bs->vrTileClick(Position(tx, ty, tz), right);
 }
 

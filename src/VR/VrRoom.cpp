@@ -101,7 +101,7 @@ void buildCommandCenter(MeshData &m, RoomLayout &L)
 	// ---- war table
 	const glm::vec3 T = L.tableCenter;
 	const float hx = L.tableSize.x * 0.5f, hz = L.tableSize.y * 0.5f;
-	const float rim = 0.12f;
+	const float rim = L.tableRim;
 	// pedestal
 	m.addBox({T.x - hx * 0.6f, 0.f, T.z - hz * 0.5f}, {T.x + hx * 0.6f, 0.10f, T.z + hz * 0.5f}, kDark, MAT_PLAIN);
 	m.addBox({T.x - hx * 0.45f, 0.10f, T.z - hz * 0.35f}, {T.x + hx * 0.45f, T.y - 0.12f, T.z + hz * 0.35f}, kMetal * 0.8f, MAT_PLAIN);

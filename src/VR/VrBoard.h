@@ -56,6 +56,8 @@ public:
 	std::vector<UnitMarker> unitMarkers() const;
 	/// Map tile under a world point (highest visible floor at or below it). floorY = its world height.
 	bool tileUnder(const glm::vec3 &world, int &tx, int &ty, int &tz, float &floorY) const;
+	/// A fingertip hovers over a map tile: the game-style cursor follows it (call every frame).
+	void fingerHover(int tx, int ty, int tz);
 	/// Clicks a map tile (move / fire / select, exactly like clicking it on the flat map).
 	void clickTile(int tx, int ty, int tz, bool right);
 	/// Selects one of our units directly.

@@ -150,6 +150,10 @@ public:
 	void setCursorType(CursorType type, int size = 1);
 	/// Gets the 3D cursor type.
 	CursorType getCursorType() const;
+	/// Gets the 3D cursor size in tiles (2 for big units).
+	int getCursorSize() const { return _cursorSize; }
+	/// Text shown next to the 3D cursor on a tile (hit chance, damage); false when there is none.
+	bool getCursorInfo(Position pos, std::string &text, Uint8 &color);
 	/// VR tabletop: points the selector at a tile picked on the table.
 	void setSelectorTile(int x, int y) { _selectorX = x; _selectorY = y; }
 

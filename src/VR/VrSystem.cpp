@@ -881,7 +881,7 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 	{
 		const RoomLayout &L = S->layout;
 		// on the front face of the table rim, facing the player
-		glm::vec3 c(L.tableCenter.x, L.tableCenter.y - 0.055f, L.tableCenter.z + L.tableSize.y * 0.5f + 0.125f);
+		glm::vec3 c(L.tableCenter.x, L.tableCenter.y - 0.055f, L.tableCenter.z + L.tableSize.y * 0.5f + L.tableRim + 0.005f);
 		glm::mat4 m = glm::translate(glm::mat4(1.f), c) * glm::rotate(glm::mat4(1.f), glm::radians(-8.f), {1, 0, 0});
 		sh.set("uMode", 0);
 		sh.set("uModel", m * glm::scale(glm::mat4(1.f), {0.80f, 0.10f, 1.f}));

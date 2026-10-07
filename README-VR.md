@@ -6,7 +6,14 @@ X-COM command center at a holographic war table:
 - **Battlescape** – the mission map is rebuilt in 3D on the table as a
   diorama. Soldiers and aliens are cardboard stand-up figures on colored bases
   (blue = X-COM, red = aliens, green = civilians). Upper floors lift off like a
-  dollhouse. Point at a tile and pull the trigger to move or shoot.
+  dollhouse. Point at a tile and pull the trigger, or tap it with your finger,
+  to move or shoot. The game's 3D cursor is a wireframe box on the table (red
+  over an empty tile, flashing yellow over a unit, blue below the current
+  level), the selected soldier has a yellow box and the bobbing arrow over its
+  head, and the path preview arrows and TU / energy numbers appear on the tiles
+  when the game's path preview option is on. The hit chance the flat screen
+  shows next to the aiming cursor (UFO Extender accuracy option) floats next
+  to the box.
 - **Geoscape** – a physical globe hovers over the table, with bases, craft,
   UFOs and mission sites as markers and the real day/night terminator.
 - **The table is a control panel.** Right in front of you along the near edge
@@ -14,8 +21,10 @@ X-COM command center at a holographic war table:
   the battlescape controls (kneel, end turn, next soldier, level up/down, ...).
   Press them with your finger. Both weapon buttons sit at the left end of the
   bay, closest to you; End Turn and Abort are at the far right end. Left of the
-  buttons is an inventory tray for the selected soldier, with small floating
-  voxel models of the items; pinch one to move it.
+  buttons is an inventory tray for the selected soldier, about as deep as the
+  buttons: the game's sections (hands, shoulders, legs, backpack, belt, ground)
+  repacked into one row, with small floating voxel models of the items; pinch
+  one to move it.
 - **Your hands** are tracked finger by finger (Valve Index knuckles) and collide
   with the table and the buttons: a finger pressed against the table edge stops
   there and bends. Tap a soldier's head to select it, tap a tile to walk there.
@@ -34,18 +43,16 @@ game state generically, so content mods such as X-Com Files should work.
    `SOUND`, `TERRAIN`, `UFOGRAPH`, `UFOINTRO`, `UNITS`).
 2. Start **SteamVR** and make sure it is your OpenXR runtime
    (SteamVR → Settings → OpenXR → "Set SteamVR as OpenXR runtime").
-3. Launch:
-   - Windows: `Play VR.bat` (or `Desktop preview.bat`, `Play flat.bat`)
-   - Linux: `./play-vr.sh` (or `./desktop-preview.sh`, `./play-flat.sh`)
+3. Launch `Play VR.bat` (or `Desktop preview.bat`, `Play flat.bat`).
 
 If no headset or OpenXR runtime is found, the game starts in normal flat mode
 and writes the reason into `openxcom.log`. Look for lines starting with `[VR]`.
 
 The mode is the `vrMode` option: `0` = flat, `1` = headset, `2` = desktop preview.
-The war table is 1.9 × 1.2 m; `vrTableScale` (percent, 60–150, default 100)
-makes it bigger or smaller. Its near edge and the control console stay where
-they are, sized for your hands.
 It can be passed on the command line (`-vrMode 2`) or set in `options.cfg`.
+The war table is 1.9 × 1.2 m with a 3.5 cm rim; `vrTableScale` (percent,
+60–150, default 100) makes it bigger or smaller. Its near edge and the control
+console stay where they are, sized for your hands.
 
 ## Controls (Valve Index / Touch / Vive wands)
 
@@ -75,6 +82,7 @@ glowing bar underneath it.
 | Gesture | What it does |
 |---|---|
 | Press a table button | Same as clicking that battlescape button. Buttons travel about 5 mm, click near the bottom of the stroke (with a haptic tick) and spring back. A laser click on a button works too. |
+| Point your index finger just above the map | The game's cursor follows your fingertip (with its hit chance when aiming) |
 | Tap a soldier's head with your index finger | Select that soldier |
 | Tap a tile on the map with your index finger | Move the selected soldier there (with path preview on, tap again to confirm) |
 | Pinch an item in the inventory tray | Pick it up; let go over a slot or hand to move it there (costs TU like in the game). Dropping onto an occupied hand swaps the items. |
@@ -102,14 +110,14 @@ headset on.
   physics, buttons, inventory pinching and taps were tested with a simulated
   hand in the desktop preview.
 - The inventory tray moves items between slots and hands; loading ammo by
-  dragging a clip onto a weapon is not supported yet (use the screen). Ground
-  items are packed into the ground area rather than laid out as in the game.
+  dragging a clip onto a weapon is not supported yet (use the screen). The
+  ground area on the tray is five columns wide and shows the floor items that
+  fit; the rest are on the big screen's inventory.
 - Typing (base names, save names) needs the real keyboard.
 - Projectiles and explosions on the table are simple glowing markers; smoke,
   fire and floor items are not shown on the table yet (they are on the screen).
-- Linux build needs glibc 2.38+ (SteamOS 3.6+, Arch, Ubuntu 24.04+, Fedora 39+)
-  and the SDL 1.2 family: `sdl12-compat` (or `libsdl1.2`), `SDL_image 1.2`,
-  `SDL_mixer 1.2`. `SDL_gfx` and the OpenXR loader are bundled.
+- Windows only for now. The code still compiles on Linux (that build drives
+  the automated desktop-preview tests), but it is not packaged or supported.
 
 ## How it works (for the rebuild)
 
@@ -121,7 +129,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrXr.*` | OpenXR: instance, session on the engine's GL context (Xlib or Win32 binding), stereo swapchains, action bindings for Index/Touch/Vive/simple controllers, haptics. |
 | `VrSystem.cpp` | Frame loop, tracking-space → world "rig", the controller → mouse bridge (synthetic SDL events), grabbing, desktop preview camera, test automation (`OXCE_VR_SCRIPT`). |
 | `VrRoom.*` | Procedural command-center room, war table, controller models. |
-| `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (a critically damped follower turns the game's ~33 steps a second into smooth motion at the headset's frame rate), tile picking, globe. |
+| `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (a critically damped follower turns the game's ~33 steps a second into smooth motion at the headset's frame rate), tile picking, the HUD (wireframe cursor, selected-unit marker, path preview, readouts in the game's font), globe. |
 | `VrHands.*` | Hand skeletons (from XR hand tracking or posed from controller inputs), collision against box colliders with per-finger joint solving, pinch / point gestures. |
 | `VrTable.*` | The table's control panel: hatches and spring buttons, the inventory tray with voxel item models, head/tile taps, and the live wall screens. |
 | `VrGL.*`, `VrShaders.h` | Tiny GL helper layer and the single scene shader (linear lighting into an sRGB target). |
@@ -151,6 +159,12 @@ Key ideas:
 - **Wall screens reuse game states off-screen.** `UnitInfoState` is rendered into
   a private surface with `State::vrBlitTo` (palette saved and restored, sounds
   muted), and `MiniMapView` is drawn directly.
+- **The HUD reads the game's own state.** Path preview comes straight from the
+  tiles (`Tile::getPreview`, `getTUMarker`, `getEnergyMarker`,
+  `getMarkerColor`) and the `battleNewPreviewPath` option; the readout next to
+  the cursor comes from `Map::getCursorInfo`, which is the flat map's own
+  accuracy / damage code moved into a function both use. Readouts are drawn
+  with the game's small font and palette and turned to face you.
 - **The flat camera and the table stay in sync.** The table follows the game's
   camera center and view level, and sliding the map on the table moves the
   game's camera.
@@ -162,17 +176,16 @@ otherwise skips most of the walk animation, and runs at timer interval 0, for
 units outside the flat camera's view, which made them sprint across the table),
 `BattlescapeState::vrTileClick` / `vrSelectUnit` / `vrButtons` / `vrIcons`,
 `State::vrBlitTo` / `vrMute`, `FlcPlayer` and `VideoState` (keep VR frames
-going during the intro and cutscenes), `Map::setSelectorTile`,
+going during the intro and cutscenes), `Map::setSelectorTile` /
+`getCursorSize` / `getCursorInfo` (the cursor readout code, moved out of
+`drawTerrain` unchanged so the table can show it too),
 `BattleUnit::get/setFacingSnapshot`, `Globe::getCenter`, `Game::getStates`, and
 `SDL_GetMouseState`/`SDL_WarpMouse` calls routed through `VR::getMouseState` /
 `VR::warpMouse` so the laser pointer is the mouse.
 
 ## Building
 
-Linux: SDL 1.2, SDL_image/mixer/gfx 1.2, OpenGL, the OpenXR SDK (loader +
-headers) and glm, then the usual `cmake -B build && cmake --build build`.
-`-DOXCE_VR=OFF` builds the normal game.
-
 Windows: builds with MinGW (llvm-mingw was used) against static SDL 1.2
-libraries and the static OpenXR loader; pass `-DDEPS_DIR=<nonexistent>` so
-CMake uses pkg-config.
+libraries (SDL, SDL_image, SDL_mixer, SDL_gfx), the static OpenXR loader and
+glm; pass `-DDEPS_DIR=<nonexistent>` so CMake uses pkg-config.
+`-DOXCE_VR=OFF` builds the normal game.

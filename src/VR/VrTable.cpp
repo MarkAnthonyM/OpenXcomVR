@@ -19,6 +19,7 @@
 #include "../Mod/Mod.h"
 #include "../Mod/RuleItem.h"
 #include "../Mod/RuleInventory.h"
+#include "../Mod/RuleInterface.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/SavedBattleGame.h"
 #include "../Savegame/BattleUnit.h"
@@ -92,6 +93,18 @@ struct Held
 	glm::vec2 footSize{0.f};
 };
 
+/// One inventory section (hand, belt, ground, ...) as laid out on the tray. The game's
+/// layout is tall; on the tray the sections are repacked into a short row, so each one
+/// has its own offset from game inventory pixels to tray pixels.
+struct InvSection
+{
+	const RuleInventory *r = nullptr;
+	glm::vec4 game{0.f};        // slot area in game inventory pixels (x, y, w, h)
+	glm::vec2 off{0.f};         // tray pixels = game pixels + off
+	glm::vec2 labelAt{0.f};     // label top-left in tray pixels
+	int labelRow = 0, labelW = 0;
+};
+
 struct Wall
 {
 	glm::vec3 center, right, normal;
@@ -134,6 +147,9 @@ struct Table::Impl
 	std::map<const Surface*, std::unique_ptr<Mesh>> itemMeshes;
 	std::vector<ItemView> items;
 	BattleUnit *invUnit = nullptr;
+	std::vector<InvSection> secs;
+	Texture labelTex;
+	static const int GROUND_COLS = 5;
 	Held held;
 	int hoverItem = -1;
 	double time = 0.0;
@@ -168,6 +184,13 @@ struct Table::Impl
 		return c;
 	}
 	void updateRemap();
+	const InvSection *section(const RuleInventory *r) const
+	{
+		for (const InvSection &s : secs) if (s.r == r) return &s;
+		return nullptr;
+	}
+	glm::vec2 offOf(const RuleInventory *r) const { const InvSection *s = section(r); return s ? s->off : glm::vec2(0.f); }
+	bool locate(glm::vec2 footTL, glm::vec2 footSize, const RuleInventory *&slot, int &x, int &y) const;
 	glm::vec2 invToWorld(glm::vec2 p) const { return invOrigin + (p - glm::vec2(invBox.x, invBox.y)) * invScale; }
 	glm::vec2 worldToInv(glm::vec2 w) const { return (w - invOrigin) / invScale + glm::vec2(invBox.x, invBox.y); }
 	float itemY(int i) const { return sy + 0.024f + 0.003f * (float)std::sin(time * 2.0 + i * 1.7); }
@@ -212,20 +235,21 @@ void Table::init(const RoomLayout &layout)
 	float hx = layout.tableSize.x * 0.5f, hz = layout.tableSize.y * 0.5f;
 	p.sy = T.y - 0.025f;
 	p.table = {T.x - hx, T.z - hz, T.x + hx, T.z + hz};
-	// The near 30 cm of the table hold the controls, sized for hands rather than for the table and
-	// grouped in front of the player (who starts at x = 0): the inventory tray left of centre, the
-	// button bay right of it. The map gets the rest of the table.
-	const float STRIP = 0.30f;
+	// The near strip of the table holds the controls, sized for hands and grouped in front of the
+	// player (who starts at x = 0): the inventory tray left of centre, the button bay right of it,
+	// both about as deep as the bay. The map gets the rest of the table.
+	const float BAY_PX = 0.002f;                 // 2 mm per panel pixel: a main button is ~6.4 x 3.2 cm
+	const float bd0 = 56.f * BAY_PX;
+	const float STRIP = bd0 + 0.03f;
 	float stripFar = p.table.w - STRIP;
-	p.map = {p.table.x, p.table.y, p.table.z, stripFar - 0.02f};
+	p.map = {p.table.x, p.table.y, p.table.z, stripFar - 0.01f};
 	float bcz = (stripFar + p.table.w) * 0.5f;
-	// icon panel (320 x 56 px) at 2 mm per pixel: a main button is about 6.4 x 3.2 cm
-	float bx0 = 0.01f, bx1 = std::min(bx0 + 320.f * 0.002f, p.table.z - 0.03f);
-	p.bayScale = std::min(0.002f, std::min((bx1 - bx0) / 320.f, (STRIP - 0.035f) / 56.f));
+	float bx0 = 0.01f, bx1 = std::min(bx0 + 320.f * BAY_PX, p.table.z - 0.03f);
+	p.bayScale = std::min(BAY_PX, (bx1 - bx0) / 320.f);
 	float bw = 320.f * p.bayScale, bd = 56.f * p.bayScale;
 	p.bay = {bx0, bcz - bd * 0.5f, bx0 + bw, bcz + bd * 0.5f};
-	// inventory tray: up to 58 cm wide, ending just left of centre
-	p.tray = {std::max(p.table.x + 0.03f, -0.60f), stripFar + 0.005f, -0.02f, p.table.w - 0.012f};
+	// inventory tray: as deep as the bay, up to 70 cm wide, ending just left of centre
+	p.tray = {std::max(p.table.x + 0.03f, -0.72f), bcz - bd0 * 0.5f - 0.004f, -0.02f, bcz + bd0 * 0.5f + 0.004f};
 
 	// default panel layout (BattlescapeState), replaced by the live one in a battle
 	struct D { const char *n; int x, y, w, h; };
@@ -438,13 +462,14 @@ void Table::Impl::updateButtons(TableContext &ctx, const Hands &hands, float dt)
 void Table::Impl::buildGrid(TableContext &ctx)
 {
 	gridFor = battle;
+	secs.clear();
 	if (!bs) return;
-	// the game's own inventory widget draws the grid and slot names
-	Inventory inv(ctx.game, 320, 200, 0, 0, false);
+	Mod *mod = ctx.game->getMod();
 	SDL_Color *pal = bs->getPalette();
+	// the game's own inventory widget draws the grid (labels are drawn separately below)
+	Inventory inv(ctx.game, 320, 200, 0, 0, false);
 	inv.setPalette(pal);
 	inv.drawGrid();
-	inv.drawGridLabels(false);
 	Surface off(320, 200);
 	off.setPalette(pal);
 	off.clear();
@@ -459,31 +484,135 @@ void Table::Impl::buildGrid(TableContext &ctx)
 	gridTex.create(320, 200, true, true);
 	gridTex.update(px.data(), 320, 200);
 
-	// fit the slots into the tray
-	glm::vec4 bb(1e9f, 1e9f, -1e9f, -1e9f);
-	for (const auto &pair : *ctx.game->getMod()->getInventories())
+	// sections and their slot areas, in game inventory pixels
+	for (const std::string &name : mod->getInvsList())
 	{
-		const RuleInventory *r = pair.second;
-		glm::vec4 a;
-		if (r->getType() == INV_HAND) a = {(float)r->getX(), (float)r->getY(), (float)r->getX() + 32.f, (float)r->getY() + 48.f};
-		else if (r->getType() == INV_GROUND) a = {(float)r->getX(), (float)r->getY(), 320.f, 200.f};
+		const RuleInventory *r = mod->getInventory(name, true);
+		if (!r) continue;
+		InvSection sec;
+		sec.r = r;
+		if (r->getType() == INV_HAND) sec.game = {(float)r->getX(), (float)r->getY(), 32.f, 48.f};
+		else if (r->getType() == INV_GROUND) sec.game = {(float)r->getX(), (float)r->getY(), GROUND_COLS * 16.f, 48.f};
 		else
 		{
-			a = glm::vec4(1e9f, 1e9f, -1e9f, -1e9f);
-			for (const RuleSlot &s : *r->getSlots())
+			glm::vec4 a(1e9f, 1e9f, -1e9f, -1e9f);
+			for (const RuleSlot &sl : *r->getSlots())
 			{
-				float x = (float)(r->getX() + s.x * RuleInventory::SLOT_W), y = (float)(r->getY() + s.y * RuleInventory::SLOT_H);
+				float x = (float)(r->getX() + sl.x * RuleInventory::SLOT_W), y = (float)(r->getY() + sl.y * RuleInventory::SLOT_H);
 				a = {std::min(a.x, x), std::min(a.y, y), std::max(a.z, x + 16.f), std::max(a.w, y + 16.f)};
 			}
+			if (a.x > a.z) continue;
+			sec.game = {a.x, a.y, a.z - a.x, a.w - a.y};
 		}
-		bb = {std::min(bb.x, a.x), std::min(bb.y, a.y - 8.f), std::max(bb.z, a.z), std::max(bb.w, a.w)}; // room for labels above slots
+		secs.push_back(sec);
 	}
-	bb.y = std::max(0.f, bb.y);
-	invBox = bb;
+
+	// labels in the game's slot-name style, one row each in a small atlas
+	const int LW = 96, LH = 9;
+	Text text(LW, LH, 0, 0);
+	text.setPalette(pal);
+	text.initText(mod->getFont("FONT_BIG"), mod->getFont("FONT_SMALL"), ctx.game->getLanguage());
+	if (RuleInterface *ri = mod->getInterface("inventory", false))
+		if (const Element *el = ri->getElement("textSlots")) text.setColor(el->color);
+	text.setHighContrast(true);
+	std::vector<uint32_t> lpx((size_t)LW * LH * std::max<size_t>(1, secs.size()), 0u);
+	for (size_t i = 0; i < secs.size(); ++i)
+	{
+		text.clear();
+		text.setText(ctx.game->getLanguage()->getString(secs[i].r->getId()).arg(1).arg(1));
+		text.draw();
+		secs[i].labelW = std::min(LW, text.getTextWidth());
+		secs[i].labelRow = (int)i;
+		for (int y = 0; y < LH; ++y)
+			for (int x = 0; x < LW; ++x)
+			{
+				Uint8 c = text.getPixel(x, y);
+				if (c) lpx[(i * LH + y) * LW + x] = rgba(pal[c]);
+			}
+	}
+	labelTex.create(LW, LH * std::max<int>(1, (int)secs.size()), true, true);
+	labelTex.update(lpx.data(), LW, LH * std::max<int>(1, (int)secs.size()));
+
+	// Repack into one short row: tall sections get a column each, sections one slot high are
+	// stacked two to a column. Order follows the game's left-to-right layout, ground last.
+	const float GAP = 8.f, ROWH = LH + 48.f; // gap wide enough that neighbouring labels read apart
+	std::vector<int> order;
+	for (int i = 0; i < (int)secs.size(); ++i) order.push_back(i);
+	std::stable_sort(order.begin(), order.end(), [&](int a, int b)
+	{
+		bool ga = secs[a].r->getType() == INV_GROUND, gb = secs[b].r->getType() == INV_GROUND;
+		if (ga != gb) return gb;
+		if (secs[a].game.x != secs[b].game.x) return secs[a].game.x < secs[b].game.x;
+		return secs[a].game.y < secs[b].game.y;
+	});
+	struct Col { std::vector<int> members; float w = 0.f, h = 0.f; bool shortCol = false; };
+	std::vector<Col> cols;
+	int openShort = -1;
+	for (int i : order)
+	{
+		InvSection &sc = secs[i];
+		float bw = std::max(sc.game.z, (float)sc.labelW), bh = LH + sc.game.w;
+		bool isShort = sc.game.w <= 16.f && sc.r->getType() != INV_GROUND;
+		if (isShort && openShort >= 0 && cols[openShort].h + bh <= ROWH + 0.5f)
+		{
+			Col &c = cols[openShort];
+			c.members.push_back(i);
+			c.w = std::max(c.w, bw);
+			c.h += bh;
+			continue;
+		}
+		Col c;
+		c.members.push_back(i);
+		c.w = bw;
+		c.h = bh;
+		c.shortCol = isShort;
+		cols.push_back(c);
+		if (isShort) openShort = (int)cols.size() - 1;
+	}
+	// The tray ends just left of centre, so the last column is the one nearest the player:
+	// put the columns in reverse, hands (used most) nearest, the ground farthest.
+	std::reverse(cols.begin(), cols.end());
+	float x = 0.f;
+	for (Col &c : cols)
+	{
+		// stacked short sections: the one higher up in the game goes on top
+		std::sort(c.members.begin(), c.members.end(), [&](int a, int b) { return secs[a].game.y < secs[b].game.y; });
+		float y = 0.f;
+		for (int i : c.members)
+		{
+			InvSection &sc = secs[i];
+			sc.labelAt = {x, y};
+			sc.off = glm::vec2(x, y + LH) - glm::vec2(sc.game.x, sc.game.y);
+			y += LH + sc.game.w;
+		}
+		x += c.w + GAP;
+	}
+	float totalW = std::max(1.f, x - GAP), totalH = ROWH;
+	invBox = {0.f, 0.f, totalW, totalH};
+	// fit into the tray, kept against its centre side (nearest the player)
 	float tw = tray.z - tray.x, td = tray.w - tray.y;
-	invScale = std::min(tw / (bb.z - bb.x), td / (bb.w - bb.y));
-	float uw = (bb.z - bb.x) * invScale, ud = (bb.w - bb.y) * invScale;
-	invOrigin = {tray.x + (tw - uw) * 0.5f, tray.y + (td - ud) * 0.5f};
+	invScale = std::min(tw / totalW, td / totalH);
+	float uw = totalW * invScale, ud = totalH * invScale;
+	invOrigin = {tray.z - uw, tray.y + (td - ud) * 0.5f};
+	Log(LOG_INFO) << "[VR] inventory tray: " << secs.size() << " sections, " << totalW << "x" << totalH
+		<< " px, cell " << (16.f * invScale * 100.f) << " cm";
+}
+
+bool Table::Impl::locate(glm::vec2 footTL, glm::vec2 footSize, const RuleInventory *&slot, int &x, int &y) const
+{
+	// probe the centre of the first cell, then the middle of the footprint
+	glm::vec2 probes[2] = {footTL + glm::vec2(8.f), footTL + footSize * 0.5f};
+	for (const glm::vec2 &pr : probes)
+		for (const InvSection &sc : secs)
+		{
+			glm::vec2 tl = glm::vec2(sc.game.x, sc.game.y) + sc.off;
+			if (pr.x < tl.x || pr.y < tl.y || pr.x >= tl.x + sc.game.z || pr.y >= tl.y + sc.game.w) continue;
+			glm::vec2 g = pr - sc.off;
+			int px = (int)std::floor(g.x), py = (int)std::floor(g.y);
+			if (sc.r->getType() == INV_GROUND) { slot = sc.r; x = 0; y = 0; return true; }
+			if (sc.r->checkSlotInPosition(&px, &py)) { slot = sc.r; x = px; y = py; return true; }
+		}
+	return false;
 }
 
 void Table::Impl::listItems(TableContext &ctx)
@@ -503,33 +632,35 @@ void Table::Impl::listItems(TableContext &ctx)
 		ItemView v;
 		v.item = it;
 		const RuleItem *r = it->getRules();
+		glm::vec2 o = offOf(slot); // game inventory pixels -> tray pixels
 		if (slot->getType() == INV_HAND)
 		{
-			v.foot = {(float)slot->getX(), (float)slot->getY(), 32.f, 48.f};
-			v.sprite = {(float)(slot->getX() + r->getHandSpriteOffX()), (float)(slot->getY() + r->getHandSpriteOffY())};
+			v.foot = {slot->getX() + o.x, slot->getY() + o.y, 32.f, 48.f};
+			v.sprite = {slot->getX() + r->getHandSpriteOffX() + o.x, slot->getY() + r->getHandSpriteOffY() + o.y};
 		}
 		else
 		{
-			float x = (float)(slot->getX() + it->getSlotX() * RuleInventory::SLOT_W), y = (float)(slot->getY() + it->getSlotY() * RuleInventory::SLOT_H);
+			float x = (float)(slot->getX() + it->getSlotX() * RuleInventory::SLOT_W) + o.x, y = (float)(slot->getY() + it->getSlotY() * RuleInventory::SLOT_H) + o.y;
 			v.foot = {x, y, (float)(r->getInventoryWidth() * 16), (float)(r->getInventoryHeight() * 16)};
 			v.sprite = {x, y};
 		}
 		v.frame = it->getBigSprite(set, battle, anim);
 		items.push_back(v);
 	}
-	// things on the floor under the soldier, packed into the ground row
+	// things on the floor under the soldier, packed into the ground area (what fits)
 	const RuleInventory *ground = ctx.game->getMod()->getInventoryGround();
 	if (ground && u->getTile())
 	{
-		int cols = (320 - ground->getX()) / RuleInventory::SLOT_W;
+		glm::vec2 o = offOf(ground);
 		int x = 0;
 		for (BattleItem *it : *u->getTile()->getInventory())
 		{
 			int w = it->getRules()->getInventoryWidth();
-			if (x + w > cols) break;
+			if (it->getRules()->getInventoryHeight() > 3) continue;
+			if (x + w > GROUND_COLS) break;
 			ItemView v;
 			v.item = it;
-			float gx = (float)(ground->getX() + x * 16), gy = (float)ground->getY();
+			float gx = (float)(ground->getX() + x * 16) + o.x, gy = (float)ground->getY() + o.y;
 			v.foot = {gx, gy, (float)(w * 16), (float)(it->getRules()->getInventoryHeight() * 16)};
 			v.sprite = {gx, gy};
 			v.frame = it->getBigSprite(set, battle, anim);
@@ -655,22 +786,12 @@ void Table::Impl::drop(TableContext &ctx)
 	for (const ItemView &v : items) if (v.item == a) stillThere = true;
 	if (!stillThere) return;
 
-	// where did it land? probe the centre of its first cell, then its middle
+	// where did it land?
 	glm::vec2 spriteTL = worldToInv(glm::vec2(held.origin.x, held.origin.z));
 	glm::vec2 footTL = spriteTL + held.footDelta;
 	const RuleInventory *slot = nullptr;
 	int x = 0, y = 0;
-	glm::vec2 probes[2] = {footTL + glm::vec2(8.f), footTL + held.footSize * 0.5f};
-	for (const glm::vec2 &pr : probes)
-	{
-		for (const auto &pair : *ctx.game->getMod()->getInventories())
-		{
-			int px = (int)std::floor(pr.x), py = (int)std::floor(pr.y);
-			if (pair.second->checkSlotInPosition(&px, &py)) { slot = pair.second; x = px; y = py; break; }
-		}
-		if (slot) break;
-	}
-	if (!slot)
+	if (!locate(footTL, held.footSize, slot, x, y))
 	{
 		std::ostringstream ss;
 		ss << "dropped outside the grid (" << footTL.x << "," << footTL.y << ")";
@@ -818,6 +939,8 @@ void Table::Impl::updateTaps(TableContext &ctx, const Hands &hands, float dt)
 		float floorY;
 		if (!board->tileUnder(tip, tx, ty, tz, floorY)) { touching[h] = false; continue; }
 		float gap = tip.y - r - floorY;
+		// a pointing fingertip close over the map works like the mouse: the game's cursor follows it
+		if (P.indexExtended && gap < 0.08f && !ctx.handBusy[h]) board->fingerHover(tx, ty, tz);
 		bool now = touching[h] ? gap < 0.012f : gap < 0.004f;
 		if (now && !touching[h] && cooldown[h] <= 0.f && P.indexExtended && P.tipVelocity.y < -0.02f && bsTop && !ctx.handBusy[h])
 		{
@@ -1011,7 +1134,7 @@ void Table::colliders(std::vector<Collider> &out) const
 	top.id = ID_TABLE;
 	top.holes = p.holes;
 	out.push_back(top);
-	const float rim = 0.12f, ry = p.L.tableCenter.y + 0.02f;
+	const float rim = p.L.tableRim, ry = p.L.tableCenter.y + 0.02f;
 	Collider r;
 	r.id = ID_RIM;
 	r.mn = {p.table.x - rim, p.sy - 0.1f, p.table.y - rim}; r.mx = {p.table.x, ry, p.table.w + rim}; out.push_back(r);
@@ -1136,9 +1259,26 @@ void Table::draw(const Shader &sh) const
 	sh.set("uMode", 4);
 	sh.set("uTint", glm::vec4(1.15f, 1.15f, 1.15f, p.invUnit ? 1.f : 0.35f));
 	glm::vec2 a = p.invToWorld({p.invBox.x, p.invBox.y}), bb = p.invToWorld({p.invBox.z, p.invBox.w});
-	sh.set("uUVRect", glm::vec4(p.invBox.x / 320.f, p.invBox.y / 200.f, (p.invBox.z - p.invBox.x) / 320.f, (p.invBox.w - p.invBox.y) / 200.f));
+	// each section's slots, cut out of the game's grid picture, then its label
 	p.gridTex.bind(0);
-	flat({a.x, a.y, bb.x, bb.y}, p.sy + 0.0012f);
+	for (const InvSection &sc : p.secs)
+	{
+		glm::vec4 g = sc.game;
+		sh.set("uUVRect", glm::vec4(g.x / 320.f, g.y / 200.f, g.z / 320.f, g.w / 200.f));
+		glm::vec2 w0 = p.invToWorld(glm::vec2(g.x, g.y) + sc.off), w1 = p.invToWorld(glm::vec2(g.x + g.z, g.y + g.w) + sc.off);
+		flat({w0.x, w0.y, w1.x, w1.y}, p.sy + 0.0012f);
+	}
+	if (p.labelTex.valid())
+	{
+		p.labelTex.bind(0);
+		float lw = (float)p.labelTex.width(), lh = (float)p.labelTex.height();
+		for (const InvSection &sc : p.secs)
+		{
+			sh.set("uUVRect", glm::vec4(0.f, sc.labelRow * 9.f / lh, sc.labelW / lw, 9.f / lh));
+			glm::vec2 w0 = p.invToWorld(sc.labelAt), w1 = p.invToWorld(sc.labelAt + glm::vec2((float)sc.labelW, 9.f));
+			flat({w0.x, w0.y, w1.x, w1.y}, p.sy + 0.0012f);
+		}
+	}
 	sh.set("uUVRect", glm::vec4(0.f, 0.f, 1.f, 1.f));
 	if (p.warnTimer > 0.f && p.warnTex.valid())
 	{
@@ -1152,11 +1292,20 @@ void Table::draw(const Shader &sh) const
 	if (p.held.item)
 	{
 		glm::vec2 tl = p.worldToInv({p.held.origin.x, p.held.origin.z}) + p.held.footDelta;
-		glm::vec2 snap = glm::floor(tl / 16.f + 0.5f) * 16.f;
-		glm::vec2 w0 = p.invToWorld(snap), w1 = p.invToWorld(snap + p.held.footSize);
-		sh.set("uMode", 2);
-		sh.set("uTint", glm::vec4(0.3f, 1.f, 0.6f, 0.35f));
-		flat({w0.x, w0.y, w1.x, w1.y}, p.sy + 0.0016f);
+		const RuleInventory *slot = nullptr;
+		int sx = 0, sy2 = 0;
+		if (p.locate(tl, p.held.footSize, slot, sx, sy2))
+		{
+			glm::vec2 o = p.offOf(slot);
+			glm::vec2 at = slot->getType() == INV_GROUND || slot->getType() == INV_HAND
+				? glm::vec2((float)slot->getX(), (float)slot->getY()) + o
+				: glm::vec2(slot->getX() + sx * 16.f, slot->getY() + sy2 * 16.f) + o;
+			glm::vec2 size = slot->getType() == INV_HAND ? glm::vec2(32.f, 48.f) : p.held.footSize;
+			glm::vec2 w0 = p.invToWorld(at), w1 = p.invToWorld(at + size);
+			sh.set("uMode", 2);
+			sh.set("uTint", glm::vec4(0.3f, 1.f, 0.6f, 0.35f));
+			flat({w0.x, w0.y, w1.x, w1.y}, p.sy + 0.0016f);
+		}
 	}
 
 	// a soft footprint under each floating item, so you can tell where it sits
@@ -1317,7 +1466,7 @@ bool Table::cellCenter(const std::string &slot, float cx, float cy, glm::vec3 &w
 	if (!p.game) return false;
 	const RuleInventory *r = p.game->getMod()->getInventory(slot, false);
 	if (!r) return false;
-	glm::vec2 c = p.invToWorld({r->getX() + cx * 16.f, r->getY() + cy * 16.f});
+	glm::vec2 c = p.invToWorld(glm::vec2(r->getX() + cx * 16.f, r->getY() + cy * 16.f) + p.offOf(r));
 	w = {c.x, p.sy + 0.024f, c.y};
 	return true;
 }

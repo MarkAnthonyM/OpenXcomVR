@@ -24,6 +24,7 @@ struct RoomLayout
 {
 	glm::vec3 tableCenter{0.f, 0.90f, -0.8f};   // center of the table's playing surface (near edge 20 cm in front of the player)
 	glm::vec2 tableSize{1.9f, 1.2f};            // playing surface x/z
+	float tableRim = 0.035f;                    // width of the frame around the playing surface
 	/// Scales the table (option vrTableScale), keeping its near edge where it is.
 	void scaleTable(float s)
 	{
