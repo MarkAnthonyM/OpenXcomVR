@@ -189,6 +189,16 @@ struct Board::Impl
 	BattleUnit *walkedUnit = nullptr;
 	bool projectileSeen = false;
 	float sinceProjectile = 10.f;
+	// a shot in progress: the table follows the game's camera as it chases the projectile, then goes
+	// back to where it was when the camera returns
+	bool inShot = false;
+	glm::vec3 preShotFocus{0.f};
+	Position preShotCam;
+	float returnIn = -1.f;       // after a shot in our turn: seconds left before going back (-1 = none)
+	// where a focused soldier stands on the table: this far from the middle toward the player,
+	// as a fraction of half the map's depth (leaves most of the table in front of the soldier)
+	static constexpr float NEAR_SPOT = 0.45f;
+	void focusOnUnit(const BattleUnit *u, Camera *cam);
 	bool hidden = false;         // the game is showing "Hidden Movement"
 	float curtain = 0.f;         // 0 open .. 1 the table fully covered
 	std::vector<uint32_t> hiddenText; // "HIDDEN MOVEMENT" in the big font (RGBA), for banner and minimaps
@@ -726,6 +736,27 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 	ch.mesh->upload(md);
 }
 
+/// Glides the table so the soldier stands near the player's side of the map, with most of the table
+/// in front of it, and points the flat screen's camera at the soldier.
+void Board::Impl::focusOnUnit(const BattleUnit *u, Camera *cam)
+{
+	if (!u) return;
+	returnIn = -1.f;
+	glm::vec3 up = unitVoxelPos(u);
+	float k = tileSize / TILE_W;
+	float hd = (mapRect.w - mapRect.y) * 0.5f;
+	// the soldier's offset from the table's middle (world, +z toward the player), back in map voxels
+	glm::vec3 off = glm::vec3(glm::rotate(glm::mat4(1.f), -yaw, {0, 1, 0}) * glm::vec4(0.f, 0.f, NEAR_SPOT * hd, 0.f)) / k;
+	focusTarget.x = glm::clamp(up.x - off.x, 0.f, (float)(mx * TILE_W));
+	focusTarget.z = glm::clamp(up.z - off.z, 0.f, (float)(my * TILE_W));
+	if (cam)
+	{
+		cam->centerOnPosition(u->getPosition(), false);
+		camSet = cam->getCenterPosition();
+		camSetValid = true;
+	}
+}
+
 glm::vec3 Board::Impl::unitVoxelPos(const BattleUnit *u)
 {
 	int size = u->getArmor()->getSize();
@@ -820,50 +851,91 @@ void Board::Impl::updateBattle(float dt)
 		BattleUnit *sel = battle->getSelectedUnit();
 		bool playerTurn = battle->getSide() == FACTION_PLAYER;
 		hidden = bs->getMap()->vrHiddenMovement() && !playerTurn && !battle->getDebugMode();
-		if (bs->getMap()->getProjectile()) sinceProjectile = 0.f; else sinceProjectile += dt;
+		bool busy = bs->getBattleGame() && bs->getBattleGame()->isBusy();
+		if (bs->getMap()->getProjectile())
+		{
+			if (!inShot)
+			{
+				// a new shot (or burst): remember the view to come back to
+				inShot = true;
+				preShotFocus = focusTarget;
+				preShotCam = camSetValid ? camSet : c;
+			}
+			sinceProjectile = 0.f;
+		}
+		else sinceProjectile += dt;
 
-		// The table keeps its own view. The game's camera is only followed when the game moves it on
-		// purpose: another soldier selected, an alien button pressed, the alien turn's visible action.
-		// Its automatic "centre on the soldier" after every move, and its bullet-chasing, are ignored.
+		// The table keeps its own view. The game's camera is followed when the game moves it on purpose:
+		// another soldier selected, an alien button pressed, a shot being chased, the alien turn's visible
+		// action. Its automatic "centre on the soldier" after a move is ignored (the table settles on the
+		// soldier itself when the walk ends).
 		if (!camSetValid || c.x != camSet.x || c.y != camSet.y)
 		{
-			bool follow = true;
-			if (playerTurn)
+			bool follow = true, onUnit = false;
+			bool nearSel = sel && !sel->isOut() && std::abs(sel->getPosition().x - c.x) <= 1 && std::abs(sel->getPosition().y - c.y) <= 1;
+			if (hidden) follow = false; // nothing may be revealed while the movement is hidden
+			else if (inShot)
 			{
-				if (sinceProjectile < 0.6f) follow = false;
-				else if (sel && sel == lastSelected && std::abs(sel->getPosition().x - c.x) <= 1 && std::abs(sel->getPosition().y - c.y) <= 1)
-					follow = false; // just re-centring on the soldier we already have
+				if (c.x == preShotCam.x && c.y == preShotCam.y)
+				{
+					// the camera went back after the shot: so does the table, exactly where it was
+					focusTarget = preShotFocus;
+					follow = false;
+				}
 			}
-			else if (hidden) follow = false; // nothing may be revealed while the movement is hidden
-			if (follow) focusTarget = glm::vec3(c.x * TILE_W + TILE_W * 0.5f, 0.f, c.y * TILE_W + TILE_W * 0.5f);
+			else if (playerTurn && nearSel)
+			{
+				if (sel == lastSelected) follow = false; // just re-centring on the soldier we already have
+				else onUnit = true;
+			}
 			camSet = c;
 			camSetValid = true;
+			if (follow) returnIn = -1.f; // the game looked somewhere else on purpose
+			if (onUnit) focusOnUnit(sel, cam);
+			else if (follow) focusTarget = glm::vec3(c.x * TILE_W + TILE_W * 0.5f, 0.f, c.y * TILE_W + TILE_W * 0.5f);
 		}
-		if (sel != lastSelected)
+		// the shot is over once the projectile is gone and the game has finished with it
+		if (inShot && !bs->getMap()->getProjectile() && !busy && sinceProjectile > 0.2f)
 		{
-			// a newly selected soldier off the table's view: bring it in
-			lastSelected = sel;
-			if (sel && playerTurn && !sel->isOut() && !inView(unitVoxelPos(sel), 0.8f))
+			inShot = false;
+			if (c.x == preShotCam.x && c.y == preShotCam.y) { if (!hidden) focusTarget = preShotFocus; }
+			else if (playerTurn) returnIn = 0.8f; // the game leaves its camera on the impact: look, then go back
+		}
+		if (returnIn >= 0.f)
+		{
+			if (inShot || !playerTurn || held[0] || held[1]) returnIn = -1.f;
+			else if ((returnIn -= dt) < 0.f)
 			{
-				glm::vec3 up = unitVoxelPos(sel);
-				focusTarget = glm::vec3(up.x, 0.f, up.z);
+				focusTarget = preShotFocus;
+				cam->centerOnPosition(preShotCam, false);
+				camSet = cam->getCenterPosition();
+				camSetValid = true;
+				returnIn = -1.f;
 			}
 		}
 
-		// keep a walking unit in view: glide just enough to bring it back inside the middle of the table
-		if (!hidden && sel && !sel->isOut() && (sel->getStatus() == STATUS_WALKING || sel->getStatus() == STATUS_FLYING)
+		if (sel != lastSelected)
+		{
+			// a newly selected soldier (also the first one when the mission starts): bring it close
+			lastSelected = sel;
+			if (sel && playerTurn && !sel->isOut() && !hidden) focusOnUnit(sel, cam);
+		}
+
+		// keep a walking unit in view: glide just enough to keep it inside a band around where a
+		// focused soldier stands (near the player's side of the table)
+		if (!hidden && !inShot && sel && !sel->isOut() && (sel->getStatus() == STATUS_WALKING || sel->getStatus() == STATUS_FLYING)
 			&& (playerTurn || sel->getVisible()) && !held[0] && !held[1])
 		{
 			auto it = cards.find(sel);
 			glm::vec3 up = (it != cards.end() && it->second.visInit) ? it->second.vis : unitVoxelPos(sel);
 			float k = tileSize / TILE_W;
-			// unit offset from the focus target, in table space (metres)
+			// unit offset from the focus target, in table space (metres; +z toward the player)
 			glm::vec3 ow = glm::vec3(glm::rotate(glm::mat4(1.f), yaw, {0, 1, 0}) * glm::vec4((up.x - focusTarget.x) * k, 0.f, (up.z - focusTarget.z) * k, 0.f));
 			float hw = (mapRect.z - mapRect.x) * 0.5f, hd = (mapRect.w - mapRect.y) * 0.5f;
 			glm::vec3 shift(0.f);
-			float bx = hw * 0.35f, bz = hd * 0.3f; // the unit stays inside the middle of the table
+			float bx = hw * 0.35f, zFar = -hd * 0.15f, zNear = hd * 0.65f;
 			if (ow.x > bx) shift.x = ow.x - bx; else if (ow.x < -bx) shift.x = ow.x + bx;
-			if (ow.z > bz) shift.z = ow.z - bz; else if (ow.z < -bz) shift.z = ow.z + bz;
+			if (ow.z > zNear) shift.z = ow.z - zNear; else if (ow.z < zFar) shift.z = ow.z - zFar;
 			if (shift.x != 0.f || shift.z != 0.f)
 			{
 				glm::vec3 sl = glm::vec3(glm::rotate(glm::mat4(1.f), -yaw, {0, 1, 0}) * glm::vec4(shift, 0.f)) / k;
@@ -876,22 +948,28 @@ void Board::Impl::updateBattle(float dt)
 				camSetValid = true;
 			}
 		}
-		// when the walk ends, settle the view on the unit if it ended up off-centre
-		bool walkingNow = sel && (sel->getStatus() == STATUS_WALKING || sel->getStatus() == STATUS_FLYING);
+		// when the walk ends (turns between steps and reaction fire included), settle on the soldier:
+		// close to the player during our turn, just back into view during the aliens'
+		bool walkingNow = sel && (sel->getStatus() == STATUS_WALKING || sel->getStatus() == STATUS_FLYING
+			|| (walkedLast && (sel->getStatus() == STATUS_TURNING || busy)));
 		if (walkedLast && !walkingNow && sel == walkedUnit && sel && !sel->isOut() && !hidden && (playerTurn || sel->getVisible()))
 		{
-			glm::vec3 up = unitVoxelPos(sel);
-			glm::vec3 saveFocus = focus;
-			focus = focusTarget;
-			bool central = inView(up, 0.3f);
-			focus = saveFocus;
-			if (!central)
+			if (playerTurn && sel->getFaction() == FACTION_PLAYER) focusOnUnit(sel, cam);
+			else
 			{
-				focusTarget = glm::vec3(up.x, 0.f, up.z);
-				Position fc((int)(up.x / TILE_W), (int)(up.z / TILE_W), viewLevel);
-				cam->centerOnPosition(fc, false);
-				camSet = cam->getCenterPosition();
-				camSetValid = true;
+				glm::vec3 up = unitVoxelPos(sel);
+				glm::vec3 saveFocus = focus;
+				focus = focusTarget;
+				bool central = inView(up, 0.3f);
+				focus = saveFocus;
+				if (!central)
+				{
+					focusTarget = glm::vec3(up.x, 0.f, up.z);
+					Position fc((int)(up.x / TILE_W), (int)(up.z / TILE_W), viewLevel);
+					cam->centerOnPosition(fc, false);
+					camSet = cam->getCenterPosition();
+					camSetValid = true;
+				}
 			}
 		}
 		walkedLast = walkingNow;
@@ -2258,6 +2336,10 @@ std::string Board::debugInfo() const
 		auto it = p.cards.find(u);
 		glm::vec3 v = (it != p.cards.end() && it->second.visInit) ? it->second.vis : glm::vec3(-1.f);
 		ss << " unit " << v.x << "," << v.z << " inView30 " << p.inView(v, 0.3f) << " inView60 " << p.inView(v, 0.6f);
+		// where the unit sits on the table (metres from the map's middle, +z toward the player)
+		float k = p.tileSize / TILE_W;
+		glm::vec3 ow = glm::vec3(glm::rotate(glm::mat4(1.f), p.yaw, {0, 1, 0}) * glm::vec4((v.x - p.focus.x) * k, 0.f, (v.z - p.focus.z) * k, 0.f));
+		ss << " onTable " << ow.x << "," << ow.z << " halfDepth " << (p.mapRect.w - p.mapRect.y) * 0.5f << " inShot " << p.inShot << " level " << p.viewLevel;
 	}
 	return ss.str();
 }
@@ -2505,6 +2587,7 @@ void Board::wheel(int dir)
 static void syncCamera(Board::Impl &p)
 {
 	if (!p.bs || !p.bs->getMap()) return;
+	p.returnIn = -1.f; // the player moved the map: stay there
 	Position c((int)(p.focus.x / TILE_W), (int)(p.focus.z / TILE_W), p.viewLevel);
 	p.bs->getMap()->getCamera()->centerOnPosition(c, true);
 	p.camSet = p.bs->getMap()->getCamera()->getCenterPosition();

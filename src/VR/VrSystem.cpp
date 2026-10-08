@@ -144,6 +144,7 @@ struct State
 	bool bCalibrated = false;
 	bool padWasTouched[2] = {false, false};
 	float padLast[2] = {0.f, 0.f};
+	float padLevelAcc = 0.f;   // left trackpad travel toward the next level step
 	Uint32 wheelNext = 0;
 
 	// virtual mouse (window coordinates the game understands)
@@ -410,7 +411,7 @@ static void buildPlacard()
 		text.setText(
 			"POKE buttons, TAP a head to select, TAP a tile to move   RIGHT WRIST: minimap\n"
 			"PINCH (finger on trigger + thumb on A) an item in the tray to move it\n"
-			"LEFT STICK: slide map   RIGHT STICK: turn map   TRACKPAD SWIPE: zoom\n"
+			"LEFT STICK: slide map   RIGHT STICK: turn map   R PAD SWIPE: zoom   L PAD SWIPE: level\n"
 			"TRIGGER: laser click   A: right click   B: back   LEFT B: recenter (hold: seat height)");
 	else
 		text.setText(
@@ -602,6 +603,21 @@ static void updateHandsAndTable(float dt, bool simulated)
 	S->table.colliders(S->colliders);
 }
 
+/// Left trackpad: a swipe of about a third of the pad steps the view level once (up = level up),
+/// with a tick in the hand for each step. Longer swipes step again.
+static void padLevelSwipe(float dy)
+{
+	const float STEP = 0.35f;
+	S->padLevelAcc += dy;
+	while (std::fabs(S->padLevelAcc) >= STEP)
+	{
+		int dir = S->padLevelAcc > 0.f ? 1 : -1;
+		S->board.wheel(dir);
+		S->padLevelAcc -= dir * STEP;
+		S->xr.haptic(0, 0.35f, 0.012f);
+	}
+}
+
 /// Seat height: hold Left B with both hands resting where the tabletop should be. The player is moved up
 /// or down so the table surface meets the palms; the offset is kept in the options.
 static void calibrateSeat()
@@ -712,7 +728,8 @@ static void updateHeadsetInput(float dt)
 	}
 
 	// ---- map movement: left stick slides the view across the map (relative to where you look),
-	// right stick left/right turns it, a swipe on either trackpad zooms
+	// right stick left/right turns it, a swipe on the right trackpad zooms, a swipe on the left one
+	// steps the view level up or down
 	{
 		glm::vec3 f = xfDir(S->rig, S->head.forward());
 		glm::vec2 fwd(f.x, f.z);
@@ -738,8 +755,13 @@ static void updateHeadsetInput(float dt)
 			if (H[h].trackpadTouch && S->padWasTouched[h])
 			{
 				float dy = H[h].trackpad.y - S->padLast[h];
-				if (std::fabs(dy) < 0.5f) S->board.zoom(std::exp(dy * 0.9f)); // swipe up = closer
+				if (std::fabs(dy) < 0.5f)
+				{
+					if (h == 1) S->board.zoom(std::exp(dy * 0.9f)); // swipe up = closer
+					else padLevelSwipe(dy);
+				}
 			}
+			else if (h == 0) S->padLevelAcc = 0.f;
 			S->padWasTouched[h] = H[h].trackpadTouch;
 			S->padLast[h] = H[h].trackpad.y;
 		}
@@ -790,10 +812,12 @@ static void updateHeadsetInput(float dt)
 	if (P.a.released && S->rightSent) { pushButton(SDL_BUTTON_RIGHT, false); S->rightSent = false; }
 	if (H[1].b.pressed) pushKey(SDLK_ESCAPE, 27);
 
-	// scroll wheel: right stick up/down while pointing at the screen
+	// scroll wheel: right stick up/down while pointing at the screen, for lists. Not on the battlescape
+	// itself, where the wheel would change the view level (that is the left trackpad's job).
 	float sy = H[1].stick.y;
 	Uint32 now = SDL_GetTicks();
-	if (S->pointerOnPanel && std::fabs(sy) > 0.55f && now >= S->wheelNext)
+	bool mapOnTop = !S->game->getStates().empty() && dynamic_cast<BattlescapeState*>(S->game->getStates().back());
+	if (S->pointerOnPanel && !mapOnTop && std::fabs(sy) > 0.55f && now >= S->wheelNext)
 	{
 		Uint8 b = sy > 0 ? SDL_BUTTON_WHEELUP : SDL_BUTTON_WHEELDOWN;
 		pushButton(b, true);
@@ -1119,6 +1143,7 @@ static void runScript()
 			else Log(LOG_INFO) << "[VR] script: boardclick missed the board";
 		}
 		else if (c.op == "wheel") { S->board.wheel((int)num(0, 1)); }
+		else if (c.op == "padswipe") { S->padLevelAcc = 0.f; float d = num(0, 0.4f); for (int k = 0; k < 10; ++k) padLevelSwipe(d / 10.f); }
 		else if (c.op == "boardpan") { S->board.pan(glm::vec2((float)num(0, 0), (float)num(1, 0))); }
 		else if (c.op == "boardrotate") { S->board.rotate(glm::radians((float)num(0, 0))); }
 		else if (c.op == "boardzoom") { S->board.zoom((float)num(0, 1)); }

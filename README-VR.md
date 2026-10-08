@@ -19,8 +19,12 @@ stand) in an X-COM command center at a holographic war table:
   leave crackling static hanging in the air, green plasma bolts, rockets with
   smoke trails. Within each weapon class the effect grows bolder with the
   weapon's damage (a heavy laser is much more intense than a laser pistol).
-  During your turn the table keeps its own view and smoothly keeps a walking
-  soldier in view. During the alien turn it follows the game, and while the
+  During your turn the table keeps its own view: selecting a soldier (and the
+  first one when a mission starts) and the end of every walk bring the soldier
+  close to you, near your side of the map with most of the table in front of
+  it; a walking soldier is kept in view; shots are followed to the impact and
+  the table glides back to where it was a moment later. During the alien turn
+  it follows the game, and while the
   flat game shows **Hidden Movement**, a bank of fog rises out of the table
   and covers the whole map until an alien comes into view.
 - **Geoscape** – a physical globe hovers over the table, with bases, craft,
@@ -85,8 +89,9 @@ if your PC needs the frame time.
 |---|---|
 | Left stick | Slide the view across the map (push forward = travel forward from where you look); spins the globe on the geoscape |
 | Right stick left/right | Turn the map |
-| Trackpad swipe up/down (either hand) | Zoom the map / globe |
-| Right stick up/down at the screen | Scroll lists |
+| Right trackpad swipe up/down | Zoom the map / globe |
+| Left trackpad swipe up/down | View level up / down (a third of the pad per level, with a tick) |
+| Right stick up/down at the screen | Scroll lists (not on the battlescape map itself) |
 | Trigger | Laser click on the screen, a tile, the globe, a table button or key |
 | A (right) | Right-click with the laser (turn a soldier, cancel) |
 | B (right) | Back / Escape |
@@ -96,12 +101,17 @@ if your PC needs the frame time.
 
 Whichever hand pulled its trigger last is the pointing hand. The controls are
 the same whether you point at the game screen or not: only the trigger clicks
-the screen, and right stick up/down scrolls lists there. Pointing at the screen
+the screen, and right stick up/down scrolls lists there (never the map level,
+which is the left trackpad's, wherever you point). Pointing at the screen
 never moves the map (edge and drag scrolling are off in VR).
 
-The table follows the game's camera when it moves on purpose (next soldier, an
-alien button, the alien turn) and ignores its automatic "centre on soldier"
-after every move. During the alien turn you can't move the map; you can turn
+The table follows the game's camera when it moves on purpose (an alien button,
+a shot chasing its projectile, the alien turn) and ignores its automatic
+"centre on soldier" after every move. A selected soldier, and a soldier that
+just finished walking, is placed close to you: `NEAR_SPOT` in `VrBoard.cpp`
+(0.45 of half the map's depth toward your side) sets how close. After a shot
+the game leaves its camera on the impact; the table looks there for 0.8 s and
+then goes back, unless you moved the map in the meantime. During the alien turn you can't move the map; you can turn
 and zoom it while the fog is lifted.
 
 Grabbing is deliberate: on the Index the grip has to be **squeezed** (force
