@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype)
+# OpenXcom Extended — VR Tabletop (prototype 0.8.0)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -84,7 +84,21 @@ meets your palms; the result is saved as `vrSeatOffset` (millimetres), so a tall
 chair is a one-time setup. `vrShadows` (default on) turns the table shadows off
 if your PC needs the frame time.
 
-## Controls (Valve Index / Touch / Vive wands)
+## Versions
+
+Prototype builds are numbered `0.<round>.<fix>`: a round of changes bumps the
+middle number, a small follow-up fix the last one. Each one is tagged
+`proto-<version>` in git; the version is shown on the main menu and on the
+controls plate at the table's edge.
+
+## Controls
+
+The prototype runs on the PC and works with any headset SteamVR drives: Valve
+Index, Quest 3 (Steam Link, Air Link or Virtual Desktop) and Steam Frame. The
+layout follows the controller; the plate on the table's front edge shows the
+one in use.
+
+**Valve Index**
 
 | Input | What it does |
 |---|---|
@@ -99,6 +113,22 @@ if your PC needs the frame time.
 | Left B | Recenter; hold for a second to set the seat height |
 | Squeeze grip over the table | Slide the map by hand (one hand), zoom + turn (both hands) |
 | Squeeze grip elsewhere | Move yourself (one hand), turn the room (both hands) |
+
+**Quest 3 (Touch controllers)** and **Steam Frame** – the same, except:
+
+| Input | Quest 3 | Steam Frame |
+|---|---|---|
+| Zoom in / out (hold) | B / A | Y / A |
+| View level up / down | Tap Y / tap X | D-pad up / down |
+| Recenter | Hold X for a second | Tap D-pad left |
+| Seat height | Hold Y for a second | Hold D-pad left for a second |
+| Right click (laser out) | Right stick click | X |
+| Back / Escape | Menu (left) | B (or View / Menu) |
+| Pinch | Finger on trigger + thumb on A (X on the left) | Finger on trigger + thumb on A (left: on the D-pad) |
+| Grab | Grip pulled most of the way (no force sensor) | same |
+
+Right stick up/down scrolls lists at the screen on every controller. Other
+controllers (Vive wands, generic) get a basic layout: trigger, grip, menu = back.
 
 Whichever hand pulled its trigger last is the pointing hand. The controls are
 the same whether you point at the game screen or not: only the trigger clicks
@@ -148,18 +178,18 @@ headset on.
 
 ## Known limitations
 
-- The headset path (OpenXR) was built against the spec and SteamVR's documented
-  behaviour but **has not yet been run on a real headset**. Everything else was
-  tested in the desktop preview with the original game data.
+- Play-tested on a Valve Index with SteamVR on Windows; the automated tests run
+  in the desktop preview with the original game data.
 - Changing video options in-game recreates the OpenGL context, which stops VR
   (restart the game).
-- Valve Index finger tracking, the grip force thresholds and haptics have been
-  written against the spec but **not yet felt on a real headset**; the hand
-  physics, buttons, inventory pinching and taps were tested with a simulated
-  hand in the desktop preview.
-- The inventory tray moves items between slots and hands; loading ammo by
-  dragging a clip onto a weapon is not supported yet (use the screen). The
-  ground area on the tray is five columns wide and shows the floor items that
+- The Quest 3 and Steam Frame layouts were written against the OpenXR
+  interaction profiles (`oculus/touch_controller`,
+  `valve/frame_controller_valve` via `XR_VALVE_frame_controller_interaction`)
+  and **have not been tried on those headsets yet**.
+- The inventory tray moves items between slots and hands, and a clip dropped
+  on a weapon loads it (same TU cost and reload sound as the inventory screen;
+  dropping a clip on a loaded weapon in a hand swaps magazines, the old clip
+  going to a free hand or the floor). The ground area on the tray is five columns wide and shows the floor items that
   fit; the rest are on the big screen's inventory.
 - Typing (base names, save names) needs the real keyboard.
 - Items lying on the floor are not shown on the table map yet (they are in the
@@ -176,7 +206,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | File | Role |
 |---|---|
 | `VrApi.h` | The only header the engine includes. No-ops when built without `OXCE_VR`. |
-| `VrXr.*` | OpenXR: instance, session on the engine's GL context (Xlib or Win32 binding), stereo swapchains, action bindings for Index/Touch/Vive/simple controllers, haptics. |
+| `VrXr.*` | OpenXR: instance, session on the engine's GL context (Xlib or Win32 binding), stereo swapchains, action bindings for Index/Touch/Frame/Vive/simple controllers, which controller each hand holds (`HandState::kind`, from the current interaction profile), haptics. |
 | `VrSystem.cpp` | Frame loop, tracking-space → world "rig", the controller → mouse bridge (synthetic SDL events), grabbing, desktop preview camera, test automation (`OXCE_VR_SCRIPT`). |
 | `VrRoom.*` | Procedural command-center room, war table, controller models. |
 | `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (a critically damped follower turns the game's ~33 steps a second into smooth motion at the headset's frame rate), tile picking, the HUD (wireframe cursor, selected-unit marker, path preview, readouts in the game's font), voxel fog of war, voxel effects (projectiles, explosions, smoke, fire), the whole-map minimap, globe. |

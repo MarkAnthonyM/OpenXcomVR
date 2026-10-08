@@ -92,6 +92,10 @@ struct XrRuntime::Impl
 
 	XrActionSet actionSet = XR_NULL_HANDLE;
 	bool handExt = false, motionRangeExt = false;
+	bool frameExt = false;       // XR_VALVE_frame_controller_interaction (Steam Frame controllers)
+	ControllerKind kind[2] = {CTRL_OTHER, CTRL_OTHER};
+	bool kindDirty = true;
+	void readKinds();
 	XrHandTrackerEXT tracker[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
 	PFN_xrCreateHandTrackerEXT createHandTracker = nullptr;
 	PFN_xrDestroyHandTrackerEXT destroyHandTracker = nullptr;
@@ -100,6 +104,8 @@ struct XrRuntime::Impl
 	XrAction aTouch = XR_NULL_HANDLE, trackpad = XR_NULL_HANDLE, trackpadTouch = XR_NULL_HANDLE;
 	XrAction aimPose = XR_NULL_HANDLE, gripPose = XR_NULL_HANDLE, trigger = XR_NULL_HANDLE, squeeze = XR_NULL_HANDLE,
 		stick = XR_NULL_HANDLE, btnA = XR_NULL_HANDLE, btnB = XR_NULL_HANDLE, stickClick = XR_NULL_HANDLE, vibrate = XR_NULL_HANDLE;
+	XrAction btnX = XR_NULL_HANDLE, btnY = XR_NULL_HANDLE, dpadUp = XR_NULL_HANDLE, dpadDown = XR_NULL_HANDLE,
+		dpadLeft = XR_NULL_HANDLE, btnMenu = XR_NULL_HANDLE;
 	XrPath hand[2] = {XR_NULL_PATH, XR_NULL_PATH};
 	XrSpace aimSpace[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE}, gripSpace[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
 
@@ -110,6 +116,32 @@ struct XrRuntime::Impl
 		return p;
 	}
 };
+
+/// Reads which controller each hand holds (the runtime's current interaction profile).
+void XrRuntime::Impl::readKinds()
+{
+	kindDirty = false;
+	if (!session) return;
+	for (int h = 0; h < 2; ++h)
+	{
+		XrInteractionProfileState st{XR_TYPE_INTERACTION_PROFILE_STATE};
+		ControllerKind k = CTRL_OTHER;
+		if (xrGetCurrentInteractionProfile(session, hand[h], &st) == XR_SUCCESS && st.interactionProfile != XR_NULL_PATH)
+		{
+			char buf[XR_MAX_PATH_LENGTH];
+			uint32_t n = 0;
+			if (xrPathToString(instance, st.interactionProfile, sizeof(buf), &n, buf) == XR_SUCCESS)
+			{
+				std::string p(buf);
+				if (p.find("index_controller") != std::string::npos) k = CTRL_INDEX;
+				else if (p.find("frame_controller") != std::string::npos) k = CTRL_FRAME;
+				else if (p.find("touch") != std::string::npos) k = CTRL_TOUCH; // Oculus/Meta Touch (Quest)
+				if (k != kind[h]) Log(LOG_INFO) << "[VR] " << (h ? "right" : "left") << " controller: " << p;
+			}
+		}
+		kind[h] = k;
+	}
+}
 
 XrRuntime::XrRuntime() : _p(new Impl) {}
 XrRuntime::~XrRuntime() { shutdown(); }
@@ -144,6 +176,7 @@ bool XrRuntime::init(const std::string &appName)
 		if (!std::strcmp(e.extensionName, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME)) hasGL = true;
 		if (!std::strcmp(e.extensionName, XR_EXT_HAND_TRACKING_EXTENSION_NAME)) _p->handExt = true;
 		if (!std::strcmp(e.extensionName, XR_EXT_HAND_JOINTS_MOTION_RANGE_EXTENSION_NAME)) _p->motionRangeExt = true;
+		if (!std::strcmp(e.extensionName, "XR_VALVE_frame_controller_interaction")) _p->frameExt = true;
 	}
 	if (!hasGL)
 	{
@@ -153,6 +186,7 @@ bool XrRuntime::init(const std::string &appName)
 	std::vector<const char*> enabled = {XR_KHR_OPENGL_ENABLE_EXTENSION_NAME};
 	if (_p->handExt) enabled.push_back(XR_EXT_HAND_TRACKING_EXTENSION_NAME);
 	if (_p->handExt && _p->motionRangeExt) enabled.push_back(XR_EXT_HAND_JOINTS_MOTION_RANGE_EXTENSION_NAME);
+	if (_p->frameExt) enabled.push_back("XR_VALVE_frame_controller_interaction");
 	XrInstanceCreateInfo ici{XR_TYPE_INSTANCE_CREATE_INFO};
 	std::strncpy(ici.applicationInfo.applicationName, appName.c_str(), XR_MAX_APPLICATION_NAME_SIZE - 1);
 	ici.applicationInfo.applicationVersion = 1;
@@ -300,6 +334,12 @@ bool XrRuntime::init(const std::string &appName)
 	_p->aTouch = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "a_touch", "Thumb on A (pinch)");
 	_p->trackpad = makeAction(_p.get(), XR_ACTION_TYPE_VECTOR2F_INPUT, "trackpad", "Trackpad (zoom)");
 	_p->trackpadTouch = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "trackpad_touch", "Trackpad touched");
+	_p->btnX = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "button_x", "Right click (Frame X)");
+	_p->btnY = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "button_y", "Zoom in (Frame Y)");
+	_p->dpadUp = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "dpad_up", "Level up (Frame D-pad)");
+	_p->dpadDown = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "dpad_down", "Level down (Frame D-pad)");
+	_p->dpadLeft = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "dpad_left", "Recenter / seat height (Frame D-pad)");
+	_p->btnMenu = makeAction(_p.get(), XR_ACTION_TYPE_BOOLEAN_INPUT, "button_menu", "Back (menu / view)");
 
 	struct B { XrAction a; const char *p; };
 	auto suggest = [&](const char *profile, std::vector<B> list)
@@ -364,7 +404,44 @@ bool XrRuntime::init(const std::string &appName)
 		v.push_back({_p->thumbTouch, "/user/hand/right/input/b/touch"});
 		v.push_back({_p->aTouch, "/user/hand/left/input/x/touch"});
 		v.push_back({_p->aTouch, "/user/hand/right/input/a/touch"});
+		v.push_back({_p->btnMenu, "/user/hand/left/input/menu/click"});
 		suggest("/interaction_profiles/oculus/touch_controller", v);
+	}
+	if (_p->frameExt)
+	{
+		// Steam Frame controllers: left has a D-pad and View, right has A/B/X/Y and Menu
+		std::vector<B> v;
+		both(v, _p->aimPose, "/input/aim/pose");
+		both(v, _p->gripPose, "/input/grip/pose");
+		both(v, _p->trigger, "/input/trigger/value");
+		both(v, _p->squeeze, "/input/squeeze/value");
+		both(v, _p->stick, "/input/thumbstick");
+		both(v, _p->stickClick, "/input/thumbstick/click");
+		both(v, _p->vibrate, "/output/haptic");
+		both(v, _p->triggerTouch, "/input/trigger/touch");
+		both(v, _p->thumbTouch, "/input/thumbstick/touch");
+		v.push_back({_p->btnA, "/user/hand/right/input/a/click"});
+		v.push_back({_p->btnB, "/user/hand/right/input/b/click"});
+		v.push_back({_p->btnX, "/user/hand/right/input/x/click"});
+		v.push_back({_p->btnY, "/user/hand/right/input/y/click"});
+		v.push_back({_p->btnMenu, "/user/hand/right/input/menu/click"});
+		v.push_back({_p->btnMenu, "/user/hand/left/input/view/click"});
+		v.push_back({_p->dpadUp, "/user/hand/left/input/dpad_up/click"});
+		v.push_back({_p->dpadDown, "/user/hand/left/input/dpad_down/click"});
+		v.push_back({_p->dpadLeft, "/user/hand/left/input/dpad_left/click"});
+		v.push_back({_p->thumbTouch, "/user/hand/right/input/a/touch"});
+		v.push_back({_p->thumbTouch, "/user/hand/right/input/b/touch"});
+		v.push_back({_p->thumbTouch, "/user/hand/right/input/x/touch"});
+		v.push_back({_p->thumbTouch, "/user/hand/right/input/y/touch"});
+		v.push_back({_p->aTouch, "/user/hand/right/input/a/touch"});
+		// the left thumb resting on the D-pad pinches, like the right one on A
+		for (const char *d : {"/user/hand/left/input/dpad_up/touch", "/user/hand/left/input/dpad_down/touch",
+			"/user/hand/left/input/dpad_left/touch", "/user/hand/left/input/dpad_right/touch"})
+		{
+			v.push_back({_p->thumbTouch, d});
+			v.push_back({_p->aTouch, d});
+		}
+		suggest("/interaction_profiles/valve/frame_controller_valve", v);
 	}
 	{
 		std::vector<B> v;
@@ -472,6 +549,9 @@ bool XrRuntime::pollEvents()
 			}
 			break;
 		}
+		case XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED:
+			_p->kindDirty = true;
+			break;
 		case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING:
 			_p->exitRequested = true;
 			_p->running = false;
@@ -533,6 +613,15 @@ bool XrRuntime::beginFrame(EyeView views[2], HandState hands[2], bool &shouldRen
 		gi.action = _p->aTouch; hs.aTouch = synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState;
 		gi.action = _p->trackpadTouch; hs.trackpadTouch = synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState;
 		gi.action = _p->trackpad; hs.trackpad = (synced && xrGetActionStateVector2f(_p->session, &gi, &v) == XR_SUCCESS && v.isActive) ? glm::vec2(v.currentState.x, v.currentState.y) : glm::vec2(0.f);
+		auto readBtn = [&](XrAction a, Button &btn) { gi.action = a; btn.update(synced && xrGetActionStateBoolean(_p->session, &gi, &b) == XR_SUCCESS && b.isActive && b.currentState); };
+		readBtn(_p->btnX, hs.x);
+		readBtn(_p->btnY, hs.y);
+		readBtn(_p->dpadUp, hs.dpadUp);
+		readBtn(_p->dpadDown, hs.dpadDown);
+		readBtn(_p->dpadLeft, hs.dpadLeft);
+		readBtn(_p->btnMenu, hs.menu);
+		if (_p->kindDirty) _p->readKinds();
+		hs.kind = _p->kind[h];
 		hs.triggerBtn.update(hs.trigger > hs.triggerHyst(hs.triggerBtn.down));
 		hs.squeezeBtn.update(hs.squeeze > (hs.squeezeBtn.down ? 0.3f : 0.6f));
 

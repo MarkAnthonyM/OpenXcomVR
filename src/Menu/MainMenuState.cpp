@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "MainMenuState.h"
+#include "../VR/VrVersion.h"
 #include <sstream>
 #include "../version.h"
 #include "../Engine/Game.h"
@@ -76,7 +77,7 @@ MainMenuState::MainMenuState(bool updateCheck)
 	_btnQuit = new TextButton(92, 20, 164, 146);
 	_btnUpdate = new TextButton(72, 16, 209, 27);
 	_txtUpdateInfo = new Text(320, 17, 0, 11);
-	_txtTitle = new Text(256, 30, 32, 45);
+	_txtTitle = new Text(256, 40, 32, 45); // one more line: the VR prototype version
 
 	// Set palette
 	setInterface("mainMenu");
@@ -236,6 +237,7 @@ MainMenuState::MainMenuState(bool updateCheck)
 	std::ostringstream title;
 	title << tr("STR_OPENXCOM").arg(Options::getActiveMasterInfo()->getVersionDisplay()) << Unicode::TOK_NL_SMALL;
 	title << "OpenXcom " << OPENXCOM_VERSION_SHORT << OPENXCOM_VERSION_GIT;
+	title << Unicode::TOK_NL_SMALL << "VR tabletop prototype " << OXCE_VR_PROTOTYPE_VERSION;
 	_txtTitle->setText(title.str());
 }
 

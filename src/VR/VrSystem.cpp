@@ -14,6 +14,7 @@
 #include "VrHands.h"
 #include "VrTable.h"
 #include "VrApi.h"
+#include "VrVersion.h"
 #include "../Engine/Game.h"
 #include "../Savegame/SavedBattleGame.h"
 #include "../Savegame/BattleUnit.h"
@@ -100,6 +101,7 @@ struct State
 	Texture gameTex;
 	Texture placardTex;
 	bool placardTried = false;
+	int placardKind = -1;         // the right controller the placard was written for
 	RenderTarget eyeTarget[2];
 	RenderTarget previewTarget;
 	ShadowMap shadow;
@@ -142,6 +144,8 @@ struct State
 	bool twoHandWorld = false;
 	float bHold = 0.f;              // Left B held (recenter / seat calibration)
 	bool bCalibrated = false;
+	struct TapHold { float t = 0.f; bool fired = false; };
+	TapHold thX, thY, thDpadLeft; // Touch X / Y, Frame D-pad left: tap and hold do different things
 	bool padWasTouched[2] = {false, false};
 	float padLast[2] = {0.f, 0.f};
 	float padLevelAcc = 0.f;   // left trackpad travel toward the next level step
@@ -401,24 +405,38 @@ static void buildPlacard()
 	if (!mod || !S->game->getLanguage()) return;
 	Font *big = mod->getFont("FONT_BIG", false), *small = mod->getFont("FONT_SMALL", false);
 	if (!big || !small) return;
-	const int W = 520, H = 44;
+	const int W = 600, H = 54;
+	S->placardKind = S->hands[1].kind;
+	bool headset = S->mode == MODE_HEADSET;
+	if (const char *k = std::getenv("OXCE_VR_PLACARD_KIND")) { S->placardKind = std::atoi(k); headset = true; } // test hook
 	Text text(W, H, 0, 0);
 	text.initText(big, small, S->game->getLanguage());
 	text.setSmall();
 	text.setColor(1);
 	text.setWordWrap(false);
-	if (S->mode == MODE_HEADSET)
-		text.setText(
-			"POKE buttons, TAP a head to select, TAP a tile to move   RIGHT WRIST: minimap\n"
-			"PINCH (finger on trigger + thumb on A) an item in the tray to move it\n"
-			"LEFT STICK: slide map   RIGHT STICK: turn map   R PAD SWIPE: zoom   L PAD SWIPE: level\n"
-			"TRIGGER: laser click   A: right click   B: back   LEFT B: recenter (hold: seat height)");
-	else
-		text.setText(
-			"DESKTOP PREVIEW - mouse aims from your eyes\n"
+	text.setAlign(ALIGN_CENTER);
+	std::string body;
+	if (!headset)
+		body = "DESKTOP PREVIEW - mouse aims from your eyes\n"
 			"LEFT CLICK: click, pick a tile, press a table button, pick up / drop an item\n"
 			"WHEEL over the table: map level / globe zoom\n"
-			"hold MIDDLE BUTTON and move the mouse to look around");
+			"hold MIDDLE BUTTON and move the mouse to look around";
+	else if (S->placardKind == CTRL_TOUCH)
+		body = "POKE buttons, TAP a head to select, TAP a tile to move   RIGHT WRIST: minimap\n"
+			"PINCH (finger on trigger + thumb on A) an item in the tray to move it\n"
+			"LEFT STICK: slide map   RIGHT STICK: turn map / scroll lists   B / A: zoom in / out\n"
+			"Y / X: level up / down (hold Y: seat height, hold X: recenter)   R STICK CLICK: right click   MENU: back";
+	else if (S->placardKind == CTRL_FRAME)
+		body = "POKE buttons, TAP a head to select, TAP a tile to move   RIGHT WRIST: minimap\n"
+			"PINCH (finger on trigger + thumb on A) an item in the tray to move it\n"
+			"LEFT STICK: slide map   RIGHT STICK: turn map / scroll lists   Y / A: zoom in / out\n"
+			"D-PAD UP / DOWN: level   D-PAD LEFT: recenter (hold: seat height)   X: right click   B: back";
+	else
+		body = "POKE buttons, TAP a head to select, TAP a tile to move   RIGHT WRIST: minimap\n"
+			"PINCH (finger on trigger + thumb on A) an item in the tray to move it\n"
+			"LEFT STICK: slide map   RIGHT STICK: turn map   R PAD SWIPE: zoom   L PAD SWIPE: level\n"
+			"TRIGGER: laser click   A: right click   B: back   LEFT B: recenter (hold: seat height)";
+	text.setText(body + "\nVR prototype " OXCE_VR_PROTOTYPE_VERSION);
 	text.draw();
 	std::vector<uint32_t> px((size_t)W * H);
 	for (int y = 0; y < H; ++y)
@@ -603,6 +621,21 @@ static void updateHandsAndTable(float dt, bool simulated)
 	S->table.colliders(S->colliders);
 }
 
+/// A button that does one thing when tapped and another when held for a second: returns 1 on a tap
+/// (released early), 2 once when the hold time is reached, else 0.
+static int tapOrHold(const Button &b, State::TapHold &th, float dt)
+{
+	if (b.down)
+	{
+		th.t += dt;
+		if (th.t >= 1.0f && !th.fired) { th.fired = true; return 2; }
+		return 0;
+	}
+	int r = (b.released && !th.fired) ? 1 : 0;
+	if (!b.down) { th.t = 0.f; th.fired = false; }
+	return r;
+}
+
 /// Left trackpad: a swipe of about a third of the pad steps the view level once (up = level up),
 /// with a tick in the hand for each step. Longer swipes step again.
 static void padLevelSwipe(float dy)
@@ -714,8 +747,29 @@ static void updateHeadsetInput(float dt)
 	for (int h = 0; h < 2; ++h)
 		if (S->grab[h].kind == Grab::BOARD) S->board.updateGrab(h, xfPoint(S->rig, H[h].grip.pos));
 
-	// Left B: tap = recenter, hold for a second = seat height from where the hands rest
-	if (H[0].b.down)
+	// ---- buttons that depend on the controller (see README-VR.md):
+	// Index:  left B tap = recenter, hold = seat height; trackpads zoom (right) and step levels (left)
+	// Touch:  left Y tap = level up, hold = seat height; left X tap = level down, hold = recenter;
+	//         right B / A held = zoom in / out
+	// Frame:  left D-pad up / down = level; D-pad left tap = recenter, hold = seat height;
+	//         right Y / A held = zoom in / out
+	if (H[0].kind == CTRL_TOUCH)
+	{
+		int y = tapOrHold(H[0].b, S->thY, dt), x = tapOrHold(H[0].a, S->thX, dt);
+		if (y == 1) { S->board.wheel(1); S->xr.haptic(0, 0.35f, 0.012f); }
+		else if (y == 2) calibrateSeat();
+		if (x == 1) { S->board.wheel(-1); S->xr.haptic(0, 0.35f, 0.012f); }
+		else if (x == 2) recenter();
+	}
+	else if (H[0].kind == CTRL_FRAME)
+	{
+		if (H[0].dpadUp.pressed) { S->board.wheel(1); S->xr.haptic(0, 0.35f, 0.012f); }
+		if (H[0].dpadDown.pressed) { S->board.wheel(-1); S->xr.haptic(0, 0.35f, 0.012f); }
+		int d = tapOrHold(H[0].dpadLeft, S->thDpadLeft, dt);
+		if (d == 1) recenter();
+		else if (d == 2) calibrateSeat();
+	}
+	else if (H[0].b.down)
 	{
 		S->bHold += dt;
 		if (S->bHold >= 1.0f && !S->bCalibrated) { calibrateSeat(); S->bCalibrated = true; }
@@ -725,6 +779,15 @@ static void updateHeadsetInput(float dt)
 		if (!S->bCalibrated) recenter();
 		S->bHold = 0.f;
 		S->bCalibrated = false;
+	}
+	{
+		// zoom on buttons (controllers without trackpads): about 2x per second while held
+		const Button *in = H[1].kind == CTRL_TOUCH ? &H[1].b : H[1].kind == CTRL_FRAME ? &H[1].y : nullptr;
+		if (in && H[1].active)
+		{
+			float dir = (in->down ? 1.f : 0.f) - (H[1].a.down ? 1.f : 0.f);
+			if (dir != 0.f) S->board.zoom(std::exp(dir * 0.7f * dt));
+		}
 	}
 
 	// ---- map movement: left stick slides the view across the map (relative to where you look),
@@ -803,14 +866,19 @@ static void updateHeadsetInput(float dt)
 		S->xr.haptic(S->pointerHand, 0.4f, 0.015f);
 	}
 	if (P.triggerBtn.released && S->leftSent) { pushButton(SDL_BUTTON_LEFT, false); S->leftSent = false; }
-	// A clicks only with the laser out: over the table the thumb rests on A to pinch
-	if (P.a.pressed && S->pointerHand == 1 && S->laserOn[1])
+	// right click only with the laser out (over the table the thumb rests on A to pinch):
+	// A on Index, the right stick click on Touch (A/B zoom there), X on Frame
+	const Button &rc = H[1].kind == CTRL_TOUCH ? H[1].stickClick : H[1].kind == CTRL_FRAME ? H[1].x : H[1].a;
+	if (rc.pressed && S->pointerHand == 1 && S->laserOn[1])
 	{
 		if (S->pointerOnPanel) { pushButton(SDL_BUTTON_RIGHT, true); S->rightSent = true; }
 		else if (S->pointerOnBoard) S->board.click(SDL_BUTTON_RIGHT);
 	}
-	if (P.a.released && S->rightSent) { pushButton(SDL_BUTTON_RIGHT, false); S->rightSent = false; }
-	if (H[1].b.pressed) pushKey(SDLK_ESCAPE, 27);
+	if (rc.released && S->rightSent) { pushButton(SDL_BUTTON_RIGHT, false); S->rightSent = false; }
+	(void)P;
+	// back: right B (Index, Frame), the left menu button (Touch, where B zooms); Frame's View/Menu too
+	bool back = H[1].kind == CTRL_TOUCH ? H[0].menu.pressed : (H[1].b.pressed || H[0].menu.pressed || H[1].menu.pressed);
+	if (back) pushKey(SDLK_ESCAPE, 27);
 
 	// scroll wheel: right stick up/down while pointing at the screen, for lists. Not on the battlescape
 	// itself, where the wheel would change the view level (that is the left trackpad's job).
@@ -1013,12 +1081,12 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 		glm::vec3 c(L.tableCenter.x, L.tableCenter.y - 0.055f, L.tableCenter.z + L.tableSize.y * 0.5f + L.tableRim + 0.005f);
 		glm::mat4 m = glm::translate(glm::mat4(1.f), c) * glm::rotate(glm::mat4(1.f), glm::radians(-8.f), {1, 0, 0});
 		sh.set("uMode", 0);
-		sh.set("uModel", m * glm::scale(glm::mat4(1.f), {0.80f, 0.10f, 1.f}));
+		sh.set("uModel", m * glm::scale(glm::mat4(1.f), {0.92f, 0.105f, 1.f}));
 		S->panelFrame.draw();
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		sh.set("uMode", 4);
-		sh.set("uModel", m * glm::translate(glm::mat4(1.f), {0.f, 0.f, 0.002f}) * glm::scale(glm::mat4(1.f), {0.76f, 0.0697f, 1.f}));
+		sh.set("uModel", m * glm::translate(glm::mat4(1.f), {0.f, 0.f, 0.002f}) * glm::scale(glm::mat4(1.f), {0.88f, 0.88f * 54.f / 600.f, 1.f}));
 		sh.set("uTint", glm::vec4(1.f));
 		S->placardTex.bind(0);
 		S->quadMesh.draw();
@@ -1194,6 +1262,7 @@ static void runScript()
 					continue;
 				}
 		}
+		else if (c.op == "items") { Log(LOG_INFO) << "[VR] items: " << S->table.itemsInfo(); }
 		else if (c.op == "boardinfo") { Log(LOG_INFO) << "[VR] board: " << S->board.debugInfo(); }
 		else if (c.op == "refilltu")
 		{
@@ -1549,7 +1618,7 @@ void frame()
 		else ++it;
 	}
 
-	if (!S->placardTried && S->game->getMod() && S->surfW > 0 && S->frameCount % 30 == 0)
+	if ((!S->placardTried || (S->mode == MODE_HEADSET && S->hands[1].kind != S->placardKind)) && S->game->getMod() && S->surfW > 0 && S->frameCount % 30 == 0)
 	{
 		GLStateGuard guard;
 		buildPlacard();

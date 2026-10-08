@@ -8,6 +8,7 @@
 #include "../Engine/Surface.h"
 #include "../Engine/SurfaceSet.h"
 #include "../Engine/Sound.h"
+#include "../Interface/TextButton.h"
 #include "../Engine/Font.h"
 #include "../Engine/Language.h"
 #include "../Engine/Logger.h"
@@ -491,8 +492,8 @@ void Table::Impl::pressButton(int i, int hand, TableContext &ctx)
 	if (b.alert >= 0) { gx = b.scr.x + b.scr.z / 2; gy = b.scr.y + b.scr.w / 2; }
 	ctx.clickScreen(gx, gy, SDL_BUTTON_LEFT);
 	if (hand >= 0 && hand < 2) ctx.haptic(hand, 0.7f, 0.025f);
-	if (battle)
-		if (Sound *s = game->getMod()->getSoundByDepth(battle->getDepth(), Mod::BUTTON_PRESS)) s->play();
+	// the game's interface click (GEO.CAT); BUTTON_PRESS is an index into that set, not the battle sounds
+	if (TextButton::soundPress) TextButton::soundPress->play();
 	lastEvent = "button " + b.name;
 	Log(LOG_INFO) << "[VR] table button pressed: " << b.name;
 }
@@ -935,6 +936,41 @@ void Table::Impl::drop(TableContext &ctx)
 		done();
 		return;
 	}
+	// ammo dropped on a weapon: load it, with the inventory screen's rules (TU cost, reload sound)
+	if (occ.size() == 1 && occ[0]->isWeaponWithAmmo() && (ra->getBattleType() == BT_AMMO || occ[0]->getRules()->getSlotForAmmo(ra) != -1))
+	{
+		BattleItem *w = occ[0];
+		int slotAmmo = w->getRules()->getSlotForAmmo(ra);
+		if (slotAmmo == -1) { warn(ctx, "STR_WRONG_AMMUNITION_FOR_THIS_WEAPON"); return; }
+		const RuleInventory *rightHand = ctx.game->getMod()->getInventoryRightHand();
+		const RuleInventory *leftHand = ctx.game->getMod()->getInventoryLeftHand();
+		int tuCost = w->getRules()->getTULoad(slotAmmo);
+		if (Mod::EXTENDED_ITEM_RELOAD_COST && (!from || from->getType() != INV_HAND))
+			tuCost += a->getMoveToCost(rightHand); // bringing the clip to the hand first
+		// a weapon that is already loaded: swap magazines (the game's shift-drop), only for one in a hand;
+		// the old clip goes to a free hand (or the one the new clip came from), else to the floor
+		const RuleInventory *oldGoesTo = ground;
+		BattleItem *rh = u->getRightHandWeapon(), *lh = u->getLeftHandWeapon();
+		if (!rh || a == rh) oldGoesTo = rightHand;
+		else if (!lh || a == lh) oldGoesTo = leftHand;
+		if (w->getAmmoForSlot(slotAmmo))
+		{
+			int tuUnload = w->getRules()->getTUUnload(slotAmmo);
+			if (w->getSlot()->getType() != INV_HAND || !tuUnload) { warn(ctx, "STR_WEAPON_IS_ALREADY_LOADED"); return; }
+			tuCost += tuUnload;
+			if (oldGoesTo == ground) tuCost += rightHand->getCost(ground);
+		}
+		if (!u->spendTimeUnits(tuCost)) { warn(ctx, "STR_NOT_ENOUGH_TIME_UNITS"); return; }
+		BattleItem *old = w->setAmmoForSlot(slotAmmo, a);
+		if (old) te->itemMoveInventory(u->getTile(), u, old, oldGoesTo, 0, 0);
+		int sound = ra->getReloadSound();
+		if (sound == Mod::NO_SOUND) sound = w->getRules()->getReloadSound();
+		if (sound == Mod::NO_SOUND) sound = Mod::ITEM_RELOAD;
+		if (Sound *snd = ctx.game->getMod()->getSoundByDepth(battle->getDepth(), sound)) snd->play();
+		bs->updateSoldierInfo(false);
+		lastEvent = "loaded " + ra->getType() + " into " + w->getRules()->getType();
+		return;
+	}
 	// swap with the one item in the way: it goes where ours came from, or to the floor when it was in a hand
 	if (occ.size() != 1 || occ[0]->getRules()->isFixed()) { warn(ctx, "STR_NOT_ENOUGH_SPACE"); return; }
 	BattleItem *b = occ[0];
@@ -1273,8 +1309,7 @@ void Table::Impl::pressMenuKey(int i, int hand, TableContext &ctx)
 		lastEvent = ss.str();
 	}
 	if (hand >= 0 && hand < 2) ctx.haptic(hand, 0.7f, 0.025f);
-	if (battle)
-		if (Sound *snd = game->getMod()->getSoundByDepth(battle->getDepth(), Mod::BUTTON_PRESS)) snd->play();
+	if (TextButton::soundPress) TextButton::soundPress->play(); // the game's interface click
 	Log(LOG_INFO) << "[VR] " << lastEvent;
 }
 
@@ -1954,6 +1989,25 @@ void Table::pointerClick(const TableHit &hit, int button, TableContext &ctx)
 	{
 		p.grab(hit.index, 2, hit.point);
 	}
+}
+
+std::string Table::itemsInfo() const
+{
+	const Impl &p = *_p;
+	std::ostringstream ss;
+	for (size_t i = 0; i < p.items.size(); ++i)
+	{
+		const BattleItem *it = p.items[i].item;
+		ss << i << ":" << it->getRules()->getType() << "@" << (it->getSlot() ? it->getSlot()->getId() : "-");
+		if (it->isWeaponWithAmmo())
+		{
+			const BattleItem *am = it->getAmmoForSlot(0);
+			ss << "[" << (am ? am->getRules()->getType() + " " + std::to_string(am->getAmmoQuantity()) : std::string("empty")) << "]";
+		}
+		ss << "  ";
+	}
+	if (p.invUnit) ss << " TU " << p.invUnit->getTimeUnits();
+	return ss.str();
 }
 
 bool Table::itemCenter(int i, glm::vec3 &w) const

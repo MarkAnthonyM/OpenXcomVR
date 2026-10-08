@@ -29,7 +29,11 @@ struct Button
 	void update(bool now) { pressed = now && !down; released = !now && down; down = now; }
 };
 
-enum { HAND_JOINTS = 26 };   // same order as XR_EXT_hand_tracking (palm, wrist, thumb x4, index..little x5)
+enum { HAND_JOINTS = 26 };
+
+/// Which controller a hand holds, from the runtime's current interaction profile. The controls are
+/// laid out per family (see VrSystem): Index has trackpads, Touch (Quest) and Frame do not.
+enum ControllerKind { CTRL_OTHER = 0, CTRL_INDEX, CTRL_TOUCH, CTRL_FRAME };   // same order as XR_EXT_hand_tracking (palm, wrist, thumb x4, index..little x5)
 
 struct HandState
 {
@@ -51,6 +55,10 @@ struct HandState
 	Button grabBtn;            // deliberate grab (force/threshold + hold time), see VrSystem
 	glm::vec2 stick{0.f};
 	Button triggerBtn, squeezeBtn, a, b, stickClick;
+	Button x, y;               // the right Frame controller's X and Y
+	Button dpadUp, dpadDown, dpadLeft; // the left Frame controller's D-pad
+	Button menu;               // left Touch menu button / Frame View (left) and Menu (right)
+	ControllerKind kind = CTRL_OTHER;
 	float triggerHyst(bool wasDown) const { return wasDown ? 0.35f : 0.65f; }
 };
 

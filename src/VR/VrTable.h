@@ -75,6 +75,7 @@ public:
 	std::string status() const;
 	/// Test helpers: where an item floats, the centre of an inventory cell, the top of a button.
 	bool itemCenter(int index, glm::vec3 &world) const;
+	std::string itemsInfo() const; // test helper: the tray's items, their slots and ammo
 	bool cellCenter(const std::string &slot, float cx, float cy, glm::vec3 &world) const;
 	bool buttonCenter(const std::string &name, glm::vec3 &world) const;
 	/// Test helper: a key of the pop-up action board (front face centre and its normal).
