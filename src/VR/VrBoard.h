@@ -7,6 +7,7 @@
 #include "VrGL.h"
 #include <memory>
 #include <functional>
+#include <string>
 
 namespace OpenXcom
 {
@@ -56,6 +57,11 @@ public:
 	std::vector<UnitMarker> unitMarkers() const;
 	/// Map tile under a world point (highest visible floor at or below it). floorY = its world height.
 	bool tileUnder(const glm::vec3 &world, int &tx, int &ty, int &tz, float &floorY) const;
+	std::string debugInfo() const;
+	/// Continuous map tile coordinates (x, y) under a world point.
+	bool tileCoords(const glm::vec3 &world, glm::vec2 &tile) const;
+	/// Shows which way the selected soldier would turn (tile-space direction) while a finger drags.
+	void setTurnPreview(bool on, const glm::vec2 &dir);
 	/// A fingertip hovers over a map tile: the game-style cursor follows it (call every frame).
 	void fingerHover(int tx, int ty, int tz);
 	/// Clicks a map tile (move / fire / select, exactly like clicking it on the flat map).
@@ -82,6 +88,9 @@ public:
 	void testBurst(int tx, int ty, int tz, bool big);
 	/// Lighting: draw only what casts shadows; this frame's flashes (world position, colour);
 	/// whether aliens are in sight or it is their turn; how dark the mission is (0 day .. 1 night).
+	/// The alien turn: the player can't move the map; the hidden movement curtain (0 open .. 1 covered).
+	bool viewLocked() const;
+	float curtain() const;
 	void setShadowPass(bool on, const glm::vec3 &light = glm::vec3(0.f));
 	void lights(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const;
 	bool alert() const;

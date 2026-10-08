@@ -1002,7 +1002,7 @@ void BattlescapeState::mapPress(Action *action)
 	// don't handle mouseclicks over the buttons (it overlaps with map surface)
 	if (_mouseOverIcons) return;
 
-	if (action->getDetails()->button.button == Options::battleDragScrollButton)
+	if (action->getDetails()->button.button == Options::battleDragScrollButton && !VR::active()) // VR: no drag-scrolling from the game screen
 	{
 		_isMouseScrolling = true;
 		_isMouseScrolled = false;

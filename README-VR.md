@@ -15,8 +15,14 @@ stand) in an X-COM command center at a holographic war table:
   shows next to the aiming cursor (UFO Extender accuracy option) floats next
   to the box. Unexplored ground is buried under a bank of voxel fog (you can
   still tap into it to target a wall); projectiles, explosions, smoke and fire
-  are voxel effects styled after the weapon (tracers, laser beams, plasma
-  bolts, rockets with smoke trails).
+  are voxel effects styled after the weapon: tracers, red laser beams that
+  leave crackling static hanging in the air, green plasma bolts, rockets with
+  smoke trails. Within each weapon class the effect grows bolder with the
+  weapon's damage (a heavy laser is much more intense than a laser pistol).
+  During your turn the table keeps its own view and smoothly keeps a walking
+  soldier in view. During the alien turn it follows the game, and while the
+  flat game shows **Hidden Movement**, a bank of fog rises out of the table
+  and covers the whole map until an alien comes into view.
 - **Geoscape** – a physical globe hovers over the table, with bases, craft,
   UFOs and mission sites as markers and the real day/night terminator.
 - **The table is a control panel.** Right in front of you along the near edge
@@ -43,7 +49,8 @@ stand) in an X-COM command center at a holographic war table:
 - **The room reacts**: the light over the table casts shadows of the figures and
   your hands onto the map, the table glows up onto everything above it, the
   screens tint the room, muzzle flashes and explosions light it up, night
-  missions dim it, and red alert lights sweep round while aliens are in sight.
+  missions turn the room dark with dim blue strips so the table is the main
+  light, and red alert lights sweep round while aliens are in sight.
 
 This is an engine fork (a ruleset mod can't add a VR renderer), but it reads the
 game state generically, so content mods such as X-Com Files should work.
@@ -87,9 +94,15 @@ if your PC needs the frame time.
 | Squeeze grip over the table | Slide the map by hand (one hand), zoom + turn (both hands) |
 | Squeeze grip elsewhere | Move yourself (one hand), turn the room (both hands) |
 
-Whichever hand pulled its trigger last is the pointing hand. The table follows
-the game's camera (next soldier, alien spotted) and keeps a walking soldier in
-view on its own.
+Whichever hand pulled its trigger last is the pointing hand. The controls are
+the same whether you point at the game screen or not: only the trigger clicks
+the screen, and right stick up/down scrolls lists there. Pointing at the screen
+never moves the map (edge and drag scrolling are off in VR).
+
+The table follows the game's camera when it moves on purpose (next soldier, an
+alien button, the alien turn) and ignores its automatic "centre on soldier"
+after every move. During the alien turn you can't move the map; you can turn
+and zoom it while the fog is lifted.
 
 Grabbing is deliberate: on the Index the grip has to be **squeezed** (force
 sensor, not just touched) for about a tenth of a second; on other controllers
@@ -103,6 +116,7 @@ it has to be pulled most of the way.
 | Point your index finger just above the map | The game's cursor follows your fingertip (with its hit chance when aiming) |
 | Tap a soldier's head with your index finger | Select that soldier |
 | Tap a tile on the map with your index finger | Move the selected soldier there (with path preview on, tap again to confirm) |
+| Put your finger on the selected soldier's tile and drag it across the map | Turn the soldier to face that way (the game's right-click turn); yellow arrows show the direction while you drag |
 | Pinch an item in the inventory tray: rest your index finger on the trigger and your thumb on A | The fingers close on the nearest item (it lights up as your hand approaches) and pick it up; lift either finger over a slot or hand to drop it there (costs TU like in the game). Dropping onto an occupied hand swaps the items. |
 | Press a key on the action board | Choose that firing mode / action, or Cancel |
 | Press a red alien button | Centre the view on that spotted alien |
@@ -208,6 +222,8 @@ otherwise skips most of the walk animation, and runs at timer interval 0, for
 units outside the flat camera's view, which made them sprint across the table),
 `BattlescapeState::vrTileClick` / `vrSelectUnit` / `vrButtons` / `vrIcons`,
 `BattlescapeState::vrVisibleUnitButton`, `ActionMenuState::vrItems`,
+`Map::vrHiddenMovement` (the hidden movement screen is up), edge and drag
+scrolling switched off in VR (`Camera::mouseOver`, `BattlescapeState::mapPress`),
 `Projectile::vrAction` / `vrAmmo` / `vrBulletSprite` (style the projectile),
 `State::vrBlitTo` / `vrMute`, `FlcPlayer` and `VideoState` (keep VR frames
 going during the intro and cutscenes), `Map::setSelectorTile` /

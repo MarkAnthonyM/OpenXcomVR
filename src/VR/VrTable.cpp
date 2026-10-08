@@ -19,6 +19,7 @@
 #include "../Mod/Mod.h"
 #include "../Mod/RuleItem.h"
 #include "../Mod/RuleInventory.h"
+#include "../Mod/Armor.h"
 #include "../Mod/RuleInterface.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/SavedBattleGame.h"
@@ -163,6 +164,8 @@ struct Table::Impl
 
 	// taps
 	bool touching[2] = {false, false};
+	bool dragging[2] = {false, false};   // a finger put down on the selected soldier: drag away to turn it
+	glm::vec2 dragDir[2];
 	BattleUnit *headInside[2] = {nullptr, nullptr};
 	float cooldown[2] = {0.f, 0.f};
 	std::string lastEvent;
@@ -1028,6 +1031,7 @@ void Table::Impl::updateTaps(TableContext &ctx, const Hands &hands, float dt)
 		{
 			touching[h] = false;
 			headInside[h] = nullptr;
+			if (dragging[h]) { dragging[h] = false; board->setTurnPreview(false, glm::vec2(0.f)); }
 			continue;
 		}
 		glm::vec3 tip = P.tip(F_INDEX);
@@ -1038,6 +1042,8 @@ void Table::Impl::updateTaps(TableContext &ctx, const Hands &hands, float dt)
 		bool ours = false;
 		for (const Board::UnitMarker &m : board->unitMarkers())
 			if (glm::length(tip - m.head) < m.radius + r) { inside = m.unit; ours = m.ours; break; }
+		// the soldier already selected: reaching through its head goes on to its tile (drag to turn)
+		if (inside && battle->getSelectedUnit() == inside) inside = nullptr;
 		if (inside && inside != headInside[h] && cooldown[h] <= 0.f && P.indexExtended && ours && bsTop)
 		{
 			if (board->selectUnit(inside))
@@ -1053,11 +1059,57 @@ void Table::Impl::updateTaps(TableContext &ctx, const Hands &hands, float dt)
 		// tap the map: same as clicking that tile
 		int tx, ty, tz;
 		float floorY;
-		if (!board->tileUnder(tip, tx, ty, tz, floorY)) { touching[h] = false; continue; }
-		float gap = tip.y - r - floorY;
+		bool overMap = board->tileUnder(tip, tx, ty, tz, floorY);
+		float gap = overMap ? tip.y - r - floorY : 1.f;
+		BattleUnit *sel = battle->getSelectedUnit();
+		glm::vec2 tileF;
+		glm::vec2 selC(0.f);
+		bool selOk = sel && !sel->isOut() && sel->getFaction() == FACTION_PLAYER && battle->getSide() == FACTION_PLAYER;
+		if (selOk) selC = glm::vec2(sel->getPosition().x, sel->getPosition().y) + glm::vec2(sel->getArmor()->getSize() * 0.5f);
+		if (dragging[h])
+		{
+			// turning: follow the finger while it stays on the table, act when it lifts
+			bool still = gap < 0.012f && selOk;
+			if (still && board->tileCoords(P.tip(F_INDEX), tileF))
+			{
+				dragDir[h] = tileF - selC;
+				board->setTurnPreview(glm::length(dragDir[h]) > 0.8f, dragDir[h]);
+				touching[h] = true;
+				continue;
+			}
+			dragging[h] = false;
+			board->setTurnPreview(false, glm::vec2(0.f));
+			touching[h] = false;
+			cooldown[h] = 0.25f;
+			if (selOk && glm::length(dragDir[h]) > 0.8f && bsTop)
+			{
+				// face that way: the game's own right-click turn, at a tile out along the drag
+				glm::vec2 d = glm::normalize(dragDir[h]) * 3.f;
+				Position sp = sel->getPosition();
+				int ox = (int)std::lround(d.x), oy = (int)std::lround(d.y);
+				board->clickTile(std::max(0, sp.x + ox), std::max(0, sp.y + oy), sp.z, true);
+				ctx.haptic(h, 0.45f, 0.03f);
+				std::ostringstream ss;
+				ss << "turned soldier toward " << ox << "," << oy;
+				lastEvent = ss.str();
+				Log(LOG_INFO) << "[VR] " << lastEvent;
+			}
+			continue;
+		}
+		if (!overMap) { touching[h] = false; continue; }
 		// a pointing fingertip close over the map works like the mouse: the game's cursor follows it
 		if (P.indexExtended && gap < 0.08f && !ctx.handBusy[h]) board->fingerHover(tx, ty, tz);
 		bool now = touching[h] ? gap < 0.012f : gap < 0.004f;
+		// put down on the selected soldier: that starts a turn, not a move
+		if (now && !touching[h] && selOk && cooldown[h] <= 0.f && P.indexExtended && bsTop && !ctx.handBusy[h]
+			&& board->tileCoords(P.tip(F_INDEX), tileF) && glm::length(tileF - selC) < 0.8f * sel->getArmor()->getSize())
+		{
+			dragging[h] = true;
+			dragDir[h] = glm::vec2(0.f);
+			touching[h] = true;
+			ctx.haptic(h, 0.2f, 0.015f);
+			continue;
+		}
 		if (now && !touching[h] && cooldown[h] <= 0.f && P.indexExtended && P.tipVelocity.y < -0.02f && bsTop && !ctx.handBusy[h])
 		{
 			board->clickTile(tx, ty, tz, false);

@@ -358,10 +358,12 @@ void Map::draw()
 
 	if ((_save->getSelectedUnit() && _save->getSelectedUnit()->getVisible()) || _unitDying || _save->getSide() == FACTION_PLAYER || _save->getDebugMode() || _projectileInFOV || _explosionInFOV)
 	{
+		_vrHiddenMovement = false;
 		drawTerrain(this);
 	}
 	else
 	{
+		_vrHiddenMovement = true;
 		_message->blit(this->getSurface());
 	}
 }

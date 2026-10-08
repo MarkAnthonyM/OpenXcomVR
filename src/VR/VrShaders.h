@@ -63,6 +63,7 @@ uniform vec3 uLightPos[12];  // light 0 is the overhead light over the table and
 uniform vec3 uLightCol[12];
 uniform float uAmbient;      // room ambient scale (night missions are darker)
 uniform float uAlert;        // 0..1: aliens in sight / alien turn, light strips go red
+uniform float uNight;        // 0..1: how dark the mission is; the room dims and its strips turn dim blue
 uniform int uShadowOn;
 uniform int uShadowPass;     // rendering the shadow map: depth only
 uniform mat4 uShadowVP;
@@ -280,7 +281,8 @@ void main()
 	else if (vMat == 4) // light strips (red alert while aliens are in sight)
 	{
 		vec3 alert = vec3(1.0, 0.012, 0.006) * (0.45 + 0.55 * max(0.0, sin(uTime * 3.0))) * 0.6;
-		fragColor = vec4(mix(base, alert, smoothstep(0.0, 0.6, uAlert)) * 4.0 * uTint.rgb, 1.0);
+		vec3 strip = mix(base, vec3(0.03, 0.07, 0.30) * max(max(base.r, base.g), base.b), uNight);
+		fragColor = vec4(mix(strip, alert, smoothstep(0.0, 0.6, uAlert)) * 4.0 * uTint.rgb, 1.0);
 		return;
 	}
 	else if (vMat == 5) // ceiling

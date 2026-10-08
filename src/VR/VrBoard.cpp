@@ -68,6 +68,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
+#include <sstream>
 
 namespace OpenXcom
 {
@@ -181,8 +182,28 @@ struct Board::Impl
 	const std::vector<Uint16> *voxels = nullptr;
 	SDL_Color pal[256];
 	glm::vec3 focus{0.f}, focusTarget{0.f};
-	Position camSet;             // camera centre the board itself last asked for
+	Position camSet;             // camera centre last seen (or set by the board)
 	bool camSetValid = false;
+	BattleUnit *lastSelected = nullptr;
+	bool walkedLast = false;
+	BattleUnit *walkedUnit = nullptr;
+	bool projectileSeen = false;
+	float sinceProjectile = 10.f;
+	bool hidden = false;         // the game is showing "Hidden Movement"
+	float curtain = 0.f;         // 0 open .. 1 the table fully covered
+	std::vector<uint32_t> hiddenText; // "HIDDEN MOVEMENT" in the big font (RGBA), for banner and minimaps
+	int hiddenTextW = 0, hiddenTextH = 0;
+	Texture hiddenTex;
+	Mesh curtainMesh;
+	glm::vec4 curtainRect{0.f};
+	void buildHiddenText();
+	void drawCurtain(const Shader &sh);
+	bool inView(const glm::vec3 &vox, float frac) const
+	{
+		float k = tileSize / TILE_W;
+		glm::vec3 ow = glm::vec3(glm::rotate(glm::mat4(1.f), yaw, {0, 1, 0}) * glm::vec4((vox.x - focus.x) * k, 0.f, (vox.z - focus.z) * k, 0.f));
+		return std::fabs(ow.x) < (mapRect.z - mapRect.x) * 0.5f * frac && std::fabs(ow.z) < (mapRect.w - mapRect.y) * 0.5f * frac;
+	}
 	bool focusInit = false;
 	float tileSize = 0.055f;
 	float yaw = 0.f;
@@ -210,12 +231,17 @@ struct Board::Impl
 		float life, maxLife, size, spin;
 		glm::vec4 c0, c1;              // colour at birth and at death (alpha too)
 		bool glow, gravity;
+		bool flicker = false;          // crackling static: blinks on and off
+		uint32_t seed = 0;
 	};
 	std::vector<Particle> particles;
 	std::vector<const void*> seenExplosions;
 	const Projectile *lastProjectile = nullptr;
 	glm::vec3 lastProjPos{0.f};
 	int projStyle = 0;                 // 0 bullet, 1 laser, 2 plasma, 3 rocket, 4 thrown
+	float projPower = 0.5f;            // 0 weakest .. 1 strongest weapon of its class (sizes the effect)
+	std::map<int, glm::vec2> powerRange; // per damage type: weakest and strongest firearm/ammo power in the mod
+	float strength(ItemDamageType dt, int power);
 	glm::vec3 projColor{1.f};
 	glm::vec3 projOrigin{0.f};
 	float beamFade = 0.f;
@@ -230,7 +256,9 @@ struct Board::Impl
 
 	// HUD: the game-style cursor, the selected unit marker, path preview, text readouts
 	Position cursorTile;
-	bool cursorSet = false;            // last tile picked or hovered (laser, finger, tap)
+	bool cursorSet = false;
+	bool turnPreview = false;          // a finger is dragging away from the soldier to turn it
+	glm::vec2 turnDir{0.f};            // last tile picked or hovered (laser, finger, tap)
 	Position fingerTile;
 	int fingerFrames = 0;              // >0 while a fingertip hovers over the map
 	struct Label { std::unique_ptr<Texture> tex; int w = 0, h = 0; double used = 0.0; };
@@ -789,31 +817,89 @@ void Board::Impl::updateBattle(float dt)
 	{
 		viewLevel = cam->getViewLevel();
 		Position c = cam->getCenterPosition();
-		// the game moved its camera (next soldier, alien spotted, ...): glide there. While the camera is
-		// still where the board put it, the board's own (sub-tile) focus stands.
+		BattleUnit *sel = battle->getSelectedUnit();
+		bool playerTurn = battle->getSide() == FACTION_PLAYER;
+		hidden = bs->getMap()->vrHiddenMovement() && !playerTurn && !battle->getDebugMode();
+		if (bs->getMap()->getProjectile()) sinceProjectile = 0.f; else sinceProjectile += dt;
+
+		// The table keeps its own view. The game's camera is only followed when the game moves it on
+		// purpose: another soldier selected, an alien button pressed, the alien turn's visible action.
+		// Its automatic "centre on the soldier" after every move, and its bullet-chasing, are ignored.
 		if (!camSetValid || c.x != camSet.x || c.y != camSet.y)
 		{
-			focusTarget = glm::vec3(c.x * TILE_W + TILE_W * 0.5f, 0.f, c.y * TILE_W + TILE_W * 0.5f);
-			camSetValid = false;
+			bool follow = true;
+			if (playerTurn)
+			{
+				if (sinceProjectile < 0.6f) follow = false;
+				else if (sel && sel == lastSelected && std::abs(sel->getPosition().x - c.x) <= 1 && std::abs(sel->getPosition().y - c.y) <= 1)
+					follow = false; // just re-centring on the soldier we already have
+			}
+			else if (hidden) follow = false; // nothing may be revealed while the movement is hidden
+			if (follow) focusTarget = glm::vec3(c.x * TILE_W + TILE_W * 0.5f, 0.f, c.y * TILE_W + TILE_W * 0.5f);
+			camSet = c;
+			camSetValid = true;
 		}
-		// keep a walking soldier on the table: when it nears the edge of the visible area, follow it
-		BattleUnit *sel = battle->getSelectedUnit();
-		if (sel && !sel->isOut() && (sel->getStatus() == STATUS_WALKING || sel->getStatus() == STATUS_FLYING) && !held[0] && !held[1])
+		if (sel != lastSelected)
+		{
+			// a newly selected soldier off the table's view: bring it in
+			lastSelected = sel;
+			if (sel && playerTurn && !sel->isOut() && !inView(unitVoxelPos(sel), 0.8f))
+			{
+				glm::vec3 up = unitVoxelPos(sel);
+				focusTarget = glm::vec3(up.x, 0.f, up.z);
+			}
+		}
+
+		// keep a walking unit in view: glide just enough to bring it back inside the middle of the table
+		if (!hidden && sel && !sel->isOut() && (sel->getStatus() == STATUS_WALKING || sel->getStatus() == STATUS_FLYING)
+			&& (playerTurn || sel->getVisible()) && !held[0] && !held[1])
 		{
 			auto it = cards.find(sel);
 			glm::vec3 up = (it != cards.end() && it->second.visInit) ? it->second.vis : unitVoxelPos(sel);
 			float k = tileSize / TILE_W;
-			glm::vec3 ow = glm::vec3(glm::rotate(glm::mat4(1.f), yaw, {0, 1, 0}) * glm::vec4((up.x - focus.x) * k, 0.f, (up.z - focus.z) * k, 0.f));
+			// unit offset from the focus target, in table space (metres)
+			glm::vec3 ow = glm::vec3(glm::rotate(glm::mat4(1.f), yaw, {0, 1, 0}) * glm::vec4((up.x - focusTarget.x) * k, 0.f, (up.z - focusTarget.z) * k, 0.f));
 			float hw = (mapRect.z - mapRect.x) * 0.5f, hd = (mapRect.w - mapRect.y) * 0.5f;
-			if (std::fabs(ow.x) > hw * 0.7f || std::fabs(ow.z) > hd * 0.7f)
+			glm::vec3 shift(0.f);
+			float bx = hw * 0.35f, bz = hd * 0.3f; // the unit stays inside the middle of the table
+			if (ow.x > bx) shift.x = ow.x - bx; else if (ow.x < -bx) shift.x = ow.x + bx;
+			if (ow.z > bz) shift.z = ow.z - bz; else if (ow.z < -bz) shift.z = ow.z + bz;
+			if (shift.x != 0.f || shift.z != 0.f)
 			{
-				focusTarget = glm::vec3(up.x, 0.f, up.z);
-				Position fc((int)(up.x / TILE_W), (int)(up.z / TILE_W), viewLevel);
-				cam->centerOnPosition(fc, true);
+				glm::vec3 sl = glm::vec3(glm::rotate(glm::mat4(1.f), -yaw, {0, 1, 0}) * glm::vec4(shift, 0.f)) / k;
+				focusTarget.x = glm::clamp(focusTarget.x + sl.x, 0.f, (float)(mx * TILE_W));
+				focusTarget.z = glm::clamp(focusTarget.z + sl.z, 0.f, (float)(my * TILE_W));
+				// the flat screen follows the table
+				Position fc((int)(focusTarget.x / TILE_W), (int)(focusTarget.z / TILE_W), viewLevel);
+				cam->centerOnPosition(fc, false);
 				camSet = cam->getCenterPosition();
 				camSetValid = true;
 			}
 		}
+		// when the walk ends, settle the view on the unit if it ended up off-centre
+		bool walkingNow = sel && (sel->getStatus() == STATUS_WALKING || sel->getStatus() == STATUS_FLYING);
+		if (walkedLast && !walkingNow && sel == walkedUnit && sel && !sel->isOut() && !hidden && (playerTurn || sel->getVisible()))
+		{
+			glm::vec3 up = unitVoxelPos(sel);
+			glm::vec3 saveFocus = focus;
+			focus = focusTarget;
+			bool central = inView(up, 0.3f);
+			focus = saveFocus;
+			if (!central)
+			{
+				focusTarget = glm::vec3(up.x, 0.f, up.z);
+				Position fc((int)(up.x / TILE_W), (int)(up.z / TILE_W), viewLevel);
+				cam->centerOnPosition(fc, false);
+				camSet = cam->getCenterPosition();
+				camSetValid = true;
+			}
+		}
+		walkedLast = walkingNow;
+		walkedUnit = sel;
+		// the hidden movement curtain
+		float ct = hidden ? 1.f : 0.f;
+		curtain = hidden ? std::min(1.f, curtain + dt / 0.5f) : std::max(0.f, curtain - dt / 0.3f);
+		(void)ct;
 	}
 	else
 	{
@@ -974,10 +1060,121 @@ void Board::Impl::drawUnits(const Shader &sh)
 	sh.set("uTint", glm::vec4(1.f));
 }
 
+void Board::Impl::buildHiddenText()
+{
+	if (!hiddenText.empty() || !game) return;
+	Mod *mod = game->getMod();
+	Font *big = mod->getFont("FONT_BIG", false), *small = mod->getFont("FONT_SMALL", false);
+	if (!big || !small) return;
+	const int W = 200, H = 18;
+	Text t(W, H, 0, 0);
+	SDL_Color sp[256];
+	for (int i = 0; i < 256; ++i) sp[i] = pal[i];
+	t.setPalette(sp);
+	t.initText(big, small, game->getLanguage());
+	t.setBig();
+	t.setColor(1);
+	t.setText(game->getLanguage()->getString("STR_HIDDEN_MOVEMENT"));
+	t.draw();
+	int w = std::max(1, std::min(W, t.getTextWidth() + 2)), h = std::max(1, std::min(H, t.getTextHeight() + 1));
+	hiddenText.assign((size_t)w * h, 0u);
+	for (int y = 0; y < h; ++y)
+		for (int x = 0; x < w; ++x)
+		{
+			int v = t.getPixel(x, y);
+			if (v) hiddenText[(size_t)y * w + x] = v <= 2 ? 0xFF3040FFu : v <= 4 ? 0xFF1020C0u : 0xFF000010u;
+		}
+	hiddenTextW = w;
+	hiddenTextH = h;
+	hiddenTex.create(w, h, true, true);
+	hiddenTex.update(hiddenText.data(), w, h);
+}
+
+/// The hidden movement curtain: a bank of voxel fog rising out of the table over the whole map.
+void Board::Impl::drawCurtain(const Shader &sh)
+{
+	if (curtain <= 0.f) return;
+	if (curtainRect != mapRect || curtainMesh.empty())
+	{
+		curtainRect = mapRect;
+		const float C = 0.02f;
+		int nx = (int)std::ceil((mapRect.z - mapRect.x) / C), nz = (int)std::ceil((mapRect.w - mapRect.y) / C);
+		auto hash = [](int a, int b) { uint32_t h = (uint32_t)(a * 73856093) ^ (uint32_t)(b * 19349663); h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15; return (h & 1023) / 1023.f; };
+		auto hgt = [&](int i, int j) { return (i < 0 || j < 0 || i >= nx || j >= nz) ? 0.f : 0.7f + 0.3f * hash(i, j); };
+		MeshData md;
+		for (int j = 0; j < nz; ++j)
+			for (int i = 0; i < nx; ++i)
+			{
+				float h = hgt(i, j);
+				float shade = 0.9f + 0.2f * hash(i * 3 + 1, j * 7 + 2);
+				glm::vec4 top = glm::vec4(0.26f, 0.28f, 0.36f, 1.f) * shade, side = glm::vec4(0.18f, 0.2f, 0.27f, 1.f) * shade;
+				top.a = side.a = 1.f;
+				float x0 = mapRect.x + i * C, x1 = std::min(mapRect.z, x0 + C), z0 = mapRect.y + j * C, z1 = std::min(mapRect.w, z0 + C);
+				md.addQuad({x0, h, z1}, {x1, h, z1}, {x1, h, z0}, {x0, h, z0}, top, MAT_FOG, {1, 0}, {1, 0}, {1, 0}, {1, 0});
+				struct N { int di, dj; };
+				for (N nb : {N{1, 0}, N{-1, 0}, N{0, 1}, N{0, -1}})
+				{
+					float hn = hgt(i + nb.di, j + nb.dj);
+					if (hn >= h) continue;
+					glm::vec3 a, b;
+					if (nb.di == 1) { a = {x1, 0, z1}; b = {x1, 0, z0}; }
+					else if (nb.di == -1) { a = {x0, 0, z0}; b = {x0, 0, z1}; }
+					else if (nb.dj == 1) { a = {x0, 0, z1}; b = {x1, 0, z1}; }
+					else { a = {x1, 0, z0}; b = {x0, 0, z0}; }
+					md.addQuad(a + glm::vec3(0, hn, 0), b + glm::vec3(0, hn, 0), b + glm::vec3(0, h, 0), a + glm::vec3(0, h, 0), side, MAT_FOG, {0, 0}, {0, 0}, {1, 0}, {1, 0});
+				}
+			}
+		curtainMesh.upload(md);
+	}
+	float e = curtain * curtain * (3.f - 2.f * curtain);
+	const float H = 0.07f;
+	sh.set("uMode", 0);
+	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uModel", glm::translate(glm::mat4(1.f), {0.f, surfaceY() - 0.002f, 0.f}) * glm::scale(glm::mat4(1.f), {1.f, std::max(0.002f, H * e), 1.f}));
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	curtainMesh.draw();
+	// the banner over the middle of the table, facing the player
+	buildHiddenText();
+	if (hiddenTex.valid() && e > 0.3f)
+	{
+		glm::vec3 c((mapRect.x + mapRect.z) * 0.5f, surfaceY() + H + 0.16f, (mapRect.y + mapRect.w) * 0.5f);
+		glm::vec3 toV = viewer - c;
+		toV.y = 0.f;
+		toV = glm::length(toV) > 1e-3f ? glm::normalize(toV) : glm::vec3(0, 0, 1);
+		glm::vec3 right = glm::normalize(glm::cross(glm::vec3(0, 1, 0), toV));
+		float w = 0.95f, h = w * hiddenTextH / (float)hiddenTextW;
+		glm::mat4 B(1.f);
+		B[0] = glm::vec4(right * w, 0.f);
+		B[1] = glm::vec4(0.f, h, 0.f, 0.f);
+		B[2] = glm::vec4(toV, 0.f);
+		B[3] = glm::vec4(c, 1.f);
+		float pulse = 0.8f + 0.2f * std::sin((float)time * 2.5f);
+		sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
+		sh.set("uMode", 4);
+		sh.set("uTint", glm::vec4(glm::vec3(1.6f * pulse), (e - 0.3f) / 0.7f));
+		sh.set("uModel", B);
+		hiddenTex.bind(0);
+		glDisable(GL_DEPTH_TEST);
+		quad.draw();
+		glEnable(GL_DEPTH_TEST);
+		sh.set("uClip", clipRect());
+	}
+	glDisable(GL_BLEND);
+	sh.set("uTint", glm::vec4(1.f));
+}
+
 void Board::Impl::drawBattle(const Shader &sh)
 {
 	glm::mat4 M = boardMatrix();
 	sh.set("uClip", clipRect());
+	if (curtain >= 0.999f)
+	{
+		// fully covered: nothing of the map may show through
+		if (!shadowPass) drawCurtain(sh);
+		sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
+		return;
+	}
 
 	// terrain
 	sh.set("uMode", 3);
@@ -1009,6 +1206,7 @@ void Board::Impl::drawBattle(const Shader &sh)
 	drawEffects(sh, M);
 
 	drawHud(sh, M);
+	drawCurtain(sh);
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
 }
@@ -1044,6 +1242,29 @@ glm::vec3 Board::Impl::bulletColor(int sprite)
 		}
 	spriteColors[sprite] = c;
 	return c;
+}
+
+/// How strong a weapon is within its class (its damage type): 0 the mod's weakest, 1 its strongest.
+float Board::Impl::strength(ItemDamageType dt, int power)
+{
+	auto it = powerRange.find((int)dt);
+	if (it == powerRange.end())
+	{
+		glm::vec2 r(1e9f, -1e9f);
+		Mod *mod = game->getMod();
+		for (const std::string &id : mod->getItemsList())
+		{
+			const RuleItem *ri = mod->getItem(id);
+			if (!ri || !ri->getDamageType() || ri->getDamageType()->ResistType != dt || ri->getPower() <= 0) continue;
+			if (ri->getBattleType() != BT_FIREARM && ri->getBattleType() != BT_AMMO) continue;
+			r.x = std::min(r.x, (float)ri->getPower());
+			r.y = std::max(r.y, (float)ri->getPower());
+		}
+		it = powerRange.emplace((int)dt, r).first;
+	}
+	glm::vec2 r = it->second;
+	if (power <= 0 || r.y <= r.x) return 0.5f;
+	return glm::clamp((power - r.x) / (r.y - r.x), 0.f, 1.f);
 }
 
 /// An explosion (or a bullet hit): a burst of glowing voxels, embers and rising smoke.
@@ -1120,6 +1341,7 @@ void Board::Impl::updateEffects(float dt)
 
 	// projectile: pick a style from what was fired; trails leave particles behind
 	const Projectile *pr = map ? map->getProjectile() : nullptr;
+	projectileSeen = pr != nullptr;
 	if (pr != lastProjectile)
 	{
 		lastProjectile = pr;
@@ -1127,25 +1349,34 @@ void Board::Impl::updateEffects(float dt)
 		{
 			const BattleAction &a = pr->vrAction();
 			const BattleItem *ammo = pr->vrAmmo();
+			const RuleItem *ar = ammo ? ammo->getRules() : (a.weapon ? a.weapon->getRules() : nullptr);
 			ItemDamageType dt2 = DT_AP;
-			if (ammo && ammo->getRules()->getDamageType()) dt2 = ammo->getRules()->getDamageType()->ResistType;
+			if (ar && ar->getDamageType()) dt2 = ar->getDamageType()->ResistType;
 			else if (a.weapon && a.weapon->getRules()->getDamageType()) dt2 = a.weapon->getRules()->getDamageType()->ResistType;
-			projStyle = a.type == BA_THROW ? 4 : (dt2 == DT_LASER ? 1 : (dt2 == DT_PLASMA || dt2 == DT_STUN || dt2 == DT_ACID) ? 2 : (dt2 == DT_HE || dt2 == DT_IN || dt2 == DT_SMOKE) ? 3 : 0);
-			glm::vec3 fallback[5] = {{1.f, 0.85f, 0.35f}, {1.f, 0.2f, 0.15f}, {0.3f, 1.f, 0.55f}, {1.f, 0.6f, 0.2f}, {0.7f, 0.75f, 0.6f}};
-			projColor = pr->vrBulletSprite() >= 0 && projStyle != 4 ? bulletColor(pr->vrBulletSprite()) : fallback[projStyle];
+			// rockets / bombs: launched, or explosive ammo that comes one round at a time
+			bool rocket = a.type == BA_LAUNCH || ((dt2 == DT_HE || dt2 == DT_IN || dt2 == DT_STUN || dt2 == DT_SMOKE) && ar && ar->getBattleType() == BT_AMMO && ar->getClipSize() <= 1);
+			projStyle = a.type == BA_THROW ? 4 : rocket ? 3 : dt2 == DT_LASER ? 1 : (dt2 == DT_PLASMA || dt2 == DT_ACID || dt2 == DT_STUN) ? 2 : 0;
+			projPower = strength(dt2, ar ? ar->getPower() : 0);
+			float k = projPower;
+			// colours are emissive: kept saturated (no channel far above 1) so they stay red / green and don't burn to white
+			if (projStyle == 1) projColor = glm::mix(glm::vec3(1.f, 0.10f, 0.06f), glm::vec3(1.f, 0.03f, 0.10f), k);       // laser: red, deeper when heavy
+			else if (projStyle == 2) projColor = dt2 == DT_STUN ? glm::vec3(0.45f, 0.5f, 1.f) : glm::mix(glm::vec3(0.25f, 1.f, 0.25f), glm::vec3(0.1f, 1.f, 0.35f), k); // plasma: green
+			else if (projStyle == 3) projColor = glm::vec3(1.f, 0.6f, 0.2f);
+			else if (projStyle == 4) projColor = glm::vec3(0.7f, 0.75f, 0.6f);
+			else projColor = (dt2 == DT_HE || dt2 == DT_IN) ? glm::vec3(1.f, 0.55f, 0.15f) : (pr->vrBulletSprite() >= 0 ? bulletColor(pr->vrBulletSprite()) : glm::vec3(1.f, 0.85f, 0.35f));
 			Position o = pr->getOrigin();
 			Position v0 = pr->getPosition(0);
 			projOrigin = glm::vec3(v0.x, v0.z, v0.y);
 			(void)o;
 			lastProjPos = projOrigin;
 			// muzzle flash
-			for (int i = 0; i < (projStyle == 4 ? 0 : 6); ++i)
+			for (int i = 0; i < (projStyle == 4 ? 0 : 4 + (int)(8 * k)); ++i)
 			{
 				Particle p;
 				glm::vec3 d = glm::normalize(glm::vec3(frand(st) - 0.5f, frand(st) - 0.5f, frand(st) - 0.5f));
-				p.p = projOrigin; p.v = d * 14.f;
+				p.p = projOrigin; p.v = d * (10.f + 12.f * k);
 				p.maxLife = p.life = 0.12f + frand(st) * 0.08f;
-				p.size = 1.2f; p.spin = 0.f;
+				p.size = 0.9f + 1.0f * k; p.spin = 0.f;
 				p.c0 = glm::vec4(projColor * 3.f, 1.f); p.c1 = glm::vec4(projColor, 0.f);
 				p.glow = true; p.gravity = false;
 				particles.push_back(p);
@@ -1153,7 +1384,7 @@ void Board::Impl::updateEffects(float dt)
 		}
 		else if (projStyle == 1)
 		{
-			beamFade = 0.18f; // the laser beam lingers for a moment after the shot lands
+			beamFade = 0.12f + 0.1f * projPower; // the laser beam lingers for a moment after the shot lands
 		}
 	}
 	if (pr)
@@ -1162,7 +1393,8 @@ void Board::Impl::updateEffects(float dt)
 		glm::vec3 now(v.x, v.z, v.y);
 		glm::vec3 seg = now - lastProjPos;
 		float len = glm::length(seg);
-		int n = (int)std::min(12.f, len / 3.f);
+		float k = projPower;
+		int n = (int)std::min(16.f, len / (projStyle == 1 ? 1.6f : 3.f));
 		for (int i = 0; i < n; ++i)
 		{
 			glm::vec3 at = lastProjPos + seg * ((i + frand(st)) / std::max(1, n));
@@ -1170,31 +1402,58 @@ void Board::Impl::updateEffects(float dt)
 			p.p = at;
 			p.spin = frand(st) * 6.f;
 			p.gravity = false;
+			p.seed = (uint32_t)(frand(st) * 1e6f);
 			if (projStyle == 3)
 			{
-				// rocket: a smoke trail
+				// rocket: a smoke trail, thicker for bigger rockets
 				p.v = glm::vec3((frand(st) - 0.5f) * 3.f, 2.f + frand(st) * 2.f, (frand(st) - 0.5f) * 3.f);
-				p.maxLife = p.life = 0.9f + frand(st) * 0.8f;
-				p.size = 2.f + frand(st) * 1.5f;
+				p.maxLife = p.life = 0.9f + frand(st) * 0.8f + k * 0.6f;
+				p.size = (1.6f + 1.6f * k) + frand(st) * 1.5f;
 				p.c0 = glm::vec4(0.35f, 0.33f, 0.31f, 0.8f); p.c1 = glm::vec4(0.6f, 0.6f, 0.62f, 0.f);
 				p.glow = false;
 			}
 			else if (projStyle == 2)
 			{
-				// plasma: sparks that drift off
-				p.v = glm::vec3(frand(st) - 0.5f, frand(st) - 0.5f, frand(st) - 0.5f) * 10.f;
-				p.maxLife = p.life = 0.2f + frand(st) * 0.25f;
-				p.size = 0.7f + frand(st) * 0.7f;
-				p.c0 = glm::vec4(projColor * 2.6f, 1.f); p.c1 = glm::vec4(projColor, 0.f);
-				p.glow = true;
+				// plasma: green sparks that drift off, more and longer-lived for heavier guns
+				for (int m = 0; m < 1 + (int)(2 * k); ++m)
+				{
+					Particle q = p;
+					q.p = at + glm::vec3(frand(st) - 0.5f, frand(st) - 0.5f, frand(st) - 0.5f) * (1.f + 2.f * k);
+					q.v = glm::vec3(frand(st) - 0.5f, frand(st) - 0.5f, frand(st) - 0.5f) * (8.f + 8.f * k);
+					q.maxLife = q.life = 0.2f + frand(st) * 0.25f + 0.25f * k;
+					q.size = 0.6f + 0.6f * k + frand(st) * 0.6f;
+					q.c0 = glm::vec4(projColor * 1.4f, 1.f); q.c1 = glm::vec4(projColor * 0.5f, 0.f);
+					q.glow = true;
+					particles.push_back(q);
+				}
+				continue;
+			}
+			else if (projStyle == 1)
+			{
+				// laser: crackling red static left hanging in the air, fading in about half a second
+				for (int m = 0; m < 1 + (int)(2 * k); ++m)
+				{
+					Particle q = p;
+					float spread = 0.8f + 1.8f * k;
+					q.p = at + glm::vec3(frand(st) - 0.5f, frand(st) - 0.5f, frand(st) - 0.5f) * spread;
+					q.v = glm::vec3(frand(st) - 0.5f, frand(st) - 0.5f, frand(st) - 0.5f) * 1.5f;
+					q.maxLife = q.life = 0.3f + 0.3f * k + frand(st) * 0.15f;
+					q.size = 0.6f + 0.7f * k + frand(st) * 0.4f;
+					q.c0 = glm::vec4(projColor * (1.2f + 0.4f * k), 1.f); q.c1 = glm::vec4(projColor * 0.5f, 0.f);
+					q.glow = true;
+					q.flicker = true;
+					q.seed = (uint32_t)(frand(st) * 1e6f);
+					particles.push_back(q);
+				}
+				continue;
 			}
 			else if (projStyle == 0)
 			{
 				// tracer: a short streak of fading voxels
 				p.v = glm::vec3(0.f);
-				p.maxLife = p.life = 0.08f;
-				p.size = 0.8f;
-				p.c0 = glm::vec4(projColor * 2.4f, 0.9f); p.c1 = glm::vec4(projColor, 0.f);
+				p.maxLife = p.life = 0.06f + 0.08f * k;
+				p.size = 0.6f + 0.6f * k;
+				p.c0 = glm::vec4(projColor * (1.8f + 1.2f * k), 0.9f); p.c1 = glm::vec4(projColor, 0.f);
 				p.glow = true;
 			}
 			else continue;
@@ -1202,7 +1461,7 @@ void Board::Impl::updateEffects(float dt)
 		}
 		if (projStyle == 1) { beamA = projOrigin; beamB = now; beamColor = projColor; }
 		lastProjPos = now;
-		if (projStyle != 4) flashes.push_back({toWorld(now), projColor * (projStyle == 1 ? 0.6f : 0.35f)});
+		if (projStyle != 4) flashes.push_back({toWorld(now), projColor * (projStyle == 1 ? 0.6f : 0.35f) * (0.6f + 0.8f * projPower)});
 	}
 	if (beamFade > 0.f) beamFade -= dt;
 
@@ -1312,9 +1571,16 @@ void Board::Impl::drawEffects(const Shader &sh, const glm::mat4 &M)
 	{
 		if (pass == 0) { glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); sh.set("uMode", 0); }
 		else { glBlendFunc(GL_SRC_ALPHA, GL_ONE); sh.set("uMode", 2); }
+		uint32_t frameNo = (uint32_t)(animTime * 40.0);
 		for (const Particle &p : particles)
 		{
 			if (p.glow != (pass == 1)) continue;
+			if (p.flicker)
+			{
+				uint32_t h = (p.seed + frameNo * 2654435761u) ^ (p.seed >> 7);
+				h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15;
+				if ((h & 255) < 90) continue; // static: about a third of the voxels blink out each moment
+			}
 			float k = 1.f - glm::clamp(p.life / p.maxLife, 0.f, 1.f);
 			glm::vec4 c = glm::mix(p.c0, p.c1, k);
 			float size = p.glow ? p.size * (1.f - 0.5f * k) : p.size * (1.f + 1.2f * k);
@@ -1332,33 +1598,45 @@ void Board::Impl::drawEffects(const Shader &sh, const glm::mat4 &M)
 		dir = glm::length(dir) > 1e-3f ? glm::normalize(dir) : glm::vec3(1, 0, 0);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 		sh.set("uMode", 2);
+		float k = projPower;
 		switch (projStyle)
 		{
-		case 0: // bullet: a short bright streak
-			boxAlong(now - dir * 6.f, now, 0.9f, glm::vec4(projColor * 3.f, 1.f));
+		case 0: // bullet: a short bright streak, longer and thicker for bigger calibres
+			boxAlong(now - dir * (4.f + 5.f * k), now, 0.6f + 0.8f * k, glm::vec4(projColor * (1.4f + 0.5f * k), 1.f));
 			break;
-		case 1: // laser: a beam from the muzzle
-			boxAlong(projOrigin, now, 0.7f, glm::vec4(projColor * 2.6f, 0.9f));
-			boxAlong(projOrigin, now, 1.8f, glm::vec4(projColor * 1.2f, 0.25f));
+		case 1: // laser: a bolt with a glowing sheath and a beam back to the muzzle
+		{
+			float jit = 0.3f * std::sin((float)t * 90.f);
+			boxAlong(projOrigin, now, (0.3f + 1.1f * k) * (1.f + 0.15f * jit), glm::vec4(projColor * (1.0f + 0.4f * k), 0.9f));
+			boxAlong(projOrigin, now, 1.0f + 3.4f * k, glm::vec4(projColor * 0.7f, 0.1f + 0.14f * k));
+			boxAlong(now - dir * (5.f + 6.f * k), now, 1.0f + 1.2f * k, glm::vec4(1.3f, 0.22f, 0.16f, 1.f));
 			break;
-		case 2: // plasma: a tumbling cluster of glowing voxels
-			for (int i = 0; i < 7; ++i)
+		}
+		case 2: // plasma: a tumbling cluster of glowing green voxels, bigger and denser for heavier guns
+		{
+			int n = 5 + (int)(8 * k);
+			float rad = 1.0f + 1.4f * k;
+			for (int i = 0; i < n; ++i)
 			{
-				glm::vec3 o(i == 1 ? 1.f : i == 2 ? -1.f : 0.f, i == 3 ? 1.f : i == 4 ? -1.f : 0.f, i == 5 ? 1.f : i == 6 ? -1.f : 0.f);
-				glm::vec3 r = glm::vec3(glm::rotate(glm::mat4(1.f), (float)t * 9.f, glm::vec3(0.4f, 1.f, 0.3f)) * glm::vec4(o * 1.4f, 0.f));
-				cubeAt(now + r, i == 0 ? 1.9f : 1.1f, (float)t * 5.f, glm::vec4(projColor * (i == 0 ? 3.2f : 2.2f), 1.f));
+				float a1 = i * 2.39996f, z1 = 1.f - 2.f * (i + 0.5f) / n, rr = std::sqrt(std::max(0.f, 1.f - z1 * z1));
+				glm::vec3 o(std::cos(a1) * rr, z1, std::sin(a1) * rr);
+				glm::vec3 r = glm::vec3(glm::rotate(glm::mat4(1.f), (float)t * 9.f, glm::vec3(0.4f, 1.f, 0.3f)) * glm::vec4(o * rad, 0.f));
+				cubeAt(now + r, 0.8f + 0.6f * k, (float)t * 5.f, glm::vec4(projColor * (1.0f + 0.3f * k), 0.9f));
 			}
+			cubeAt(now, 1.4f + 1.6f * k, (float)t * 7.f, glm::vec4(0.45f, 1.4f, 0.5f, 1.f));
 			break;
+		}
 		case 3: // rocket: body, fins and a flame
 		{
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			sh.set("uMode", 0);
-			boxAlong(now - dir * 7.f, now, 1.6f, glm::vec4(0.55f, 0.57f, 0.6f, 1.f));
-			boxAlong(now - dir * 1.5f, now + dir * 0.5f, 1.2f, glm::vec4(0.8f, 0.25f, 0.15f, 1.f));
+			float sz = 0.8f + 0.5f * k;
+			boxAlong(now - dir * 7.f * sz, now, 1.6f * sz, glm::vec4(0.55f, 0.57f, 0.6f, 1.f));
+			boxAlong(now - dir * 1.5f * sz, now + dir * 0.5f, 1.2f * sz, glm::vec4(0.8f, 0.25f, 0.15f, 1.f));
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 			sh.set("uMode", 2);
 			float fl = 0.7f + 0.3f * std::sin((float)t * 60.f);
-			boxAlong(now - dir * (10.f + 2.f * fl), now - dir * 7.f, 1.3f * fl, glm::vec4(3.f, 1.8f, 0.4f, 1.f));
+			boxAlong(now - dir * (10.f + 2.f * fl) * sz, now - dir * 7.f * sz, 1.3f * fl * sz, glm::vec4(3.f, 1.8f, 0.4f, 1.f));
 			break;
 		}
 		default: // thrown item: a tumbling block
@@ -1373,8 +1651,8 @@ void Board::Impl::drawEffects(const Shader &sh, const glm::mat4 &M)
 	{
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 		sh.set("uMode", 2);
-		float k = beamFade / 0.18f;
-		boxAlong(beamA, beamB, 0.7f * k, glm::vec4(beamColor * 2.6f, k));
+		float k = glm::clamp(beamFade / (0.12f + 0.1f * projPower), 0.f, 1.f);
+		boxAlong(beamA, beamB, (0.35f + 0.7f * projPower) * k, glm::vec4(beamColor * 1.2f, k));
 	}
 	glDepthMask(GL_TRUE);
 	glDisable(GL_BLEND);
@@ -1553,6 +1831,17 @@ void Board::Impl::drawHud(const Shader &sh, const glm::mat4 &M)
 		float head = (float)(sel->getHeight() + sel->getFloatHeight());
 		float bob = 1.2f * (float)std::sin(time * 4.0);
 		xrayDraw(pointer, M * glm::translate(glm::mat4(1.f), p + glm::vec3(0.f, head + 9.f + bob, 0.f)), glm::vec4(2.0f, 1.7f, 0.2f, 1.f));
+		if (turnPreview && glm::length(turnDir) > 1e-3f)
+		{
+			// the direction the soldier will face: a long arrow on the ground from its feet
+			float ang = std::atan2(turnDir.x, -turnDir.y); // arrow mesh points -Z
+			for (int k = 0; k < 3; ++k)
+			{
+				glm::vec3 at = p + glm::vec3(turnDir.x, 0.f, turnDir.y) / glm::length(turnDir) * (9.f + 9.f * k) + glm::vec3(0.f, 1.f, 0.f);
+				xrayDraw(arrow, M * glm::translate(glm::mat4(1.f), at) * glm::rotate(glm::mat4(1.f), -ang, {0, 1, 0}) * glm::scale(glm::mat4(1.f), glm::vec3(1.2f)),
+					glm::vec4(2.0f, 1.7f, 0.2f, 1.f - 0.25f * k));
+			}
+		}
 	}
 
 	// ---- the cursor: last tile hovered (laser or finger) or picked
@@ -1958,6 +2247,36 @@ glm::vec3 Board::tileCenter(int tx, int ty, int tz) const
 	return glm::vec3(p.boardMatrix() * glm::vec4(tx * TILE_W + 8.f, tz * TILE_H - lvl, ty * TILE_W + 8.f, 1.f));
 }
 
+std::string Board::debugInfo() const
+{
+	const Impl &p = *_p;
+	std::ostringstream ss;
+	ss << "focus " << p.focus.x << "," << p.focus.z << " target " << p.focusTarget.x << "," << p.focusTarget.z << " tileSize " << p.tileSize << " yaw " << p.yaw;
+	if (p.battle && p.battle->getSelectedUnit())
+	{
+		BattleUnit *u = p.battle->getSelectedUnit();
+		auto it = p.cards.find(u);
+		glm::vec3 v = (it != p.cards.end() && it->second.visInit) ? it->second.vis : glm::vec3(-1.f);
+		ss << " unit " << v.x << "," << v.z << " inView30 " << p.inView(v, 0.3f) << " inView60 " << p.inView(v, 0.6f);
+	}
+	return ss.str();
+}
+
+bool Board::tileCoords(const glm::vec3 &world, glm::vec2 &tile) const
+{
+	const Impl &p = *_p;
+	if (!p.hasBattle || !p.battle) return false;
+	glm::vec3 l = glm::vec3(glm::inverse(p.boardMatrix()) * glm::vec4(world, 1.f));
+	tile = glm::vec2(l.x, l.z) / (float)TILE_W;
+	return true;
+}
+
+void Board::setTurnPreview(bool on, const glm::vec2 &dir)
+{
+	_p->turnPreview = on;
+	_p->turnDir = dir;
+}
+
 void Board::fingerHover(int tx, int ty, int tz)
 {
 	_p->fingerTile = Position(tx, ty, tz);
@@ -2053,7 +2372,8 @@ float Board::nightLevel() const
 {
 	const Impl &p = *_p;
 	if (!p.hasBattle || !p.battle) return 0.f;
-	return glm::clamp(p.battle->getGlobalShade() / 15.f, 0.f, 1.f);
+	// the game's darkness runs 0 (day) .. 15; night missions sit around 10 and up
+	return glm::clamp((p.battle->getGlobalShade() - 2) / 8.f, 0.f, 1.f);
 }
 
 void Board::draw(const Shader &sh, const glm::mat4 &, const glm::vec3 &, double)
@@ -2192,12 +2512,23 @@ static void syncCamera(Board::Impl &p)
 	p.focusTarget = p.focus;
 }
 
+/// During the alien turn the game decides where the table looks (and while the movement is hidden,
+/// the table is covered): the player can't move the map then.
+static bool viewLocked(const Board::Impl &p)
+{
+	return p.hasBattle && p.battle && p.battle->getSide() != FACTION_PLAYER && !p.battle->getDebugMode();
+}
+
+bool Board::viewLocked() const { return OpenXcom::VR::viewLocked(*_p); }
+float Board::curtain() const { return _p->hasBattle ? _p->curtain : 0.f; }
+
 void Board::pan(const glm::vec2 &d)
 {
 	Impl &p = *_p;
 	revalidate(p);
 	if (p.hasBattle)
 	{
+		if (OpenXcom::VR::viewLocked(p)) return;
 		float k = p.tileSize / TILE_W;
 		glm::vec3 dl = glm::vec3(glm::rotate(glm::mat4(1.f), -p.yaw, {0, 1, 0}) * glm::vec4(d.x, 0.f, d.y, 0.f)) / k;
 		p.focus.x = glm::clamp(p.focus.x + dl.x, 0.f, (float)(p.mx * TILE_W));
@@ -2217,6 +2548,7 @@ void Board::pan(const glm::vec2 &d)
 void Board::rotate(float r)
 {
 	Impl &p = *_p;
+	if (p.hasBattle && p.hidden) return;
 	if (p.hasBattle) p.yaw += r;
 	else if (p.hasGlobe && p.globe)
 	{
@@ -2229,6 +2561,7 @@ void Board::rotate(float r)
 void Board::zoom(float f)
 {
 	Impl &p = *_p;
+	if (p.hasBattle && p.hidden) return;
 	if (p.hasBattle) p.tileSize = glm::clamp(p.tileSize * f, 0.02f, 0.14f);
 	else if (p.hasGlobe) p.globeRadius = glm::clamp(p.globeRadius * f, 0.18f, 0.45f);
 }
@@ -2255,6 +2588,23 @@ bool Board::renderMinimap(std::vector<uint32_t> &px, int S, bool align)
 	Impl &p = *_p;
 	revalidate(p);
 	if (!p.hasBattle || !p.battle || S <= 0) return false;
+	if (p.curtain > 0.5f)
+	{
+		// the movement is hidden: no map, just the game's message
+		px.assign((size_t)S * S, 0xFF140806u);
+		p.buildHiddenText();
+		if (p.hiddenText.empty() || p.hiddenTextW <= 0) return true;
+		int sc = std::max(1, std::min(2, (S - 12) / p.hiddenTextW));
+		int x0 = (S - p.hiddenTextW * sc) / 2, y0 = (S - p.hiddenTextH * sc) / 2;
+		for (int y = 0; y < p.hiddenTextH * sc; ++y)
+			for (int x = 0; x < p.hiddenTextW * sc; ++x)
+			{
+				uint32_t c = p.hiddenText[(size_t)(y / sc) * p.hiddenTextW + x / sc];
+				int xx = x0 + x, yy = y0 + y;
+				if ((c >> 24) && xx >= 0 && yy >= 0 && xx < S && yy < S) px[(size_t)yy * S + xx] = c;
+			}
+		return true;
+	}
 	glm::vec2 c, r, u;
 	minimapFrame(p, align, c, r, u);
 	const uint32_t fog = 0xFF2A2018u, outside = 0xFF0C0806u;
@@ -2353,7 +2703,7 @@ void Board::centerOnTile(const glm::vec2 &tile)
 {
 	Impl &p = *_p;
 	revalidate(p);
-	if (!p.hasBattle) return;
+	if (!p.hasBattle || OpenXcom::VR::viewLocked(p)) return;
 	p.focus = glm::vec3(glm::clamp(tile.x, 0.f, (float)p.mx) * TILE_W, 0.f, glm::clamp(tile.y, 0.f, (float)p.my) * TILE_W);
 	syncCamera(p);
 }
@@ -2373,6 +2723,7 @@ bool Board::canGrab(const glm::vec3 &hand) const
 
 void Board::beginGrab(int hand, const glm::vec3 &pos)
 {
+	if (OpenXcom::VR::viewLocked(*_p)) return;
 	_p->held[hand] = true;
 	_p->lastHand[hand] = pos;
 }

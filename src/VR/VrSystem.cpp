@@ -24,6 +24,7 @@
 #include "../Battlescape/Camera.h"
 #include "../Battlescape/Map.h"
 #include "../Battlescape/BattlescapeState.h"
+#include "../Battlescape/BattlescapeGame.h"
 #include "../Engine/Logger.h"
 #include "../Engine/Surface.h"
 #include "../Engine/Font.h"
@@ -727,7 +728,7 @@ static void updateHeadsetInput(float dt)
 			S->board.pan(dir * speed * dt);
 		}
 		float rx = H[1].stick.x;
-		if (H[1].active && std::fabs(rx) > 0.2f && !S->pointerOnPanel)
+		if (H[1].active && std::fabs(rx) > 0.2f)
 		{
 			float r = (std::fabs(rx) - 0.2f) / 0.8f;
 			S->board.rotate((rx > 0 ? 1.f : -1.f) * glm::radians(90.f) * r * r * dt); // like turning your view to the right
@@ -824,7 +825,8 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 		sh.set(c.c_str(), S->lightCol[i]);
 	}
 	const RoomLayout &L = S->layout;
-	sh.set("uAmbient", 1.f - 0.5f * S->night);
+	sh.set("uAmbient", 1.f - 0.7f * S->night);
+	sh.set("uNight", S->night);
 	sh.set("uAlert", S->alertLevel);
 	sh.set("uRoomMin", glm::vec3(L.roomX0, 0.f, L.roomZ0));
 	sh.set("uRoomMax", glm::vec3(L.roomX1, L.roomH, L.roomZ1));
@@ -834,7 +836,7 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	float hx = L.tableSize.x * 0.5f, hz = L.tableSize.y * 0.5f;
 	sh.set("uTableRect", glm::vec4(T.x - hx, T.z - hz, T.x + hx, T.z + hz));
 	sh.set("uTableY", S->table.surfaceY());
-	sh.set("uTableGlow", glm::vec3(0.12f, 0.55f, 0.65f) * (1.f + 0.3f * S->night));
+	sh.set("uTableGlow", glm::vec3(0.12f, 0.55f, 0.65f) * (1.f + 0.8f * S->night) * (1.f - 0.7f * S->board.curtain()));
 	sh.set("uShadowPass", 0);
 	bool useShadow = S->shadowOn && !shadowPass;
 	sh.set("uShadowOn", useShadow ? 1 : 0);
@@ -855,7 +857,7 @@ static void computeLights(float dt)
 	// smoothed battle state
 	float alertT = S->board.alert() ? 1.f : 0.f, nightT = S->board.nightLevel();
 	S->alertLevel += (alertT - S->alertLevel) * (1.f - std::exp(-dt * 2.5f));
-	S->night += (nightT - S->night) * (1.f - std::exp(-dt * 1.f));
+	S->night += (nightT - S->night) * (1.f - std::exp(-dt * 1.5f));
 	// the game screen's average colour, every few frames
 	if (S->frameCount % 5 == 0 && !S->pixels.empty())
 	{
@@ -870,10 +872,11 @@ static void computeLights(float dt)
 	}
 	int n = 0;
 	auto add = [&](const glm::vec3 &p, const glm::vec3 &c) { if (n < 12) { S->lightPos[n] = p; S->lightCol[n] = c; ++n; } };
-	float dim = 1.f - 0.45f * S->night;
+	float dim = 1.f - 0.6f * S->night;
 	// 0: over the table, a little behind and to the left so shadows fall toward the player
-	add({T.x - 0.5f, T.y + 1.3f, T.z - 0.45f}, glm::vec3(1.6f, 1.65f, 1.8f) * dim);
-	float fill = 0.5f * (1.f - 0.5f * S->night) * (1.f - 0.4f * S->alertLevel);
+	float cover = S->board.curtain();
+	add({T.x - 0.5f, T.y + 1.3f, T.z - 0.45f}, glm::vec3(1.6f, 1.65f, 1.8f) * dim * (1.f - 0.6f * cover));
+	float fill = 0.5f * (1.f - 0.8f * S->night) * (1.f - 0.4f * S->alertLevel);
 	add(L.lightPos[1], L.lightCol[1] * fill);  // (1-3: room fills)
 	add(L.lightPos[2], L.lightCol[2] * fill);
 	add(L.lightPos[3], L.lightCol[3] * fill);
@@ -1126,12 +1129,98 @@ static void runScript()
 				for (auto &m : S->board.unitMarkers())
 					if (m.unit == sb->getSelectedUnit())
 					{
-						glm::vec3 eye = m.head + glm::vec3(0.f, (float)num(1, 0.25), (float)num(0, 0.35));
+						glm::vec3 eye = m.head + glm::vec3((float)num(2, 0), (float)num(1, 0.25), (float)num(0, 0.35));
 						glm::vec3 d = glm::normalize(m.head - eye);
 						S->camPos = eye;
 						S->camYaw = glm::degrees(std::atan2(-d.x, -d.z));
 						S->camPitch = glm::degrees(std::asin(d.y));
 					}
+		}
+		else if (c.op == "dragturn")
+		{
+			// test helper: finger down on the selected soldier, drag dx, dy tiles across the table, lift
+			if (SavedBattleGame *sb = S->board.battle())
+				if (BattleUnit *sel = sb->getSelectedUnit())
+				{
+					Position p = sel->getPosition();
+					glm::vec3 a = S->board.tileCenter(p.x, p.y, p.z), b = S->board.tileCenter(p.x + (int)num(0, 0), p.y + (int)num(1, 0), p.z);
+					Hands probe;
+					Pose at;
+					probe.simulate(1, at, 0.f, 1.f, true, 0.f, {});
+					glm::vec3 off = probe.pose[1].tip(F_INDEX);
+					S->simHand = true;
+					S->simGrip.rot = glm::quat(1.f, 0.f, 0.f, 0.f);
+					S->simIndex = 0.f; S->simOthers = 1.f; S->simThumb = true;
+					S->simGrip.pos = a - off + glm::vec3(0.f, 0.05f, 0.f);
+					std::deque<ScriptCmd> seq;
+					auto add = [&](const std::string &op, std::vector<std::string> args) { seq.push_back({op, args}); };
+					auto f = [](float v) { return std::to_string(v); };
+					glm::vec3 g0 = a - off, g1 = b - off;
+					add("waitframes", {"4"});
+					add("handmove", {f(g0.x), f(g0.y - 0.01f), f(g0.z), "12"});
+					add("waitframes", {"16"});
+					add("handmove", {f(g1.x), f(g1.y - 0.01f), f(g1.z), "20"});
+					add("waitframes", {"22"});
+					add("shot", {"/root/oxrun/shots/t_drag.png"});
+					add("handmove", {f(g1.x), f(g1.y + 0.06f), f(g1.z), "8"});
+					add("waitframes", {"10"});
+					add("status", {});
+					for (auto it = seq.rbegin(); it != seq.rend(); ++it) S->script.push_front(*it);
+					continue;
+				}
+		}
+		else if (c.op == "boardinfo") { Log(LOG_INFO) << "[VR] board: " << S->board.debugInfo(); }
+		else if (c.op == "refilltu")
+		{
+			if (SavedBattleGame *sb = S->board.battle())
+				for (BattleUnit *u : *sb->getUnits())
+					if (u->getFaction() == FACTION_PLAYER) u->resetTimeUnitsAndEnergy();
+		}
+		else if (c.op == "fireat")
+		{
+			// test helper: the selected unit fires its right-hand weapon (first menu entry) at a tile
+			if (BattlescapeState *bs = S->board.battleState())
+				if (SavedBattleGame *sb = S->board.battle())
+					if (BattleUnit *u = sb->getSelectedUnit())
+						if (BattleItem *w = u->getRightHandWeapon())
+						{
+							BattleAction *a = bs->getBattleGame()->getCurrentAction();
+							a->actor = u;
+							a->weapon = w;
+							a->type = c.args.size() > 3 && c.args[3] == "snap" ? BA_SNAPSHOT : BA_AIMEDSHOT;
+							a->updateTU();
+							a->targeting = true;
+							bs->getBattleGame()->setupCursor();
+							S->board.clickTile((int)num(0, 0), (int)num(1, 0), (int)num(2, 0), false);
+						}
+		}
+		else if (c.op == "clickabs")
+		{
+			S->board.clickTile((int)num(0, 0), (int)num(1, 0), (int)num(2, 0), num(3, 0) > 0.5);
+		}
+		else if (c.op == "selectunit")
+		{
+			if (SavedBattleGame *sb = S->board.battle())
+				for (BattleUnit *u : *sb->getUnits())
+					if (u->getId() == (int)num(0, 0)) S->board.selectUnit(u);
+		}
+		else if (c.op == "waitidle")
+		{
+			// wait until no unit is walking and no projectile is flying (max num(0) ms)
+			bool busy = false;
+			if (SavedBattleGame *sb = S->board.battle())
+			{
+				for (BattleUnit *u : *sb->getUnits())
+					if (u->getStatus() == STATUS_WALKING || u->getStatus() == STATUS_FLYING || u->getStatus() == STATUS_TURNING) busy = true;
+				if (BattlescapeState *bs = S->board.battleState()) if (bs->getBattleGame()->isBusy()) busy = true;
+			}
+			if (busy && num(0, 30000) > 0)
+			{
+				c.args = {std::to_string((int)num(0, 30000) - 100)};
+				S->script.push_front(c);
+				S->scriptWaitUntil = now + 100;
+				return;
+			}
 		}
 		else if (c.op == "testburst")
 		{
@@ -1335,7 +1424,11 @@ static void previewFrame()
 	S->table.pointerMove(hit.target == RayHit::TABLE ? &hit.table : nullptr);
 
 	GLStateGuard guard;
-	computeLights(std::min(0.1f, (now - S->lastPreviewFrame) / 1000.f + 0.016f));
+	{
+		static Uint32 lastLights = now;
+		computeLights(std::min(0.1f, (now - lastLights) / 1000.f));
+		lastLights = now;
+	}
 	renderShadows();
 	S->previewTarget.bind();
 	glm::mat4 proj = glm::perspective(glm::radians(62.f), (float)w / (float)h, 0.03f, 60.f);

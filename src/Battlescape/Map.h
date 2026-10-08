@@ -98,6 +98,7 @@ private:
 	Camera *_camera;
 	int _visibleMapHeight;
 	std::vector<Position> _waypoints;
+	bool _vrHiddenMovement = false;
 	bool _unitDying, _smoothCamera, _smoothingEngaged, _flashScreen;
 	int _bgColor;
 	bool _previewSettingArrows, _previewSettingTu, _previewSettingEnergy;
@@ -150,6 +151,8 @@ public:
 	void setCursorType(CursorType type, int size = 1);
 	/// Gets the 3D cursor type.
 	CursorType getCursorType() const;
+	/// VR tabletop: the "Hidden Movement" screen is showing (as of the last draw).
+	bool vrHiddenMovement() const { return _vrHiddenMovement; }
 	/// Gets the 3D cursor size in tiles (2 for big units).
 	int getCursorSize() const { return _cursorSize; }
 	/// Text shown next to the 3D cursor on a tile (hit chance, damage); false when there is none.

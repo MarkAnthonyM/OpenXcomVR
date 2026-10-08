@@ -130,7 +130,8 @@ void Camera::mouseOver(Action *action, State *)
 		return;
 	}
 
-	if (Options::battleEdgeScroll == SCROLL_AUTO || _scrollTrigger)
+	// VR: the laser pointer at the edge of the game screen must not scroll the map (the table follows it)
+	if ((Options::battleEdgeScroll == SCROLL_AUTO || _scrollTrigger) && !VR::active())
 	{
 		int posX = action->getXMouse();
 		int posY = action->getYMouse();
