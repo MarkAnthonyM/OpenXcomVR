@@ -19,9 +19,10 @@ stand) in an X-COM command center at a holographic war table:
   leave crackling static hanging in the air, green plasma bolts, rockets with
   smoke trails. Within each weapon class the effect grows bolder with the
   weapon's damage (a heavy laser is much more intense than a laser pistol).
-  During your turn the table keeps its own view: selecting a soldier (and the
-  first one when a mission starts) and the end of every walk bring the soldier
-  close to you, near your side of the map with most of the table in front of
+  During your turn the table keeps its own view: the next-soldier button, the
+  first soldier when a mission or your turn starts, and the end of every walk
+  bring the soldier close to you (a soldier you tap on the table is already in
+  reach, so the view stays put), near your side of the map with most of the table in front of
   it; a walking soldier is kept in view; shots are followed to the impact and
   the table glides back to where it was a moment later. During the alien turn
   it follows the game, and while the
@@ -107,8 +108,10 @@ never moves the map (edge and drag scrolling are off in VR).
 
 The table follows the game's camera when it moves on purpose (an alien button,
 a shot chasing its projectile, the alien turn) and ignores its automatic
-"centre on soldier" after every move. A selected soldier, and a soldier that
-just finished walking, is placed close to you: `NEAR_SPOT` in `VrBoard.cpp`
+"centre on soldier" after every move. A soldier selected with the next-soldier
+button (or at the start of the mission or your turn), and a soldier that just
+finished walking, is placed close to you; tapping a soldier on the table never
+moves the view: `NEAR_SPOT` in `VrBoard.cpp`
 (0.45 of half the map's depth toward your side) sets how close. After a shot
 the game leaves its camera on the impact; the table looks there for 0.8 s and
 then goes back, unless you moved the map in the meantime. During the alien turn you can't move the map; you can turn

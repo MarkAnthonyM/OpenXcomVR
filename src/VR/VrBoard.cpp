@@ -195,6 +195,7 @@ struct Board::Impl
 	glm::vec3 preShotFocus{0.f};
 	Position preShotCam;
 	float returnIn = -1.f;       // after a shot in our turn: seconds left before going back (-1 = none)
+	float tapSelect = 0.f;       // seconds left in which a new selection came from a tap on the table
 	// where a focused soldier stands on the table: this far from the middle toward the player,
 	// as a fraction of half the map's depth (leaves most of the table in front of the soldier)
 	static constexpr float NEAR_SPOT = 0.45f;
@@ -852,6 +853,8 @@ void Board::Impl::updateBattle(float dt)
 		bool playerTurn = battle->getSide() == FACTION_PLAYER;
 		hidden = bs->getMap()->vrHiddenMovement() && !playerTurn && !battle->getDebugMode();
 		bool busy = bs->getBattleGame() && bs->getBattleGame()->isBusy();
+		bool tapped = tapSelect > 0.f;
+		tapSelect = std::max(0.f, tapSelect - dt);
 		if (bs->getMap()->getProjectile())
 		{
 			if (!inShot)
@@ -885,7 +888,9 @@ void Board::Impl::updateBattle(float dt)
 			}
 			else if (playerTurn && nearSel)
 			{
-				if (sel == lastSelected) follow = false; // just re-centring on the soldier we already have
+				// just re-centring on the soldier we already have, or on one tapped on the table (it is
+				// within reach already, and so are the tiles around it)
+				if (sel == lastSelected || tapped) follow = false;
 				else onUnit = true;
 			}
 			camSet = c;
@@ -916,9 +921,10 @@ void Board::Impl::updateBattle(float dt)
 
 		if (sel != lastSelected)
 		{
-			// a newly selected soldier (also the first one when the mission starts): bring it close
+			// a newly selected soldier (next-soldier button, the first one when the mission or our turn
+			// starts): bring it close. One tapped on the table is within reach: the view stays.
 			lastSelected = sel;
-			if (sel && playerTurn && !sel->isOut() && !hidden) focusOnUnit(sel, cam);
+			if (sel && playerTurn && !sel->isOut() && !hidden && !tapped) focusOnUnit(sel, cam);
 		}
 
 		// keep a walking unit in view: glide just enough to keep it inside a band around where a
@@ -2371,6 +2377,7 @@ void Board::clickTile(int tx, int ty, int tz, bool right)
 	revalidate(p);
 	p.cursorTile = Position(tx, ty, tz);
 	p.cursorSet = true;
+	p.tapSelect = 0.5f; // a click on a soldier's tile can select it: that is a tap too
 	if (p.bs) p.bs->vrTileClick(Position(tx, ty, tz), right);
 }
 
@@ -2378,6 +2385,7 @@ bool Board::selectUnit(BattleUnit *unit)
 {
 	Impl &p = *_p;
 	revalidate(p);
+	p.tapSelect = 0.5f; // the view stays where it is: the tapped soldier is within reach
 	return p.bs ? p.bs->vrSelectUnit(unit) : false;
 }
 bool Board::hasContent() const { return _p->hasBattle || _p->hasGlobe; }
