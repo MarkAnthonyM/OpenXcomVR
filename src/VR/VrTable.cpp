@@ -943,26 +943,13 @@ void Table::Impl::drop(TableContext &ctx)
 		int slotAmmo = w->getRules()->getSlotForAmmo(ra);
 		if (slotAmmo == -1) { warn(ctx, "STR_WRONG_AMMUNITION_FOR_THIS_WEAPON"); return; }
 		const RuleInventory *rightHand = ctx.game->getMod()->getInventoryRightHand();
-		const RuleInventory *leftHand = ctx.game->getMod()->getInventoryLeftHand();
 		int tuCost = w->getRules()->getTULoad(slotAmmo);
 		if (Mod::EXTENDED_ITEM_RELOAD_COST && (!from || from->getType() != INV_HAND))
 			tuCost += a->getMoveToCost(rightHand); // bringing the clip to the hand first
-		// a weapon that is already loaded: swap magazines (the game's shift-drop), only for one in a hand;
-		// the old clip goes to a free hand (or the one the new clip came from), else to the floor
-		const RuleInventory *oldGoesTo = ground;
-		BattleItem *rh = u->getRightHandWeapon(), *lh = u->getLeftHandWeapon();
-		if (!rh || a == rh) oldGoesTo = rightHand;
-		else if (!lh || a == lh) oldGoesTo = leftHand;
-		if (w->getAmmoForSlot(slotAmmo))
-		{
-			int tuUnload = w->getRules()->getTUUnload(slotAmmo);
-			if (w->getSlot()->getType() != INV_HAND || !tuUnload) { warn(ctx, "STR_WEAPON_IS_ALREADY_LOADED"); return; }
-			tuCost += tuUnload;
-			if (oldGoesTo == ground) tuCost += rightHand->getCost(ground);
-		}
+		// like the flat game: a weapon that still holds ammo can't be loaded (unload it first)
+		if (w->getAmmoForSlot(slotAmmo)) { warn(ctx, "STR_WEAPON_IS_ALREADY_LOADED"); return; }
 		if (!u->spendTimeUnits(tuCost)) { warn(ctx, "STR_NOT_ENOUGH_TIME_UNITS"); return; }
-		BattleItem *old = w->setAmmoForSlot(slotAmmo, a);
-		if (old) te->itemMoveInventory(u->getTile(), u, old, oldGoesTo, 0, 0);
+		w->setAmmoForSlot(slotAmmo, a);
 		int sound = ra->getReloadSound();
 		if (sound == Mod::NO_SOUND) sound = w->getRules()->getReloadSound();
 		if (sound == Mod::NO_SOUND) sound = Mod::ITEM_RELOAD;

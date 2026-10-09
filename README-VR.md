@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.8.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.8.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -54,8 +54,13 @@ stand) in an X-COM command center at a holographic war table:
 - **The room reacts**: the light over the table casts shadows of the figures and
   your hands onto the map, the table glows up onto everything above it, the
   screens tint the room, muzzle flashes and explosions light it up, night
-  missions turn the room dark with dim blue strips so the table is the main
-  light, and red alert lights sweep round while aliens are in sight.
+  missions turn the room dark with dim blue strips, and red alert lights sweep
+  round while aliens are in sight.
+- **Night is as dark as on the flat map.** Every tile and figure on the table
+  is darkened by the game's own light level for it, using the same steps as the
+  game's palette shading (measured from the palette, applied in linear light),
+  so lit areas, flares and fires stand out and unlit ground is near black; the
+  fog over unexplored ground darkens with the night too.
 
 This is an engine fork (a ruleset mod can't add a VR renderer), but it reads the
 game state generically, so content mods such as X-Com Files should work.
@@ -187,9 +192,8 @@ headset on.
   `valve/frame_controller_valve` via `XR_VALVE_frame_controller_interaction`)
   and **have not been tried on those headsets yet**.
 - The inventory tray moves items between slots and hands, and a clip dropped
-  on a weapon loads it (same TU cost and reload sound as the inventory screen;
-  dropping a clip on a loaded weapon in a hand swaps magazines, the old clip
-  going to a free hand or the floor). The ground area on the tray is five columns wide and shows the floor items that
+  on a weapon loads it (same TU cost and reload sound as the inventory screen).
+  As in the game, a weapon that still holds ammo can't be loaded. The ground area on the tray is five columns wide and shows the floor items that
   fit; the rest are on the big screen's inventory.
 - Typing (base names, save names) needs the real keyboard.
 - Items lying on the floor are not shown on the table map yet (they are in the

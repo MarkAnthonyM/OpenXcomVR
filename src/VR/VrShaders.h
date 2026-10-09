@@ -244,7 +244,9 @@ void main()
 		if (t.a < 0.02) discard;
 		vec3 base = t.rgb * vColor.rgb * uTint.rgb;
 		if (uMode == 4) { fragColor = vec4(base, t.a * uTint.a); return; }
-		fragColor = vec4(lighting(base, n, 0.1, 0.8) + base * 0.22, 1.0);
+		// the highlight follows the surface's own brightness, so a tile darkened by the night stays dark
+		float k = dot(vColor.rgb * uTint.rgb, vec3(1.0 / 3.0));
+		fragColor = vec4(lighting(base, n, 0.1 * k, 0.8) + base * 0.22, 1.0);
 		return;
 	}
 
@@ -310,6 +312,7 @@ void main()
 		vec3 fogCol = base * k;
 		float top = smoothstep(0.6, 0.95, n.y);
 		vec3 c = lighting(fogCol, n, 0.05, 0.9) * 0.6 + fogCol * (0.22 + 0.10 * top) + vec3(0.010, 0.022, 0.035) * n1;
+		c *= mix(1.0, 0.08, uNight); // unexplored ground is near black at night, as on the flat map
 		fragColor = vec4(c * uTint.rgb, 0.94 * uTint.a);
 		return;
 	}

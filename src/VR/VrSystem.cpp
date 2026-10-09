@@ -26,6 +26,7 @@
 #include "../Battlescape/Map.h"
 #include "../Battlescape/BattlescapeState.h"
 #include "../Battlescape/BattlescapeGame.h"
+#include "../Battlescape/TileEngine.h"
 #include "../Engine/Logger.h"
 #include "../Engine/Surface.h"
 #include "../Engine/Font.h"
@@ -1261,6 +1262,15 @@ static void runScript()
 					for (auto it = seq.rbegin(); it != seq.rend(); ++it) S->script.push_front(*it);
 					continue;
 				}
+		}
+		else if (c.op == "unloadright")
+		{
+			// test helper: empty the selected soldier's right-hand weapon, the clip goes to the floor
+			if (SavedBattleGame *sb = S->board.battle())
+				if (BattleUnit *u = sb->getSelectedUnit())
+					if (BattleItem *w = u->getRightHandWeapon())
+						if (BattleItem *old = w->setAmmoForSlot(0, nullptr))
+							sb->getTileEngine()->itemMoveInventory(u->getTile(), u, old, S->game->getMod()->getInventoryGround(), 0, 0);
 		}
 		else if (c.op == "items") { Log(LOG_INFO) << "[VR] items: " << S->table.itemsInfo(); }
 		else if (c.op == "boardinfo") { Log(LOG_INFO) << "[VR] board: " << S->board.debugInfo(); }

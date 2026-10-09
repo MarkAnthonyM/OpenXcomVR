@@ -81,6 +81,17 @@ static const int CHUNK = 8;     // tiles per chunk side
 static const int ATLAS = 2048;
 static const float MAT_BOARD = 8.f;
 
+/// How much a tile's shade (0 bright .. 15 dark, the game's lighting) darkens it, in linear light.
+/// Measured from the battlescape palette: each shade step moves a colour one step down its 16-colour
+/// ramp, which is roughly a 20-30% drop per step (the median over the palette's ramps). The board
+/// works in linear colour, so this is what makes a night tile as dark as on the flat map.
+static float shadeFactor(int shade)
+{
+	static const float k[16] = {1.f, 0.804f, 0.639f, 0.506f, 0.397f, 0.306f, 0.232f, 0.172f,
+		0.129f, 0.091f, 0.062f, 0.041f, 0.028f, 0.020f, 0.015f, 0.013f};
+	return k[glm::clamp(shade, 0, 15)];
+}
+
 static inline uint32_t rgba(const SDL_Color &c, uint8_t a = 255)
 {
 	return (uint32_t)c.r | ((uint32_t)c.g << 8) | ((uint32_t)c.b << 16) | ((uint32_t)a << 24);
@@ -694,7 +705,8 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 				if (z == 0 && fogX >= 0)
 				{
 					float u0 = fogX / (float)ATLAS, v0 = fogY / (float)ATLAS, u1 = (fogX + 16) / (float)ATLAS, v1 = (fogY + 16) / (float)ATLAS;
-					md.addQuad(off + glm::vec3(0, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, 0), off + glm::vec3(0, 0.5f, 0), glm::vec4(1.f), MAT_BOARD, {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0});
+					float sb = shadeFactor(t->getShade()); // as dark as the night around it
+					md.addQuad(off + glm::vec3(0, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, 0), off + glm::vec3(0, 0.5f, 0), glm::vec4(sb, sb, sb, 1.f), MAT_BOARD, {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0});
 				}
 				// walls already seen from outside stay standing (the flat map shows them too)
 				for (TilePart tp : {O_WESTWALL, O_NORTHWALL})
@@ -703,14 +715,14 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 					if (!d || !t->isDiscovered(tp) || t->isUfoDoorOpen(tp)) continue;
 					const Proto &p = proto(d);
 					uint32_t base = (uint32_t)md.verts.size();
-					float b = 1.f - glm::clamp(t->getShade(), 0, 15) / 15.f * 0.82f;
+					float b = shadeFactor(t->getShade());
 					for (const Vertex &v : p.verts) { Vertex w = v; w.pos += off; w.color = glm::vec4(b, b, b, 1.f); md.verts.push_back(w); }
 					for (uint32_t i : p.idx) md.indices.push_back(base + i);
 				}
 				continue;
 			}
 			// shade 0 (bright) .. 15 (dark), like the flat map
-			float b = 1.f - glm::clamp(t->getShade(), 0, 15) / 15.f * 0.82f;
+			float b = shadeFactor(t->getShade());
 			glm::vec4 tint(b, b, b, 1.f);
 			for (int part = 0; part < O_MAX; ++part)
 			{
@@ -1136,7 +1148,10 @@ void Board::Impl::drawUnits(const Shader &sh)
 			* glm::translate(glm::mat4(1.f), {0.f, card.anchorY - h * 0.5f, 0.f})
 			* glm::scale(glm::mat4(1.f), {w, h, 1.f});
 		sh.set("uMode", 3);
-		sh.set("uTint", glm::vec4(1.f));
+		// lit by its tile, like the flat map draws units (dark at night unless a light is near)
+		float ub = 1.f;
+		if (Tile *ut = u->getTile()) ub = shadeFactor(ut->getShade());
+		sh.set("uTint", glm::vec4(ub, ub, ub, 1.f));
 		sh.set("uModel", m);
 		card.tex->bind(0);
 		quad.draw();
