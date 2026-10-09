@@ -92,9 +92,10 @@ if your PC needs the frame time.
 ## Versions
 
 Prototype builds are numbered `0.<round>.<fix>`: a round of changes bumps the
-middle number, a small follow-up fix the last one. Each one is tagged
-`proto-<version>` in git; the version is shown on the main menu and on the
-controls plate at the table's edge.
+middle number, a small follow-up fix the last one. The commit for each build
+says its version; versions that are published as GitHub releases get a
+`proto-<version>` tag (made with the release). The version is shown on the
+main menu and on the controls plate at the table's edge.
 
 ## Controls
 
