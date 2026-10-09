@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.8.1)
+# OpenXcom Extended — VR Tabletop (prototype 0.9.0)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -38,7 +38,11 @@ stand) in an X-COM command center at a holographic war table:
   buttons is an inventory tray for the selected soldier, about as deep as the
   buttons: the game's sections (hands, shoulders, legs, backpack, belt, ground)
   repacked into one row, with small floating voxel models of the items; pinch
-  one to move it. When the game asks how to fire (aimed / snap / auto, throw),
+  one to move it. Along the map side of the tray are the inventory screen's two
+  extra controls: an **Unload weapon** pad above the hands (drop a weapon on it
+  to unload it, a primed grenade to unprime it) and **page keys** above the
+  ground area to flip through what lies on the floor. The table buttons are
+  silent, like the game's own battle buttons; you feel them in your hand. When the game asks how to fire (aimed / snap / auto, throw),
   a board of keys unfolds over the console, and spotted aliens show up as red
   buttons right of the bay (press one to centre the view on that alien), so
   you never need to look up at the screen for those.
@@ -192,10 +196,12 @@ headset on.
   interaction profiles (`oculus/touch_controller`,
   `valve/frame_controller_valve` via `XR_VALVE_frame_controller_interaction`)
   and **have not been tried on those headsets yet**.
-- The inventory tray moves items between slots and hands, and a clip dropped
-  on a weapon loads it (same TU cost and reload sound as the inventory screen).
-  As in the game, a weapon that still holds ammo can't be loaded. The ground area on the tray is five columns wide and shows the floor items that
-  fit; the rest are on the big screen's inventory.
+- The inventory tray follows the inventory screen's rules: moving items costs
+  TU, a clip dropped on an empty weapon loads it, a weapon that still holds
+  ammo can't be loaded, and the unload pad works like the Unload button (the
+  weapon goes to a free hand, the clip to the other hand or the floor). The
+  ground area shows five columns at a time in pages (one row; items taller
+  than three cells are only on the big screen's inventory).
 - Typing (base names, save names) needs the real keyboard.
 - Items lying on the floor are not shown on the table map yet (they are in the
   tray's ground area and on the screen).

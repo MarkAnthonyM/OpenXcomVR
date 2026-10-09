@@ -1272,6 +1272,7 @@ static void runScript()
 						if (BattleItem *old = w->setAmmoForSlot(0, nullptr))
 							sb->getTileEngine()->itemMoveInventory(u->getTile(), u, old, S->game->getMod()->getInventoryGround(), 0, 0);
 		}
+		else if (c.op == "groundkey") { S->table.groundKey((int)num(0, 1)); }
 		else if (c.op == "items") { Log(LOG_INFO) << "[VR] items: " << S->table.itemsInfo(); }
 		else if (c.op == "boardinfo") { Log(LOG_INFO) << "[VR] board: " << S->board.debugInfo(); }
 		else if (c.op == "refilltu")

@@ -156,6 +156,22 @@ struct Table::Impl
 	std::vector<InvSection> secs;
 	Texture labelTex;
 	static const int GROUND_COLS = 5;
+	// tray controls next to the ground area (tray pixels x, y, w, h): the unload pad (drop a weapon
+	// on it to unload it, a primed grenade to unprime it) and the ground's page keys, like the
+	// inventory screen's Unload and ground scroll buttons
+	glm::vec4 unloadPad{0.f}, groundPrev{0.f}, groundNext{0.f};
+	glm::vec2 unloadLabelAt{0.f};
+	int unloadLabelRow = 0, unloadLabelW = 0;
+	int groundPage = 0, groundPages = 1;
+	const Tile *groundTile = nullptr;
+	float keyCool[2] = {0.f, 0.f};
+	float keyFlash[2] = {0.f, 0.f};   // 0 prev, 1 next: lit for a moment after a press
+	bool keyIn[2][2] = {{false, false}, {false, false}}; // [hand][key] fingertip inside last frame
+	Mesh arrowTri;
+	void groundStep(int dir);
+	void updateTrayKeys(const Hands &hands, float dt);
+	bool unload(TableContext &ctx, BattleItem *a);
+	int hapticHand = -1;
 	Held held;
 	int hoverItem = -1;
 	double time = 0.0;
@@ -304,8 +320,9 @@ void Table::init(const RoomLayout &layout)
 	p.bayScale = std::min(BAY_PX, (bx1 - bx0) / 320.f);
 	float bw = 320.f * p.bayScale, bd = 56.f * p.bayScale;
 	p.bay = {bx0, bcz - bd * 0.5f, bx0 + bw, bcz + bd * 0.5f};
-	// inventory tray: as deep as the bay, up to 70 cm wide, ending just left of centre
-	p.tray = {std::max(p.table.x + 0.03f, -0.72f), bcz - bd0 * 0.5f - 0.004f, -0.02f, bcz + bd0 * 0.5f + 0.004f};
+	// inventory tray: up to 70 cm wide, ending just left of centre, from the map's edge to about the
+	// bay's near edge (nearer than that the raised rim hides it from a seated player)
+	p.tray = {std::max(p.table.x + 0.03f, -0.72f), stripFar + 0.002f, -0.02f, bcz + bd0 * 0.5f + 0.004f};
 
 	// default panel layout (BattlescapeState), replaced by the live one in a battle
 	struct D { const char *n; int x, y, w, h; };
@@ -354,6 +371,16 @@ void Table::init(const RoomLayout &layout)
 	MeshData q;
 	q.addQuad({-0.5f, 0, 0.5f}, {0.5f, 0, 0.5f}, {0.5f, 0, -0.5f}, {-0.5f, 0, -0.5f}, glm::vec4(1), MAT_PLAIN, {0, 1}, {1, 1}, {1, 0}, {0, 0});
 	p.quadUp.upload(q);
+	{
+		// a flat arrowhead pointing +x (the ground's page keys)
+		MeshData t;
+		Vertex v0{{0.5f, 0, 0}, {0, 1, 0}, {0, 0}, glm::vec4(1), MAT_PLAIN};
+		Vertex v1{{-0.4f, 0, -0.5f}, {0, 1, 0}, {0, 0}, glm::vec4(1), MAT_PLAIN};
+		Vertex v2{{-0.4f, 0, 0.5f}, {0, 1, 0}, {0, 0}, glm::vec4(1), MAT_PLAIN};
+		uint32_t i0 = t.addVertex(v0), i1 = t.addVertex(v1), i2 = t.addVertex(v2);
+		t.indices.insert(t.indices.end(), {i0, i1, i2, i0, i2, i1}); // both faces
+		p.arrowTri.upload(t);
+	}
 	MeshData f;
 	f.addQuad({-0.5f, -0.5f, 0}, {0.5f, -0.5f, 0}, {0.5f, 0.5f, 0}, {-0.5f, 0.5f, 0}, glm::vec4(1), MAT_PLAIN, {0, 1}, {1, 1}, {1, 0}, {0, 0});
 	p.quadFront.upload(f);
@@ -491,9 +518,7 @@ void Table::Impl::pressButton(int i, int hand, TableContext &ctx)
 	int gx = icons.x + b.px.x + b.px.z / 2, gy = icons.y + b.px.y + b.px.w / 2;
 	if (b.alert >= 0) { gx = b.scr.x + b.scr.z / 2; gy = b.scr.y + b.scr.w / 2; }
 	ctx.clickScreen(gx, gy, SDL_BUTTON_LEFT);
-	if (hand >= 0 && hand < 2) ctx.haptic(hand, 0.7f, 0.025f);
-	// the game's interface click (GEO.CAT); BUTTON_PRESS is an index into that set, not the battle sounds
-	if (TextButton::soundPress) TextButton::soundPress->play();
+	if (hand >= 0 && hand < 2) ctx.haptic(hand, 0.7f, 0.025f); // no sound: the game's own battle buttons are silent
 	lastEvent = "button " + b.name;
 	Log(LOG_INFO) << "[VR] table button pressed: " << b.name;
 }
@@ -618,7 +643,8 @@ void Table::Impl::buildGrid(TableContext &ctx)
 	if (RuleInterface *ri = mod->getInterface("inventory", false))
 		if (const Element *el = ri->getElement("textSlots")) text.setColor(el->color);
 	text.setHighContrast(true);
-	std::vector<uint32_t> lpx((size_t)LW * LH * std::max<size_t>(1, secs.size()), 0u);
+	const size_t rows = secs.size() + 1; // + the unload pad's label
+	std::vector<uint32_t> lpx((size_t)LW * LH * rows, 0u);
 	for (size_t i = 0; i < secs.size(); ++i)
 	{
 		text.clear();
@@ -633,8 +659,21 @@ void Table::Impl::buildGrid(TableContext &ctx)
 				if (c) lpx[(i * LH + y) * LW + x] = rgba(pal[c]);
 			}
 	}
-	labelTex.create(LW, LH * std::max<int>(1, (int)secs.size()), true, true);
-	labelTex.update(lpx.data(), LW, LH * std::max<int>(1, (int)secs.size()));
+	{
+		text.clear();
+		text.setText(ctx.game->getLanguage()->getString("STR_UNLOAD_WEAPON"));
+		text.draw();
+		unloadLabelW = std::min(LW, text.getTextWidth());
+		unloadLabelRow = (int)secs.size();
+		for (int y = 0; y < LH; ++y)
+			for (int x = 0; x < LW; ++x)
+			{
+				Uint8 c = text.getPixel(x, y);
+				if (c) lpx[(secs.size() * LH + y) * LW + x] = rgba(pal[c]);
+			}
+	}
+	labelTex.create(LW, LH * (int)rows, true, true);
+	labelTex.update(lpx.data(), LW, LH * (int)rows);
 
 	// Repack into one short row: tall sections get a column each, sections one slot high are
 	// stacked two to a column. Order follows the game's left-to-right layout, ground last.
@@ -690,15 +729,43 @@ void Table::Impl::buildGrid(TableContext &ctx)
 		}
 		x += c.w + GAP;
 	}
-	float totalW = std::max(1.f, x - GAP), totalH = ROWH;
+	// A strip along the far edge (next to the map): the ground's page keys above the ground area,
+	// and the unload pad above the hands, where the weapons are. Everything else moves down.
+	const float STRIP = 21.f, sy0 = 0.f, sh = STRIP - 3.f, KEY_W = 20.f;
+	for (InvSection &sc : secs) { sc.labelAt.y += STRIP; sc.off.y += STRIP; }
+	unloadPad = glm::vec4(0.f);
+	groundPrev = groundNext = glm::vec4(0.f);
+	float hx0 = 1e9f, hx1 = -1e9f;
+	for (const InvSection &sc : secs)
+	{
+		float w = std::max(sc.game.z, (float)sc.labelW);
+		if (sc.r->getType() == INV_GROUND)
+		{
+			groundPrev = {sc.labelAt.x, sy0, KEY_W, sh};
+			groundNext = {sc.labelAt.x + w - KEY_W, sy0, KEY_W, sh};
+		}
+		else if (sc.r->getType() == INV_HAND)
+		{
+			hx0 = std::min(hx0, sc.labelAt.x);
+			hx1 = std::max(hx1, sc.labelAt.x + w);
+		}
+	}
+	if (hx1 > hx0)
+	{
+		float w = std::max(hx1 - hx0, (float)unloadLabelW + 8.f);
+		unloadPad = {hx0, sy0, w, sh};
+		unloadLabelAt = {hx0 + (w - unloadLabelW) * 0.5f, sy0 + (sh - 9.f) * 0.5f};
+	}
+	float totalW = std::max(1.f, x - GAP), totalH = ROWH + STRIP;
 	invBox = {0.f, 0.f, totalW, totalH};
 	// fit into the tray, kept against its centre side (nearest the player)
 	float tw = tray.z - tray.x, td = tray.w - tray.y;
 	invScale = std::min(tw / totalW, td / totalH);
 	float uw = totalW * invScale, ud = totalH * invScale;
-	invOrigin = {tray.z - uw, tray.y + (td - ud) * 0.5f};
+	invOrigin = {tray.z - uw, tray.y + 0.001f}; // against the map side, the near edge stays clear of the rim
+	(void)ud;
 	Log(LOG_INFO) << "[VR] inventory tray: " << secs.size() << " sections, " << totalW << "x" << totalH
-		<< " px, cell " << (16.f * invScale * 100.f) << " cm";
+		<< " px, cell " << (16.f * invScale * 100.f) << " cm, tray " << tw << " x " << td << " m";
 }
 
 bool Table::Impl::locate(glm::vec2 footTL, glm::vec2 footSize, const RuleInventory *&slot, int &x, int &y) const
@@ -754,21 +821,64 @@ void Table::Impl::listItems(TableContext &ctx)
 	const RuleInventory *ground = ctx.game->getMod()->getInventoryGround();
 	if (ground && u->getTile())
 	{
+		// another floor under the soldier: back to the first page
+		if (u->getTile() != groundTile) { groundTile = u->getTile(); groundPage = 0; }
 		glm::vec2 o = offOf(ground);
-		int x = 0;
+		// pages of GROUND_COLS columns, filled left to right; the page keys flip through them
+		int x = 0, page = 0;
 		for (BattleItem *it : *u->getTile()->getInventory())
 		{
-			int w = it->getRules()->getInventoryWidth();
+			int w = std::min(it->getRules()->getInventoryWidth(), (int)GROUND_COLS);
 			if (it->getRules()->getInventoryHeight() > 3) continue;
-			if (x + w > GROUND_COLS) break;
+			if (x + w > GROUND_COLS) { ++page; x = 0; }
+			int at = x;
+			x += w;
+			if (page != groundPage) continue;
 			ItemView v;
 			v.item = it;
-			float gx = (float)(ground->getX() + x * 16) + o.x, gy = (float)ground->getY() + o.y;
+			float gx = (float)(ground->getX() + at * 16) + o.x, gy = (float)ground->getY() + o.y;
 			v.foot = {gx, gy, (float)(w * 16), (float)(it->getRules()->getInventoryHeight() * 16)};
 			v.sprite = {gx, gy};
 			v.frame = it->getBigSprite(set, battle, anim);
 			items.push_back(v);
-			x += w;
+		}
+		groundPages = page + 1;
+		if (groundPage >= groundPages) groundPage = 0;
+	}
+}
+
+/// Flips the ground area one page forward or back (wrapping round, like the game's ground button).
+void Table::Impl::groundStep(int dir)
+{
+	if (groundPages <= 1) { groundPage = 0; return; }
+	groundPage = (groundPage + dir + groundPages) % groundPages;
+	lastEvent = "ground page " + std::to_string(groundPage + 1) + "/" + std::to_string(groundPages);
+}
+
+/// The ground's page keys: a fingertip pressed onto one flips the page (once per press).
+void Table::Impl::updateTrayKeys(const Hands &hands, float dt)
+{
+	for (int k = 0; k < 2; ++k) keyFlash[k] = std::max(0.f, keyFlash[k] - dt);
+	for (int h = 0; h < 2; ++h)
+	{
+		keyCool[h] = std::max(0.f, keyCool[h] - dt);
+		const HandPose &P = hands.pose[h];
+		bool valid = inBattle && invUnit && P.valid && !P.ghost && P.indexExtended && held.hand != h;
+		glm::vec3 tip = valid ? P.rawTip(F_INDEX) : glm::vec3(0.f);
+		for (int k = 0; k < 2; ++k)
+		{
+			const glm::vec4 &r = k == 0 ? groundPrev : groundNext;
+			glm::vec2 w0 = invToWorld({r.x, r.y}), w1 = invToWorld({r.x + r.z, r.y + r.w});
+			bool in = valid && tip.x > w0.x - 0.004f && tip.x < w1.x + 0.004f && tip.z > w0.y - 0.004f && tip.z < w1.y + 0.004f
+				&& tip.y < sy + 0.014f && tip.y > sy - 0.04f;
+			if (in && !keyIn[h][k] && keyCool[h] <= 0.f)
+			{
+				groundStep(k == 0 ? -1 : 1);
+				keyFlash[k] = 0.25f;
+				keyCool[h] = 0.3f;
+				hapticHand = h;
+			}
+			keyIn[h][k] = in;
 		}
 	}
 }
@@ -892,6 +1002,15 @@ void Table::Impl::drop(TableContext &ctx)
 	// where did it land?
 	glm::vec2 spriteTL = worldToInv(glm::vec2(held.origin.x, held.origin.z));
 	glm::vec2 footTL = spriteTL + held.footDelta;
+	{
+		glm::vec2 c = footTL + held.footSize * 0.5f;
+		const glm::vec4 &r = unloadPad;
+		if (r.z > 0.f && c.x >= r.x - 2.f && c.x < r.x + r.z + 2.f && c.y >= r.y - 6.f && c.y < r.y + r.w + 10.f)
+		{
+			unload(ctx, a);
+			return;
+		}
+	}
 	const RuleInventory *slot = nullptr;
 	int x = 0, y = 0;
 	if (!locate(footTL, held.footSize, slot, x, y))
@@ -972,6 +1091,96 @@ void Table::Impl::drop(TableContext &ctx)
 	te->itemMoveInventory(u->getTile(), u, a, slot, x, y);
 	lastEvent = "swapped " + ra->getType() + " with " + rb->getType();
 	done();
+}
+
+/// The inventory screen's Unload button, for an item dropped on the unload pad: a loaded weapon goes
+/// to a free hand and its clip to the other hand (or the floor); a primed grenade is unprimed.
+/// Same rules, costs and messages as Inventory::unload.
+bool Table::Impl::unload(TableContext &ctx, BattleItem *a)
+{
+	BattleUnit *u = invUnit;
+	const RuleItem *ra = a->getRules();
+	const BattleType type = ra->getBattleType();
+	const bool grenade = type == BT_GRENADE || type == BT_PROXIMITYGRENADE;
+	const bool weapon = type == BT_FIREARM || type == BT_MELEE;
+	int slotAmmo = -1, tuUnload = 0;
+	if (grenade)
+	{
+		if (a->getFuseTimer() == -1 || ra->getFuseTimerType() == BFT_NONE || ra->getCostUnprime().Time == 0)
+		{
+			lastEvent = "unload: nothing to do";
+			return false;
+		}
+	}
+	else if (weapon)
+	{
+		bool empty = false;
+		for (int slot = 0; slot < RuleItem::AmmoSlotMax; ++slot)
+		{
+			if (!a->needsAmmoForSlot(slot)) continue;
+			if (a->getAmmoForSlot(slot)) { slotAmmo = slot; tuUnload = ra->getTUUnload(slot); break; }
+			empty = true;
+		}
+		if (slotAmmo == -1)
+		{
+			if (empty) warn(ctx, "STR_NO_AMMUNITION_LOADED");
+			else lastEvent = "unload: nothing to do";
+			return false;
+		}
+	}
+	else
+	{
+		lastEvent = "unload: not a weapon or grenade";
+		return false;
+	}
+
+	Mod *mod = ctx.game->getMod();
+	const RuleInventory *rightHand = mod->getInventoryRightHand(), *leftHand = mod->getInventoryLeftHand(), *ground = mod->getInventoryGround();
+	const RuleInventory *first = rightHand, *second = leftHand;
+	for (BattleItem *bi : *u->getInventory())
+	{
+		if (bi == a || bi->getSlot()->getType() != INV_HAND) continue;
+		if (bi->getSlot() == second) second = nullptr;
+		if (bi->getSlot() == first) first = nullptr;
+	}
+	if (!first) { first = second; second = nullptr; }
+	if (!first) { warn(ctx, "STR_ONE_HAND_MUST_BE_EMPTY"); return false; }
+
+	BattleActionCost cost{BA_NONE, u, a};
+	if (grenade)
+	{
+		cost.type = BA_UNPRIME;
+		cost.updateTU();
+	}
+	else
+	{
+		cost.Time += tuUnload;
+		if (!second) cost.Time += first->getCost(ground);
+	}
+	if (cost.haveTU() && (!a->getSlot() || a->getSlot()->getType() != INV_HAND)) cost.Time += a->getMoveToCost(first);
+	std::string err;
+	if (!cost.spendTU(&err))
+	{
+		if (!err.empty()) warn(ctx, err);
+		return false;
+	}
+	TileEngine *te = battle->getTileEngine();
+	te->itemMoveInventory(u->getTile(), u, a, first, 0, 0);
+	if (grenade)
+	{
+		a->setFuseTimer(-1);
+		warn(ctx, ra->getUnprimeActionMessage());
+		if (Sound *snd = mod->getSoundByDepth(battle->getDepth(), ra->getUnprimeSound())) snd->play();
+		lastEvent = "unprimed " + ra->getType();
+	}
+	else
+	{
+		BattleItem *old = a->setAmmoForSlot(slotAmmo, nullptr);
+		if (old) te->itemMoveInventory(u->getTile(), u, old, second ? second : ground, 0, 0);
+		lastEvent = "unloaded " + ra->getType();
+	}
+	bs->updateSoldierInfo(false);
+	return true;
 }
 
 void Table::Impl::updateItems(TableContext &ctx, const Hands &hands)
@@ -1296,7 +1505,6 @@ void Table::Impl::pressMenuKey(int i, int hand, TableContext &ctx)
 		lastEvent = ss.str();
 	}
 	if (hand >= 0 && hand < 2) ctx.haptic(hand, 0.7f, 0.025f);
-	if (TextButton::soundPress) TextButton::soundPress->play(); // the game's interface click
 	Log(LOG_INFO) << "[VR] " << lastEvent;
 }
 
@@ -1615,6 +1823,9 @@ void Table::update(TableContext &ctx, const Hands &hands, float dt)
 	p.syncBattle(ctx);
 	p.updateButtons(ctx, hands, dt);
 	p.updateItems(ctx, hands);
+	p.hapticHand = -1;
+	p.updateTrayKeys(hands, dt);
+	if (p.hapticHand >= 0) ctx.haptic(p.hapticHand, 0.5f, 0.02f);
 	p.updateTaps(ctx, hands, dt);
 	p.updateWalls(ctx, dt);
 	p.updateWrist(ctx, hands, dt);
@@ -1795,6 +2006,53 @@ void Table::draw(const Shader &sh) const
 		}
 	}
 	sh.set("uUVRect", glm::vec4(0.f, 0.f, 1.f, 1.f));
+	if (p.unloadPad.z > 0.f)
+	{
+		// the unload pad: a framed hand-sized well, lit while a held item would land on it
+		bool over = false;
+		if (p.held.item)
+		{
+			glm::vec2 c = p.worldToInv({p.held.origin.x, p.held.origin.z}) + p.held.footDelta + p.held.footSize * 0.5f;
+			const glm::vec4 &r = p.unloadPad;
+			over = c.x >= r.x - 2.f && c.x < r.x + r.z + 2.f && c.y >= r.y - 6.f && c.y < r.y + r.w + 10.f;
+		}
+		const glm::vec4 &r = p.unloadPad;
+		glm::vec2 o0 = p.invToWorld({r.x, r.y}), o1 = p.invToWorld({r.x + r.z, r.y + r.w});
+		glm::vec2 i0 = p.invToWorld({r.x + 1.5f, r.y + 1.5f}), i1 = p.invToWorld({r.x + r.z - 1.5f, r.y + r.w - 1.5f});
+		sh.set("uMode", 2);
+		sh.set("uTint", over ? glm::vec4(0.3f, 1.f, 0.6f, 0.9f) : glm::vec4(0.55f, 0.6f, 0.75f, 0.8f));
+		flat({o0.x, o0.y, o1.x, o1.y}, p.sy + 0.0011f);
+		sh.set("uTint", over ? glm::vec4(0.06f, 0.2f, 0.12f, 0.95f) : glm::vec4(0.03f, 0.035f, 0.05f, 0.95f));
+		flat({i0.x, i0.y, i1.x, i1.y}, p.sy + 0.0013f);
+		// the ground's page keys: raised pads with an arrow, dim when there is only one page
+		for (int k = 0; k < 2; ++k)
+		{
+			const glm::vec4 &kr = k == 0 ? p.groundPrev : p.groundNext;
+			glm::vec2 a0 = p.invToWorld({kr.x, kr.y}), a1 = p.invToWorld({kr.x + kr.z, kr.y + kr.w});
+			bool live = p.groundPages > 1;
+			float lit = p.keyFlash[k] > 0.f ? 1.f : live ? 0.55f : 0.22f;
+			sh.set("uMode", 0);
+			sh.set("uTint", glm::vec4(0.13f, 0.14f, 0.16f, 1.f));
+			boxAt({a0.x, p.sy, a0.y}, {a1.x, p.sy + 0.004f, a1.y});
+			sh.set("uMode", 2);
+			sh.set("uTint", glm::vec4(0.25f * lit, 0.9f * lit, 1.f * lit, 1.f));
+			glm::vec3 c((a0.x + a1.x) * 0.5f, p.sy + 0.0045f, (a0.y + a1.y) * 0.5f);
+			float sz = std::min(a1.x - a0.x, a1.y - a0.y) * 0.7f;
+			sh.set("uModel", glm::translate(glm::mat4(1.f), c) * glm::scale(glm::mat4(1.f), {k == 0 ? -sz : sz, 1.f, sz}));
+			p.arrowTri.draw();
+		}
+		sh.set("uMode", 4);
+		sh.set("uTint", glm::vec4(1.15f, 1.15f, 1.15f, 1.f));
+	// the unload pad's label
+	if (p.labelTex.valid() && p.unloadPad.z > 0.f)
+	{
+		float lw = (float)p.labelTex.width(), lh = (float)p.labelTex.height();
+		sh.set("uUVRect", glm::vec4(0.f, p.unloadLabelRow * 9.f / lh, p.unloadLabelW / lw, 9.f / lh));
+		glm::vec2 w0 = p.invToWorld(p.unloadLabelAt), w1 = p.invToWorld(p.unloadLabelAt + glm::vec2((float)p.unloadLabelW, 9.f));
+		flat({w0.x, w0.y, w1.x, w1.y}, p.sy + 0.0016f);
+	}
+		sh.set("uUVRect", glm::vec4(0.f, 0.f, 1.f, 1.f));
+	}
 	if (p.warnTimer > 0.f && p.warnTex.valid())
 	{
 		sh.set("uTint", glm::vec4(1.f, 1.f, 1.f, std::min(1.f, p.warnTimer)));
@@ -1976,7 +2234,18 @@ void Table::pointerClick(const TableHit &hit, int button, TableContext &ctx)
 	{
 		p.grab(hit.index, 2, hit.point);
 	}
+	else if (hit.kind == TableHit::TRAY && p.inBattle)
+	{
+		glm::vec2 q = p.worldToInv({hit.point.x, hit.point.z});
+		for (int k = 0; k < 2; ++k)
+		{
+			const glm::vec4 &r = k == 0 ? p.groundPrev : p.groundNext;
+			if (q.x >= r.x && q.x < r.x + r.z && q.y >= r.y && q.y < r.y + r.w) { p.groundStep(k == 0 ? -1 : 1); p.keyFlash[k] = 0.25f; }
+		}
+	}
 }
+
+void Table::groundKey(int dir) { _p->groundStep(dir); }
 
 std::string Table::itemsInfo() const
 {
@@ -2031,6 +2300,12 @@ bool Table::cellCenter(const std::string &slot, float cx, float cy, glm::vec3 &w
 {
 	const Impl &p = *_p;
 	if (!p.game) return false;
+	if (slot == "UNLOAD")
+	{
+		glm::vec2 c = p.invToWorld(glm::vec2(p.unloadPad.x + cx * 16.f, p.unloadPad.y + cy * 16.f));
+		w = {c.x, p.sy + 0.024f, c.y};
+		return true;
+	}
 	const RuleInventory *r = p.game->getMod()->getInventory(slot, false);
 	if (!r) return false;
 	glm::vec2 c = p.invToWorld(glm::vec2(r->getX() + cx * 16.f, r->getY() + cy * 16.f) + p.offOf(r));
