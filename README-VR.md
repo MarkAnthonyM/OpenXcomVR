@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.9.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.9.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -25,9 +25,10 @@ stand) in an X-COM command center at a holographic war table:
   reach, so the view stays put), near your side of the map with most of the table in front of
   it; a walking soldier is kept in view; shots are followed to the impact and
   the table glides back to where it was a moment later. During the alien turn
-  it follows the game, and while the
-  flat game shows **Hidden Movement**, a bank of fog rises out of the table
-  and covers the whole map until an alien comes into view.
+  it follows the game while aliens are in view. While the flat game shows
+  **Hidden Movement** the table stays where it is and shows nothing new: no
+  shots or blasts out of sight, and doors, broken walls, smoke and fire keep
+  how they looked until the aliens come into view or your turn starts.
 - **Geoscape** – a physical globe hovers over the table, with bases, craft,
   UFOs and mission sites as markers and the real day/night terminator.
 - **The table is a control panel.** Right in front of you along the near edge
@@ -65,6 +66,12 @@ stand) in an X-COM command center at a holographic war table:
   game's palette shading (measured from the palette, applied in linear light),
   so lit areas, flares and fires stand out and unlit ground is near black; the
   fog over unexplored ground darkens with the night too.
+- **Shots light up the night.** Lasers, plasma, rockets (their exhaust),
+  incendiary rounds and blaster bombs light the ground and figures around them
+  in their colour as they fly, stronger weapons brighter and further; their
+  impacts flare, and explosions light up the area while they burn. Ordinary
+  bullets give no light. This is on the table only: the game's lighting, what
+  your soldiers can see and the flat screen are unchanged.
 
 This is an engine fork (a ruleset mod can't add a VR renderer), but it reads the
 game state generically, so content mods such as X-Com Files should work.
@@ -154,8 +161,8 @@ finished walking, is placed close to you; tapping a soldier on the table never
 moves the view: `NEAR_SPOT` in `VrBoard.cpp`
 (0.45 of half the map's depth toward your side) sets how close. After a shot
 the game leaves its camera on the impact; the table looks there for 0.8 s and
-then goes back, unless you moved the map in the meantime. During the alien turn you can't move the map; you can turn
-and zoom it while the fog is lifted.
+then goes back, unless you moved the map in the meantime. During the alien turn you can't slide the map; you can turn
+and zoom it.
 
 Grabbing is deliberate: on the Index the grip has to be **squeezed** (force
 sensor, not just touched) for about a tenth of a second; on other controllers

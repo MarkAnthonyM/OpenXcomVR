@@ -920,6 +920,7 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	const RoomLayout &L = S->layout;
 	sh.set("uAmbient", 1.f - 0.7f * S->night);
 	sh.set("uNight", S->night);
+	sh.set("uGlowCount", 0);
 	sh.set("uAlert", S->alertLevel);
 	sh.set("uRoomMin", glm::vec3(L.roomX0, 0.f, L.roomZ0));
 	sh.set("uRoomMax", glm::vec3(L.roomX1, L.roomH, L.roomZ1));

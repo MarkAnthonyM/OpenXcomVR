@@ -270,6 +270,14 @@ struct Board::Impl
 	glm::vec3 beamA{0.f}, beamB{0.f}, beamColor{1.f};
 	struct Flash { glm::vec3 p; glm::vec3 col; };
 	std::vector<Flash> flashes;        // world-space lights for the room this frame
+	// light that glowing shots and explosions throw onto the map (board voxels, radius in voxels).
+	// Table only: it brightens terrain and figures from their unlit colour, so it shows at night;
+	// the game's own lighting (and the flat screen) is untouched.
+	struct Glow { glm::vec3 vox; glm::vec3 col; float radius; };
+	std::vector<Glow> glows;
+	std::vector<uint8_t> smokeSnap, fireSnap; // tile smoke / fire as last shown (frozen while the movement is hidden)
+	bool projGlow = false;             // the current shot gives off light (laser, plasma, rocket, incendiary)
+	float projGlowR = 32.f;
 	std::map<int, glm::vec3> spriteColors;
 	glm::vec3 bulletColor(int sprite);
 	void updateEffects(float dt);
@@ -992,10 +1000,9 @@ void Board::Impl::updateBattle(float dt)
 		}
 		walkedLast = walkingNow;
 		walkedUnit = sel;
-		// the hidden movement curtain
-		float ct = hidden ? 1.f : 0.f;
-		curtain = hidden ? std::min(1.f, curtain + dt / 0.5f) : std::max(0.f, curtain - dt / 0.3f);
-		(void)ct;
+		// no curtain any more (0.9.1): while the movement is hidden the table simply shows nothing new
+		// (see the freezes below and in updateEffects), and its view ignores the game's camera
+		curtain = 0.f;
 	}
 	else
 	{
@@ -1008,8 +1015,10 @@ void Board::Impl::updateBattle(float dt)
 		focus += (focusTarget - focus) * a;
 	}
 
-	// rebuild changed chunks; after the first build only a few per frame, to avoid hitches
-	int budget = 6;
+	// rebuild changed chunks; after the first build only a few per frame, to avoid hitches.
+	// While the movement is hidden nothing changes on the table (doors, broken walls, smoke): the
+	// flat game doesn't show those either until the aliens come into view or the turn ends.
+	int budget = hidden ? 0 : 6;
 	for (int z = 0; z < mz; ++z)
 		for (int cy = 0; cy < cyN; ++cy)
 			for (int cx = 0; cx < cxN; ++cx)
@@ -1018,11 +1027,12 @@ void Board::Impl::updateBattle(float dt)
 				uint64_t h = chunkHash(cx, cy, z);
 				if (h == ch.hash) continue;
 				if (ch.mesh && budget-- <= 0) continue;
+				if (hidden && ch.mesh) continue;
 				buildChunk(cx, cy, z, ch);
 				ch.hash = h;
 			}
 	// fog volume, a few columns per frame after the first build
-	int fogBudget = 4;
+	int fogBudget = hidden ? 0 : 4;
 	for (int cy = 0; cy < cyN; ++cy)
 		for (int cx = 0; cx < cxN; ++cx)
 		{
@@ -1030,6 +1040,7 @@ void Board::Impl::updateBattle(float dt)
 			uint64_t h = fogHash(cx, cy);
 			if (h == fc.hash) continue;
 			if (fc.mesh && fogBudget-- <= 0) continue;
+			if (hidden && fc.mesh) continue;
 			buildFog(cx, cy, fc);
 			fc.hash = h;
 		}
@@ -1052,6 +1063,20 @@ void Board::Impl::updateBattle(float dt)
 		it = alive ? std::next(it) : cards.erase(it);
 	}
 	if (fingerFrames > 0) --fingerFrames;
+	if (!hidden || smokeSnap.size() != (size_t)mx * my * mz)
+	{
+		smokeSnap.assign((size_t)mx * my * mz, 0);
+		fireSnap.assign((size_t)mx * my * mz, 0);
+		for (int z = 0; z < mz; ++z)
+			for (int y = 0; y < my; ++y)
+				for (int x = 0; x < mx; ++x)
+					if (Tile *tl = battle->getTile(Position(x, y, z)))
+					{
+						size_t i = ((size_t)z * my + y) * mx + x;
+						smokeSnap[i] = (uint8_t)std::min(255, std::max(0, tl->getSmoke()));
+						fireSnap[i] = (uint8_t)std::min(255, std::max(0, tl->getFire()));
+					}
+	}
 	updateEffects(dt);
 	++unitFrame;
 	for (BattleUnit *u : *battle->getUnits())
@@ -1275,6 +1300,23 @@ void Board::Impl::drawBattle(const Shader &sh)
 		return;
 	}
 
+	// glowing shots and blasts light the terrain and figures (not in the shadow pass)
+	{
+		int n = 0;
+		if (!shadowPass)
+		{
+			float k = tileSize / TILE_W;
+			for (const Glow &g : glows)
+			{
+				if (n >= 8) break;
+				glm::vec3 w = glm::vec3(M * glm::vec4(g.vox, 1.f));
+				sh.set(("uGlowPos[" + std::to_string(n) + "]").c_str(), glm::vec4(w, g.radius * k));
+				sh.set(("uGlowCol[" + std::to_string(n) + "]").c_str(), g.col);
+				++n;
+			}
+		}
+		sh.set("uGlowCount", n);
+	}
 	// terrain
 	sh.set("uMode", 3);
 	sh.set("uTint", glm::vec4(1.f));
@@ -1289,6 +1331,7 @@ void Board::Impl::drawBattle(const Shader &sh)
 			}
 
 	drawUnits(sh);
+	sh.set("uGlowCount", 0);
 
 	if (shadowPass) { sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f)); return; } // only solid things cast shadows
 
@@ -1433,13 +1476,16 @@ void Board::Impl::spawnBurst(const glm::vec3 &at, bool big, bool hit)
 void Board::Impl::updateEffects(float dt)
 {
 	flashes.clear();
+	glows.clear();
 	glm::mat4 M = boardMatrix();
 	auto toWorld = [&](const glm::vec3 &v) { return glm::vec3(M * glm::vec4(v, 1.f)); };
 	static uint32_t st = 777u;
 	Map *map = (bs && bs->getMap()) ? bs->getMap() : nullptr;
 
 	// projectile: pick a style from what was fired; trails leave particles behind
-	const Projectile *pr = map ? map->getProjectile() : nullptr;
+	// while the movement is hidden, shots and blasts out of sight aren't shown (the flat game shows
+	// "Hidden Movement" then; a shot your soldiers can see makes it show the map, and so the table)
+	const Projectile *pr = (map && !hidden) ? map->getProjectile() : nullptr;
 	projectileSeen = pr != nullptr;
 	if (pr != lastProjectile)
 	{
@@ -1457,6 +1503,9 @@ void Board::Impl::updateEffects(float dt)
 			projStyle = a.type == BA_THROW ? 4 : rocket ? 3 : dt2 == DT_LASER ? 1 : (dt2 == DT_PLASMA || dt2 == DT_ACID || dt2 == DT_STUN) ? 2 : 0;
 			projPower = strength(dt2, ar ? ar->getPower() : 0);
 			float k = projPower;
+			// which shots light their surroundings, and how far (stronger weapons of a class reach further)
+			projGlow = projStyle == 1 || projStyle == 2 || projStyle == 3 || dt2 == DT_IN;
+			projGlowR = 16.f * (projStyle == 1 ? 2.f + 1.5f * k : projStyle == 2 ? 2.5f + 2.f * k : projStyle == 3 ? 2.5f + k : 2.f);
 			// colours are emissive: kept saturated (no channel far above 1) so they stay red / green and don't burn to white
 			if (projStyle == 1) projColor = glm::mix(glm::vec3(1.f, 0.10f, 0.06f), glm::vec3(1.f, 0.03f, 0.10f), k);       // laser: red, deeper when heavy
 			else if (projStyle == 2) projColor = dt2 == DT_STUN ? glm::vec3(0.45f, 0.5f, 1.f) : glm::mix(glm::vec3(0.25f, 1.f, 0.25f), glm::vec3(0.1f, 1.f, 0.35f), k); // plasma: green
@@ -1561,11 +1610,12 @@ void Board::Impl::updateEffects(float dt)
 		if (projStyle == 1) { beamA = projOrigin; beamB = now; beamColor = projColor; }
 		lastProjPos = now;
 		if (projStyle != 4) flashes.push_back({toWorld(now), projColor * (projStyle == 1 ? 0.6f : 0.35f) * (0.6f + 0.8f * projPower)});
+		if (projGlow) glows.push_back({now, projColor * (0.9f + 0.6f * projPower) * (projStyle == 3 ? 1.4f : 1.f), projGlowR});
 	}
 	if (beamFade > 0.f) beamFade -= dt;
 
 	// explosions: a burst the first time each one shows up
-	if (map)
+	if (map && !hidden)
 	{
 		std::vector<const void*> now;
 		for (Explosion *e : *map->getExplosions())
@@ -1578,6 +1628,9 @@ void Board::Impl::updateEffects(float dt)
 			float f = (float)std::max(0, e->getCurrentFrame());
 			float k = glm::clamp(1.f - f / (e->isBig() ? 8.f : 5.f), 0.f, 1.f);
 			if (!e->isHit()) flashes.push_back({toWorld(at + glm::vec3(0, 6, 0)), glm::vec3(1.f, 0.55f, 0.18f) * (e->isBig() ? 2.5f : 1.2f) * k});
+			// the blast lights up the ground around it; a glowing shot's impact flares in its colour
+			if (!e->isHit()) glows.push_back({at + glm::vec3(0, 8, 0), glm::vec3(1.f, 0.55f, 0.2f) * (e->isBig() ? 2.2f : 1.5f) * k, 16.f * (e->isBig() ? 5.f : 3.f)});
+			else if (projGlow) glows.push_back({at + glm::vec3(0, 4, 0), projColor * 1.4f * k, projGlowR * 0.8f});
 		}
 		seenExplosions.swap(now);
 	}
@@ -1629,7 +1682,8 @@ void Board::Impl::drawEffects(const Shader &sh, const glm::mat4 &M)
 				{
 					Tile *tl = battle->getTile(Position(x, y, z));
 					if (!tl || (!tl->isDiscovered(O_FLOOR) && !battle->getDebugMode())) continue;
-					int smoke = tl->getSmoke(), fire = tl->getFire();
+					size_t si = ((size_t)z * my + y) * mx + x;
+					int smoke = si < smokeSnap.size() ? smokeSnap[si] : tl->getSmoke(), fire = si < fireSnap.size() ? fireSnap[si] : tl->getFire();
 					if (!smoke && !fire) continue;
 					uint32_t h = (uint32_t)(x * 73856093) ^ (uint32_t)(y * 19349663) ^ (uint32_t)(z * 83492791);
 					glm::vec3 base(x * TILE_W + 8.f, z * TILE_H - tl->getTerrainLevel(), y * TILE_W + 8.f);
@@ -2654,7 +2708,6 @@ void Board::pan(const glm::vec2 &d)
 void Board::rotate(float r)
 {
 	Impl &p = *_p;
-	if (p.hasBattle && p.hidden) return;
 	if (p.hasBattle) p.yaw += r;
 	else if (p.hasGlobe && p.globe)
 	{
@@ -2667,7 +2720,6 @@ void Board::rotate(float r)
 void Board::zoom(float f)
 {
 	Impl &p = *_p;
-	if (p.hasBattle && p.hidden) return;
 	if (p.hasBattle) p.tileSize = glm::clamp(p.tileSize * f, 0.02f, 0.14f);
 	else if (p.hasGlobe) p.globeRadius = glm::clamp(p.globeRadius * f, 0.18f, 0.45f);
 }

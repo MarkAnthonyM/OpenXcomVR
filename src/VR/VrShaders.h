@@ -63,7 +63,10 @@ uniform vec3 uLightPos[12];  // light 0 is the overhead light over the table and
 uniform vec3 uLightCol[12];
 uniform float uAmbient;      // room ambient scale (night missions are darker)
 uniform float uAlert;        // 0..1: aliens in sight / alien turn, light strips go red
-uniform float uNight;        // 0..1: how dark the mission is; the room dims and its strips turn dim blue
+uniform float uNight;
+uniform int uGlowCount;      // board only: light from glowing shots and blasts (world pos + radius, colour)
+uniform vec4 uGlowPos[8];
+uniform vec3 uGlowCol[8];        // 0..1: how dark the mission is; the room dims and its strips turn dim blue
 uniform int uShadowOn;
 uniform int uShadowPass;     // rendering the shadow map: depth only
 uniform mat4 uShadowVP;
@@ -246,7 +249,18 @@ void main()
 		if (uMode == 4) { fragColor = vec4(base, t.a * uTint.a); return; }
 		// the highlight follows the surface's own brightness, so a tile darkened by the night stays dark
 		float k = dot(vColor.rgb * uTint.rgb, vec3(1.0 / 3.0));
-		fragColor = vec4(lighting(base, n, 0.1 * k, 0.8) + base * 0.22, 1.0);
+		// glowing shots and blasts light the surface from its unlit colour, so they show at night too
+		vec3 glow = vec3(0.0);
+		for (int i = 0; i < 8; ++i)
+		{
+			if (i >= uGlowCount) break;
+			vec3 L = uGlowPos[i].xyz - vWorld;
+			float d = length(L), r = uGlowPos[i].w;
+			if (d >= r) continue;
+			float f = 1.0 - d / r;
+			glow += uGlowCol[i] * f * f * (0.35 + 0.65 * max(dot(n, L / max(d, 1e-4)), 0.0));
+		}
+		fragColor = vec4(lighting(base, n, 0.1 * k, 0.8) + base * 0.22 + t.rgb * glow, 1.0);
 		return;
 	}
 
