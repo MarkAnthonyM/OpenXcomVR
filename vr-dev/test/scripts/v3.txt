@@ -1,0 +1,28 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -42
+refilltu
+selectunit 4
+wait 1500
+boardinfo
+fireat 8 1 0 aimed
+waitframes 2
+boardinfo
+waitframes 2
+boardinfo
+shot shots/v3_a.png
+waitframes 3
+boardinfo
+waitframes 3
+boardinfo
+shot shots/v3_b.png
+waitframes 4
+boardinfo
+waitframes 4
+boardinfo
+waitidle 20000
+boardinfo
+shot shots/v3_impact.png
+wait 5000
+boardinfo
+shot shots/v3_c.png
+quit

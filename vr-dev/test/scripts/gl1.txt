@@ -1,0 +1,19 @@
+wait 9000
+refilltu
+selectunit 7
+wait 1500
+cam 0.00 1.25 -0.25 0 -45
+waitframes 2
+shot shots/gl_before.png
+fireat 5 12 0 aimed
+waitframes 2
+shot shots/gl_a.png
+waitframes 1
+shot shots/gl_b.png
+waitframes 1
+shot shots/gl_c.png
+waitframes 2
+shot shots/gl_d.png
+waitidle 20000
+boardinfo
+quit

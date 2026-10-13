@@ -1,0 +1,17 @@
+wait 8000
+click 208 100
+wait 6000
+click 40 184
+wait 9000
+click 160 172
+wait 6000
+boardinfo
+gameshot shots/nb3_inv.png
+click 255 8
+wait 5000
+boardinfo
+cam 0.0 1.30 0.10 0 -42
+waitframes 3
+shot shots/nb3_start.png
+gameshot shots/nb3_game.png
+quit

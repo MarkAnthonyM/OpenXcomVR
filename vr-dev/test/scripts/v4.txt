@@ -1,0 +1,15 @@
+wait 9000
+boardinfo
+padswipe 0.4
+wait 800
+boardinfo
+padswipe 0.8
+wait 800
+boardinfo
+padswipe -0.2
+wait 800
+boardinfo
+padswipe -1.1
+wait 800
+boardinfo
+quit

@@ -1,0 +1,28 @@
+wait 9000
+refilltu
+selectunit 5
+wait 400
+cam 0.00 1.25 -0.25 0 -45
+waitframes 2
+boardzoom 1.9
+waitframes 2
+camunit -0.05 0.16 0.22
+waitframes 2
+fireat 6 12 0 aimed
+waitframes 1
+shot shots/pj_hl_a.png
+waitframes 1
+shot shots/pj_hl_b.png
+waitframes 1
+shot shots/pj_hl_c.png
+waitframes 2
+shot shots/pj_hl_d.png
+waitframes 2
+shot shots/pj_hl_e.png
+waitframes 2
+shot shots/pj_hl_f.png
+shot shots/pj_hl_g.png
+waitframes 2
+shot shots/pj_hl_h.png
+waitidle 20000
+quit

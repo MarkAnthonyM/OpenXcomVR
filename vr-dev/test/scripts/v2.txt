@@ -1,0 +1,21 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -42
+waitframes 2
+selectunit 4
+wait 1500
+boardinfo
+boardpan 0.3 -0.25
+wait 800
+boardinfo
+shot shots/v2_panned.png
+clicktile 3 -7 0
+wait 300
+clicktile 3 -7 0
+wait 1200
+boardinfo
+waitidle 30000
+boardinfo
+wait 1500
+boardinfo
+shot shots/v2_walked.png
+quit

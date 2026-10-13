@@ -1,0 +1,16 @@
+wait 9000
+items
+pinchitem 1
+pinchto STR_RIGHT_HAND 1.0 1.5
+wait 600
+status
+items
+unloadright
+wait 300
+items
+pinchitem 1
+pinchto STR_RIGHT_HAND 1.0 1.5
+wait 600
+status
+items
+quit

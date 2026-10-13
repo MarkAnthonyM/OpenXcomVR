@@ -1,0 +1,8 @@
+wait 9000
+minimaptap 0.3 -0.3
+wait 1500
+cam 0.0 1.6 1.8 0 -12
+waitframes 4
+shot shots/w4_after.png
+gameshot shots/w4_game.png
+quit

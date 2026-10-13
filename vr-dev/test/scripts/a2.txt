@@ -1,0 +1,12 @@
+wait 9000
+spotaliens 3
+wait 1200
+cam 0.62 1.25 0.05 0 -50
+waitframes 6
+shot shots/a1_alerts.png
+pokebutton alert0
+wait 800
+status
+gameshot shots/a1_game.png
+boardinfo
+quit

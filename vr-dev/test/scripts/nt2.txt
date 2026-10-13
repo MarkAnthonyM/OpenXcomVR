@@ -1,0 +1,7 @@
+wait 9000
+cam 0.0 1.6 1.8 0 -12
+waitframes 20
+shot shots/night_table.png
+gameshot shots/night_game.png
+boardinfo
+quit

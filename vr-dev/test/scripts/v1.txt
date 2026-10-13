@@ -1,0 +1,22 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -42
+waitframes 2
+boardinfo
+status
+shot shots/v1_start.png
+selectunit 4
+wait 1500
+boardinfo
+shot shots/v1_sel4.png
+selectunit 1
+wait 1500
+boardinfo
+clicktile 2 -6 0
+wait 600
+boardinfo
+waitidle 30000
+boardinfo
+wait 1500
+boardinfo
+shot shots/v1_walked.png
+quit

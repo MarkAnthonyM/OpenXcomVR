@@ -1,0 +1,22 @@
+wait 9000
+refilltu
+selectunit 2
+wait 1500
+cam 0.00 1.25 -0.25 0 -45
+waitframes 2
+shot shots/rk_before.png
+fireat 5 14 0 aimed
+waitframes 2
+shot shots/rk_a.png
+waitframes 1
+shot shots/rk_b.png
+waitframes 1
+shot shots/rk_c.png
+waitframes 2
+shot shots/rk_d.png
+waitframes 3
+shot shots/rk_e.png
+waitframes 3
+shot shots/rk_f.png
+waitidle 20000
+quit

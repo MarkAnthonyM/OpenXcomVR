@@ -1,6 +1,7 @@
 # Release files for the VR prototype
 
-What goes into a published prototype zip besides the build (see README-VR.md, "Building"):
+What goes into a published prototype zip besides the build. `vr-dev/package.sh` assembles it
+(see `vr-dev/HANDOFF.md`, "Versions and releases"):
 
 - `THIRD-PARTY-NOTICES.txt` and `licenses/`: the licences of everything built into `openxcom.exe`
   (versions as used for the Windows build). Update them when a library changes.

@@ -1,0 +1,23 @@
+wait 9000
+pinchitem 7
+pinchto STR_GROUND 0.5 0.5
+wait 500
+pinchitem 6
+pinchto STR_GROUND 0.5 0.5
+wait 500
+pinchitem 5
+pinchto STR_GROUND 0.5 0.5
+wait 500
+pinchitem 4
+pinchto STR_GROUND 0.5 0.5
+wait 500
+items
+status
+groundkey 1
+wait 300
+items
+status
+groundkey 1
+wait 300
+status
+quit

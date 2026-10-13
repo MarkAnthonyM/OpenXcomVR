@@ -1,0 +1,19 @@
+wait 9000
+cam 0.0 1.6 1.2 0 -25
+pokebutton endTurn
+wait 1500
+handoff
+click 160 100
+wait 300
+shot shots/h1_a.png
+wait 700
+shot shots/h1_b.png
+gameshot shots/h1_game.png
+wait 4000
+shot shots/h1_c.png
+gameshot shots/h1_game2.png
+wait 15000
+shot shots/h1_d.png
+gameshot shots/h1_game3.png
+boardinfo
+quit

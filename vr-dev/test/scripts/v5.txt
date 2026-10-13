@@ -1,0 +1,11 @@
+wait 9000
+boardpan 0.3 -0.3
+wait 800
+boardinfo
+pokebutton nextSoldier
+wait 2000
+handoff
+boardinfo
+wait 1500
+boardinfo
+quit

@@ -1,0 +1,8 @@
+wait 9000
+cam -0.85 1.22 -0.02 0 -60
+pinchitem 3
+pinchto STR_RIGHT_HAND 1.0 1.5
+wait 500
+shot shots/t6_swap.png
+gameshot shots/t6_g.png
+quit

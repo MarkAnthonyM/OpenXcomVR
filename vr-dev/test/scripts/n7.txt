@@ -1,0 +1,9 @@
+wait 9000
+cam -0.34 1.2 -0.05 0 -62
+waitframes 4
+shot shots/n7_tray.png
+pinchitem 0
+pinchto STR_BACK_PACK 1.0 1.5
+wait 500
+status
+quit

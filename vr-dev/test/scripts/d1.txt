@@ -1,0 +1,10 @@
+wait 9000
+camunit 0.28 0.25
+waitframes 3
+gameshot shots/d1_before.png
+dragturn 3 1
+wait 1500
+handoff
+gameshot shots/d1_after.png
+status
+quit

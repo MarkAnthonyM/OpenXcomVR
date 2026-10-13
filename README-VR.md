@@ -296,6 +296,10 @@ going during the intro and cutscenes), `Map::setSelectorTile` /
 
 ## Building
 
+The scripts in `vr-dev/` set up the toolchain and every library at the exact
+versions used for the releases, and build, test and package the prototype;
+`vr-dev/HANDOFF.md` explains them. What they do underneath:
+
 Windows: builds with MinGW (llvm-mingw was used) against static SDL 1.2
 libraries (SDL, SDL_image, SDL_mixer, SDL_gfx), the static OpenXR loader and
 glm; pass `-DDEPS_DIR=<nonexistent>` so CMake uses pkg-config.

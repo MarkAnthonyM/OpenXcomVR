@@ -1256,7 +1256,7 @@ static void runScript()
 					add("waitframes", {"16"});
 					add("handmove", {f(g1.x), f(g1.y - 0.01f), f(g1.z), "20"});
 					add("waitframes", {"22"});
-					add("shot", {"/root/oxrun/shots/t_drag.png"});
+					add("shot", {"shots/t_drag.png"});
 					add("handmove", {f(g1.x), f(g1.y + 0.06f), f(g1.z), "8"});
 					add("waitframes", {"10"});
 					add("status", {});
