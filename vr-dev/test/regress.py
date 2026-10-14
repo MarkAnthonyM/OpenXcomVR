@@ -55,6 +55,10 @@ def check_float(log):
     if "float: touch 128,158" not in log: return "the finger touch on Cancel didn't click"
     return (bool(st) and "floats=0" in st[-1]) or "the window didn't close after Cancel"
 
+def check_infobox(log):
+    st = re.findall(r"\[VR\] status: .*", log)
+    return (bool(st) and "InfoboxStateE" in st[-1]) or "the message was gone 3 s after it appeared"
+
 def check_menu(log):
     if "float: open N8OpenXcom13MainMenuStateE" in log: return "the main menu (a full screen) floated"
     return "[VR] status:" in log or "the script didn't run"
@@ -83,7 +87,7 @@ TESTS = [  # script, save, check, what it covers
     ("df", "geo_test.asav", has("float: open N8OpenXcom13DogfightStateE"), "a dogfight floats over the table (shots/df_dogfight.png)"),
     ("sd", "geo_test.asav", has("SelectDestinationStateE 0,0 256x28", "globe tap", "float: open N8OpenXcom23ConfirmDestinationStateE"),
      "destination bar beyond the globe; a fingertip on the dome picks the spot"),
-    ("ib", "outside.asav", has("[open N8OpenXcom12InfoboxStateE"), "a self-closing battle message stays readable (shots/ib_infobox.png)"),
+    ("ib", "outside.asav", check_infobox, "a self-closing battle message stays readable (shots/ib_infobox.png)"),
     ("db", "geo_test.asav", has("screens=10111"), "geoscape dashboards on the back wall (shots/db_wall.png)"),
     ("bt", "geo_test.asav", has("tap STR_HANGAR", "float: open N8OpenXcom14CraftInfoStateE"), "base on the table; tapping a hangar opens its craft (shots/bt_base.png)"),
     ("bb", "geo_test.asav", has("build at 1,1", "place at 1,1", "sites=1"), "tap an empty spot, pick a laboratory, tap to place it (shots/bb_scaffold.png)"),

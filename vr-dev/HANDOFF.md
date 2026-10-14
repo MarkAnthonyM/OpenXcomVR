@@ -215,6 +215,20 @@ Geoscape, pop-ups, keyboard (0.10.0)
   SPACE; 3.6 cm keys. Shift is one-shot and starts on for an empty field. A
   pop-up lifts a little higher while the keyboard is up.
 
+Pop-up rules and craft models (0.12.2)
+- Every full screen opened over the geoscape floats, except the base screen
+  (the base on the table), anything while a battle exists (the base defense
+  preview included) and cutscenes (Video, Slideshow, Cutscene states).
+- Pop-up pictures: game pixels repeated 4 x 4, mipmapped, anisotropic, mode 1
+  samples with textureGrad; `uScan` is the scanline period in texels.
+- Craft models leave out the shadow drawn into the base sprites (dark greys
+  flood-filled from the sprite's lower/right edges); the model casts its own.
+- Base labels face the head (Board::viewer), never each eye: per-eye
+  billboards don't fuse.
+- Known preview flake: once in a while the preview crashes at startup in
+  `CrossPlatform::setWindowIcon` (SDL/X11 under Xvfb), before any VR code;
+  rerun the test.
+
 Wall dashboards (0.11.0)
 - The voxel-assembly pop-up effect ("A") was tried in 0.11 and removed in
   0.12.1 at the owner's choice; so were the Scale2x upscale of pop-ups and

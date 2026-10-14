@@ -2,6 +2,7 @@
 #include "../Engine/Logger.h"
 #include <SDL.h>
 #include <cmath>
+#include <algorithm>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -313,11 +314,20 @@ void Texture::create(int w, int h, bool mipmaps, bool linear)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	if (mipmaps)
+	{
+		// anisotropic filtering where the driver has it (keeps slanted pictures sharp)
+		GLfloat maxAniso = 0.f;
+		glGetFloatv(0x84FF /* GL_MAX_TEXTURE_MAX_ANISOTROPY */, &maxAniso);
+		if (glGetError() == GL_NO_ERROR && maxAniso > 1.f)
+			glTexParameterf(GL_TEXTURE_2D, 0x84FE /* GL_TEXTURE_MAX_ANISOTROPY */, std::min(maxAniso, 8.f));
+		while (glGetError() != GL_NO_ERROR) {}
+	}
 }
 
 void Texture::update(const uint32_t *rgba, int w, int h)
 {
-	if (!_tex || w != _w || h != _h) create(w, h, _mips);
+	if (!_tex || w != _w || h != _h) create(w, h, _mips, true);
 	glBindTexture(GL_TEXTURE_2D, _tex);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);

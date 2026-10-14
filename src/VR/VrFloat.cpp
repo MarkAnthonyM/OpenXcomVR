@@ -22,6 +22,10 @@
 #include "../Geoscape/DogfightState.h"
 #include "../Menu/LoadGameState.h"
 #include "../Menu/SaveGameState.h"
+#include "../Menu/VideoState.h"
+#include "../Menu/SlideshowState.h"
+#include "../Menu/CutsceneState.h"
+#include "../Savegame/SavedGame.h"
 #include "../Basescape/BasescapeState.h"
 #include "../Basescape/PlaceFacilityState.h"
 #include <glm/gtc/matrix_transform.hpp>
@@ -42,6 +46,7 @@ const float T_UNFOLD = 0.42f; // then unfolds into the window
 const float T_FOLD = 0.24f;   // closing: back into the line
 const float T_SHRINK = 0.10f; // and the line shrinks away
 const float LINE_H = 0.0025f;
+const int PRESCALE = 4;       // texture texels per game pixel
 
 float smooth01(float e0, float e1, float x)
 {
@@ -62,7 +67,7 @@ struct Win
 	bool alive = false;         // src is still up this frame
 	glm::ivec4 rect{0};         // area on the game screen (x, y, w, h)
 	Texture tex;
-	std::vector<uint32_t> px;
+	std::vector<uint32_t> px, big; // the picture, and 4x with every game pixel repeated
 	glm::vec3 O{0.f}, right{1, 0, 0}, up{0, 1, 0}, n{0, 0, 1}; // bottom centre and axes
 	float W = 0.f, H = 0.f;
 	float lean = -1.f;          // radians back from vertical, fixed when it opens (faces the eyes)
@@ -168,15 +173,19 @@ static std::vector<Cand> candidates(Game *game)
 	}
 	if (dynamic_cast<ActionMenuState*>(top)) return out;                               // keys on the console
 	if (dynamic_cast<LoadGameState*>(top) || dynamic_cast<SaveGameState*>(top)) return out; // "loading..." flashes
-	// every screen opened from the base screen floats too (research, manufacture, soldiers, craft...)
-	bool fromBase = false;
-	if (!dynamic_cast<BasescapeState*>(top))
-		for (State *s : game->getStates()) if (dynamic_cast<BasescapeState*>(s)) fromBase = true;
+	// every full screen opened over the geoscape floats too (research, manufacture, soldiers, craft,
+	// from the base screen or from a "research finished" message...), but not the base screen itself
+	// (that is the base on the table), not a battle (not even the base defense preview), and not cutscenes
+	bool fromGeo = false;
+	bool battle = game->getSavedGame() && game->getSavedGame()->getSavedBattle();
+	if (!battle && !dynamic_cast<BasescapeState*>(top) && !dynamic_cast<GeoscapeState*>(top)
+		&& !dynamic_cast<VideoState*>(top) && !dynamic_cast<SlideshowState*>(top) && !dynamic_cast<CutsceneState*>(top))
+		for (State *s : game->getStates()) if (dynamic_cast<GeoscapeState*>(s)) fromGeo = true;
 	// (a full screen whose window is growing open counts as a pop-up for a moment: it isn't one)
 	bool screen = top->isScreen();
 	for (Surface *sf : top->vrSurfaces())
 		if (Window *w = dynamic_cast<Window*>(sf)) if (w->vrScreenState()) screen = true;
-	if (!screen || messageScreen(top) || fromBase) out.push_back({top, Win::POPUP});
+	if (!screen || messageScreen(top) || fromGeo) out.push_back({top, Win::POPUP});
 	return out;
 }
 
@@ -262,11 +271,29 @@ void FloatWindow::Impl::place(Win &w, const FloatContext &ctx, int index, int co
 void FloatWindow::Impl::copyPicture(Win &w, const FloatContext &ctx)
 {
 	const glm::ivec4 &R = w.rect;
+	// only when the picture changed (most pop-ups sit still): no upload, no mipmaps to rebuild
+	bool same = w.px.size() == (size_t)R.z * R.w && w.tex.valid() && w.tex.width() == R.z * PRESCALE && w.tex.height() == R.w * PRESCALE;
 	w.px.resize((size_t)R.z * R.w);
 	for (int y = 0; y < R.w; ++y)
-		std::copy_n(&(*ctx.pixels)[(size_t)(R.y + y) * ctx.surfW + R.x], R.z, &w.px[(size_t)y * R.z]);
-	if (!w.tex.valid() || w.tex.width() != R.z || w.tex.height() != R.w) w.tex.create(R.z, R.w, false, true);
-	w.tex.update(w.px.data(), R.z, R.w);
+	{
+		const uint32_t *src = &(*ctx.pixels)[(size_t)(R.y + y) * ctx.surfW + R.x];
+		uint32_t *dst = &w.px[(size_t)y * R.z];
+		if (same && !std::equal(src, src + R.z, dst)) same = false;
+		std::copy_n(src, R.z, dst);
+	}
+	if (same) return;
+	// the game's own pixels, each repeated 4 x 4 (nothing else changes), so the picture can be
+	// mipmapped and filtered anisotropically: steadier and sharper when small or seen at an angle
+	const int K = PRESCALE, W = R.z * K, H = R.w * K;
+	w.big.resize((size_t)W * H);
+	for (int y = 0; y < R.w; ++y)
+	{
+		uint32_t *row = &w.big[(size_t)y * K * W];
+		for (int x = 0; x < R.z; ++x) std::fill_n(row + x * K, K, w.px[(size_t)y * R.z + x]);
+		for (int k = 1; k < K; ++k) std::copy_n(row, W, row + (size_t)k * W);
+	}
+	if (!w.tex.valid() || w.tex.width() != W || w.tex.height() != H) w.tex.create(W, H, true, true);
+	w.tex.update(w.big.data(), W, H);
 }
 
 // ------------------------------------------------------------------ per frame
@@ -469,11 +496,13 @@ void FloatWindow::draw(const Shader &sh) const
 			sh.set("uMode", 1);
 			sh.set("uTint", glm::vec4(flick, flick, flick, 1.f));
 			sh.set("uTexSize", glm::vec2((float)w.tex.width(), (float)w.tex.height()));
+			sh.set("uScan", (float)PRESCALE); // the screen's scanlines, one per game pixel row
 			sh.set("uUVRect", glm::vec4(0.5f - 0.5f * width, 0.5f - 0.5f * fold, width, fold));
 			sh.set("uModel", w.frame(mid, glm::vec2(bandW * 0.5f, w.H * fold * 0.5f), 0.f));
 			w.tex.bind(0);
 			p.quad.draw();
 			sh.set("uUVRect", glm::vec4(0.f, 0.f, 1.f, 1.f));
+			sh.set("uScan", 1.f);
 		}
 		// scanlines rolling down the picture while it materializes, then one slow sweep now and then
 		sh.set("uMode", 2);

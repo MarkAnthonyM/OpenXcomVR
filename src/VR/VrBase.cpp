@@ -249,9 +249,43 @@ const Mesh *BaseDiorama::Impl::craftMesh(const Surface *frame)
 	SDL_Color *pal = top ? top->getPalette() : nullptr;
 	if (!pal) return nullptr;
 	int W = frame->getWidth(), H = frame->getHeight();
+	Surface *fs = const_cast<Surface*>(frame);
+	// the sprite has the craft's shadow drawn in, dark grey to the lower right; the model casts its own
+	// shadow, so leave it out: dark greys reached from the sprite's lower or right edge
+	std::vector<char> shadow(W * H, 0);
+	{
+		auto darkGrey = [&](int x, int y)
+		{
+			Uint8 c = fs->getPixel(x, y);
+			if (!c) return false;
+			const SDL_Color &k = pal[c];
+			int mx = std::max({k.r, k.g, k.b}), mn = std::min({k.r, k.g, k.b});
+			return mx - mn < 14 && mx <= 128;
+		};
+		auto clear = [&](int x, int y) { return x < 0 || y < 0 || x >= W || y >= H || !fs->getPixel(x, y); };
+		std::vector<int> stack;
+		for (int y = 0; y < H; ++y)
+			for (int x = 0; x < W; ++x)
+				if (darkGrey(x, y) && (clear(x + 1, y) || clear(x, y + 1))) stack.push_back(y * W + x);
+		while (!stack.empty())
+		{
+			int i = stack.back();
+			stack.pop_back();
+			if (shadow[i]) continue;
+			shadow[i] = 1;
+			int x = i % W, y = i / W;
+			const int dx[4] = {1, -1, 0, 0}, dy[4] = {0, 0, 1, -1};
+			for (int k = 0; k < 4; ++k)
+			{
+				int nx = x + dx[k], ny = y + dy[k];
+				if (nx >= 0 && ny >= 0 && nx < W && ny < H && !shadow[ny * W + nx] && darkGrey(nx, ny)) stack.push_back(ny * W + nx);
+			}
+		}
+	}
+	auto solid = [&](int x, int y) { return fs->getPixel(x, y) && !shadow[y * W + x]; };
 	std::vector<int> d(W * H, 0);
 	for (int y = 0; y < H; ++y)
-		for (int x = 0; x < W; ++x) d[y * W + x] = const_cast<Surface*>(frame)->getPixel(x, y) ? 99 : 0;
+		for (int x = 0; x < W; ++x) d[y * W + x] = solid(x, y) ? 99 : 0;
 	for (int pass = 0; pass < 2; ++pass)
 		for (int y = 0; y < H; ++y)
 			for (int x = 0; x < W; ++x)
@@ -279,8 +313,8 @@ const Mesh *BaseDiorama::Impl::craftMesh(const Surface *frame)
 	for (int y = 0; y < H; ++y)
 		for (int x = 0; x < W; ++x)
 		{
-			Uint8 c = const_cast<Surface*>(frame)->getPixel(x, y);
-			if (!c) continue;
+			Uint8 c = fs->getPixel(x, y);
+			if (!c || shadow[y * W + x]) continue;
 			SDL_Color k = pal[c];
 			glm::vec4 col(lin(k.r), lin(k.g), lin(k.b), 1.f);
 			glm::vec4 side = col * glm::vec4(0.65f, 0.65f, 0.65f, 1.f);

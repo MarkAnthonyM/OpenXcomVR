@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.12.1)
+# OpenXcom Extended — VR Tabletop (prototype 0.12.2)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -46,7 +46,10 @@ stand) in an X-COM command center at a holographic war table:
   flicker, and folds back into the line when the pop-up closes. Every running dogfight floats side by side.
   Battle messages that close by themselves (a soldier killed, panicked...)
   stay readable for at least 2.5 s. Touch a button with your fingertip
-  (hovering just in front moves the game's cursor there); when your hand
+  (hovering just in front moves the game's cursor there). Full screens opened
+  over the geoscape float too (research, manufacture, soldiers, a craft, the
+  research screen opened from a "research completed" message...), but not
+  the base screen itself, battles or cutscenes. When your hand
   reaches for a window its laser switches off so the two don't fight over the
   cursor. From further away the laser works on it like on the wall screen.
   While you pick a base site or a craft's destination, the game's bar (title
@@ -271,7 +274,10 @@ headset on.
 - The geoscape's own full screens (Graphs, UFOpaedia...) are still on the
   wall screen.
 - Floating pop-ups are the game's 320 × 200 pictures, made big and turned
-  toward you; small text can still look soft in the headset.
+  toward you. Each game pixel is repeated 4 × 4 into a mipmapped,
+  anisotropically filtered texture (the picture itself is unchanged), which
+  keeps it steady when it is small or seen at an angle; small text can still
+  look soft in the headset.
 - Items lying on the floor are not shown on the table map yet (they are in the
   tray's ground area and on the screen).
 - The fog hides unexplored ground up to the level you are viewing; walls seen

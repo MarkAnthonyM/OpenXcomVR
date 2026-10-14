@@ -2549,7 +2549,7 @@ float Board::nightLevel() const
 
 void Board::draw(const Shader &sh, const glm::mat4 &, const glm::vec3 &eye, double)
 {
-	if (_p->hasBase) _p->baseView.draw(sh, eye);
+	if (_p->hasBase) _p->baseView.draw(sh, _p->viewer); // labels face the head, not each eye (they must match in both)
 	else if (_p->hasBattle && _p->atlas.tex.valid()) _p->drawBattle(sh);
 	else if (_p->hasGlobe) _p->drawGlobe(sh);
 }

@@ -58,7 +58,7 @@ uniform vec2 uTexSize;
 uniform vec3 uEye;
 uniform float uTime;
 uniform vec4 uTint;
-uniform float uScan;         // game panel scanlines (1 on, 0 off)
+uniform float uScan;         // game panel scanlines: texels per game pixel row (1 normally, 4 for a 4x prescaled picture), 0 off
 uniform int uLightCount;
 uniform vec3 uLightPos[12];  // light 0 is the overhead light over the table and casts the shadows
 uniform vec3 uLightCol[12];
@@ -219,9 +219,11 @@ void main()
 		vec2 f = fract(texel);
 		vec2 region = clamp((f - 0.5) / scale + 0.5, 0.0, 1.0) ;
 		vec2 uv = (floor(texel) + region) / uTexSize;
-		vec3 c = texture(uTex, uv).rgb;
-		// faint scanlines, only visible up close
-		c *= 1.0 - uScan * (0.06 - 0.06 * sin(texel.y * 6.2831853));
+		// mip level from the true footprint (the sharpened uv jumps at texel edges): a mipmapped,
+		// prescaled picture filters cleanly when it is small or seen at an angle
+		vec3 c = textureGrad(uTex, uv, dFdx(vUV), dFdy(vUV)).rgb;
+		// faint scanlines, one per game pixel row, only visible up close
+		if (uScan > 0.0) c *= 0.94 + 0.06 * sin(texel.y / uScan * 6.2831853);
 		fragColor = vec4(c * uTint.rgb * 1.15, 1.0);
 		return;
 	}
