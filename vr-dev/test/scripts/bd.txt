@@ -1,0 +1,11 @@
+wait 9000
+pokebutton geoBases
+wait 3000
+pokebutton basePurchase
+waitfloat 8000 open
+wait 1000
+dragfloat 100 140 -60
+wait 1500
+gameshot shots/bd_scrolled.png
+status
+quit

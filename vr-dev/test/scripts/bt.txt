@@ -1,0 +1,11 @@
+wait 9000
+pokebutton geoBases
+wait 3000
+cam 0 1.40 0.05 0 -45
+waitframes 4
+shot shots/bt_base.png
+pokebase 0 4
+waitfloat 8000 open
+wait 500
+status
+quit

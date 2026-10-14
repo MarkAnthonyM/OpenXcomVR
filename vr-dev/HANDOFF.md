@@ -103,6 +103,8 @@ Script commands (one per line; numbers are optional with defaults):
 | `groundkey dir`, `padswipe dy`, `wheel dir` | tray ground pages, left-trackpad level swipe, level change |
 | `pokekey label`, `kbtype words...` | the fingertip presses a table keyboard key (`A`, `DEL`, `ENTER`, `SHIFT`...); type text through the keys (`\n` = Enter) |
 | `pokefloat gx gy`, `waitfloat maxms [open]` | the fingertip touches the floating pop-up over game pixel gx, gy; wait until a pop-up starts to float (or is fully open) |
+| `pokebase cx cy`, `holdbase cx cy` | a quick fingertip tap / a 2 s press on grid cell cx, cy of the base on the table |
+| `dragfloat gx gy dy` | a fingertip presses the floating window at game pixel gx, gy, slides dy pixels and lifts |
 | `pokedome dx dz` | the fingertip presses the globe dome where it faces (dx, up, dz) from its centre |
 | `testufo n`, `selectdest`, `infobox text`, `testwork` | test helpers: n UFOs next to the first base with its armed craft sent after them (dogfights); the destination picker for the first craft; a battle message box; research and production in the first base |
 | `boardpan dx dz`, `boardrotate r`, `boardzoom f`, `minimaptap u v`, `gamecam x y z` | move the table view / the game camera |
@@ -223,6 +225,26 @@ Pop-up effect and wall dashboards (0.11.0)
   bottom), refreshed every second (`VrDash.cpp`). Battle: stats and roster on
   the left, the minimap as a square in the right top monitor, right bottom
   dark.
+
+Base on the table (0.12.0)
+- Shown while a BasescapeState or PlaceFacilityState is on the stack (the
+  globe hides). 0.62 m square, near edge 3 cm beyond the console; slides with
+  the left stick / grip. Rebuilt only when the facilities, construction or
+  parked craft change (a signature string).
+- Tap = the game's right click on that cell (through the base view, so the
+  game picks the screen); hold 1 s = its left click (dismantle; not on the
+  lift, where the game's left click starts a base defense preview); tap on an
+  empty cell = BasescapeState::vrBuild (the Build Facilities list). While
+  placing, the finger moves the game's mouse over the placement view (its
+  selector also says whether the spot fits) and a touch clicks there. Only
+  while the base screen itself is on top.
+- Every screen opened from the base screen floats (POPUP); PlaceFacility
+  floats only its window, beyond the base. Floating windows: touch = mouse
+  down, lift = mouse up (click), drag > 14 px = cancel the press off the
+  window and send wheel steps; the right stick scrolls at the last touched
+  point.
+- Base screen keys use the screen-key mechanism of the geoscape keys
+  (`Btn::geo` slot, `group` 1 = BasescapeState::vrButtons, 2 = base selector).
 
 Room and rendering
 - Walls close; live screens (flat game, stats, roster, minimap) on the back

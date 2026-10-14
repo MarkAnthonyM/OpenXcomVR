@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.11.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.12.0)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -59,6 +59,24 @@ stand) in an X-COM command center at a holographic war table:
   `vrPopupEffect: 1`): small voxel cubes in the window's colours burst up
   from the table and snap into place piece by piece to form the window, and
   on closing it breaks apart and the cubes fall back into the table.
+- **Your base on the table.** Opening a base replaces the globe with the base
+  as a voxel relief of the game's own facility pictures (walls, corridors and
+  machinery stand out by brightness), its craft parked in their hangars as
+  small voxel models, and facilities under construction standing in
+  scaffolding with the days left floating above. Point a finger at a
+  facility to see its name. **Tap** it to open its screen, as the game's
+  right click does (laboratory → research, workshop → manufacture, hangar →
+  that craft, stores → sell, quarters → soldiers, containment, training...);
+  **hold** your finger on it for a second (the outline fills red) to dismantle
+  it, which the game asks you to confirm; **tap an empty spot** to build there:
+  pick the facility from the list, then its footprint follows your finger
+  (green where it fits, red where it doesn't) and a tap places it. The base
+  screen's buttons rise from the console (Base Info, Soldiers, Equip Craft,
+  Build Facilities, Research, Manufacture, Transfer, Purchase, Sell, Build New
+  Base, Geoscape), with one key per base right of them to switch bases. Every
+  screen opened from the base floats in front of you. Lists on floating
+  windows scroll with the right stick, or drag a finger up or down the glass.
+  Slide the base across the table with the left stick or a squeezed grip.
 - **A keyboard appears when the game wants text.** Whenever a text field is
   waiting for typing (the base name at the start, save names, renaming
   soldiers and craft, searches), a holographic keyboard unrolls on the near
@@ -221,6 +239,10 @@ it has to be pulled most of the way.
 | Press a red alien button | Centre the view on that spotted alien |
 | Touch a button on a floating pop-up | Click it (hover just in front to move the cursor there) |
 | Touch the globe dome with your index finger | Click that spot of the globe: a destination, a base site, a UFO or base |
+| Tap a facility of the base on the table | Open its screen (the game's right click) |
+| Hold a finger on a facility for a second | Dismantle it (the game asks to confirm) |
+| Tap an empty spot of the base, pick a facility, tap where it goes | Build it |
+| Drag a finger up or down a floating window | Scroll its list (a short touch is a click) |
 | Press keys on the table keyboard | Type into the game's text field |
 | Press a geoscape key on the console | Same as that geoscape button (time speed, Intercept, Bases, ...) |
 | Turn your right wrist toward you, tap the minimap with your left index | Move the table to that part of the map |
@@ -252,8 +274,8 @@ headset on.
   weapon goes to a free hand, the clip to the other hand or the floor). The
   ground area shows five columns at a time in pages (one row; items taller
   than three cells are only on the big screen's inventory).
-- The base view (Basescape) and the geoscape's full screens (Graphs,
-  UFOpaedia...) are still on the wall screen.
+- The geoscape's own full screens (Graphs, UFOpaedia...) are still on the
+  wall screen.
 - Floating pop-ups are the game's 320 × 200 pictures: they are made big and
   turned toward you, and upscaled with Scale2x (`vrSharpPopups`, on by
   default) for smoother letters, but they can't gain detail.
@@ -278,6 +300,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrHands.*` | Hand skeletons (from XR hand tracking or posed from controller inputs), collision against box colliders with per-finger joint solving, pinch / point gestures. |
 | `VrTable.*` | The table's control panel: hatches and spring buttons (battlescape and geoscape keys), spotted-alien buttons, the pop-up action board, the keyboard, the inventory tray with voxel item models, head/tile taps, the wrist minimap and the live wall screens. |
 | `VrFloat.*` | Floating pop-up windows: picks the game's top non-screen state, copies its area of the game frame, the projection and voxel-assembly effects, finger touches and the laser. |
+| `VrBase.*` | The base on the table: voxel relief rebuilt from the base view's sprites, craft models, scaffolding, labels, finger taps / holds / placement. |
 | `VrDash.*` | The geoscape dashboards on the back-wall monitors, drawn with the game's fonts straight from the saved game. |
 | `VrGL.*`, `VrShaders.h` | Tiny GL helper layer (incl. a shadow map target) and the single scene shader: linear lighting into an sRGB target, up to 12 point lights per frame, shadows from the key light, soft room-corner shading, the table's up-glow, the fog material. |
 
@@ -352,7 +375,9 @@ going during the intro and cutscenes), `Map::setSelectorTile` /
 `getCursorSize` / `getCursorInfo` (the cursor readout code, moved out of
 `drawTerrain` unchanged so the table can show it too),
 `BattleUnit::get/setFacingSnapshot`, `Globe::getCenter`, `Game::getStates`,
-`GeoscapeState::vrButtons` / `vrDogfights`, `State::vrSurfaces`, `Window::vrPopupDone`, and
+`GeoscapeState::vrButtons` / `vrDogfights`, `State::vrSurfaces`, `Window::vrPopupDone`,
+`BasescapeState::vrBase` / `vrView` / `vrMini` / `vrButtons` / `vrBuild`,
+`PlaceFacilityState::vrBase` / `vrView` / `vrRule` / `vrMoving`, and
 `SDL_GetMouseState`/`SDL_WarpMouse` calls routed through `VR::getMouseState` /
 `VR::warpMouse` so the laser pointer is the mouse.
 

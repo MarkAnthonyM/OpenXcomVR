@@ -1,0 +1,8 @@
+wait 9000
+pokebutton geoBases
+wait 3000
+holdbase 3 3
+wait 2000
+waitfloat 5000 open
+status
+quit

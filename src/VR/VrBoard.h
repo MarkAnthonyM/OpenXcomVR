@@ -5,6 +5,7 @@
  * Geoscape: a physical globe hovering over the table.
  */
 #include "VrGL.h"
+#include "VrHands.h"
 #include <memory>
 #include <functional>
 #include <string>
@@ -29,6 +30,7 @@ struct BoardHit
 	int tileX = -1, tileY = -1, tileZ = -1;   // battlescape tile under the pointer
 	double lon = 0.0, lat = 0.0;              // geoscape point under the pointer
 	bool globe = false;
+	bool base = false;                        // the base on the table: tileX, tileY = grid cell
 };
 
 class Board
@@ -41,6 +43,13 @@ public:
 	void setViewer(const glm::vec3 &head);
 	/// Lets the board click a point of the flat game screen (game pixel coords, SDL button).
 	std::function<void(int, int, int)> clickScreen;
+	/// Moves the game's mouse to a point of the flat game screen (game pixel coords).
+	std::function<void(int, int)> hoverScreen;
+	/// The base screen: its base is on the table (fingers tap, hold and place facilities there).
+	bool baseShown() const;
+	void baseFingers(const Hands &hands, const bool handBusy[2], std::function<void(int, float, float)> haptic, float dt);
+	bool baseCellTop(int cx, int cy, glm::vec3 &world) const;
+	std::string baseStatus() const;
 	/// True while something is on the table.
 	bool hasContent() const;
 	/// Rebuilds geometry when the game state changed. Needs the GL context.

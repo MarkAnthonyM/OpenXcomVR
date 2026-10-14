@@ -18,6 +18,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "../Engine/State.h"
+#include <vector>
 
 namespace OpenXcom
 {
@@ -53,6 +54,14 @@ public:
 	void init() override;
 	/// Sets a new base to display.
 	void setBase(Base *base);
+	/// VR: the base shown, its views and side buttons (Base Info, Soldiers, Equip Craft, Build Facilities,
+	/// Research, Manufacture, Transfer, Purchase, Sell, Build New Base, Geoscape).
+	Base *vrBase() const { return _base; }
+	BaseView *vrView() const { return _view; }
+	MiniBaseView *vrMini() const { return _mini; }
+	std::vector<InteractiveSurface*> vrButtons() const;
+	/// VR: opens the Build Facilities list (a tap on an empty spot of the base on the table).
+	void vrBuild() { btnFacilitiesClick(nullptr); }
 	/// Handler for clicking the Build New Base button.
 	void btnNewBaseClick(Action *action);
 	/// Handler for clicking the Base Information button.

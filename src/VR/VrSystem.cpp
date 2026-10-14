@@ -185,7 +185,7 @@ struct State
 
 	// automation (desktop preview only)
 	std::deque<ScriptCmd> script;
-	struct PendingButton { int frames; Uint8 button; bool down; };
+	struct PendingButton { int frames; Uint8 button; bool down; int wx = -1, wy = -1; }; // wx, wy: move there first
 	std::vector<PendingButton> pendingButtons;
 	Uint32 scriptWaitUntil = 0;
 	std::string pendingShot;
@@ -313,6 +313,12 @@ static bool createResources()
 		// let the game see the hover first: some dialogs ignore a press that arrives with the move
 		S->pendingButtons.push_back({2, (Uint8)button, true});
 		S->pendingButtons.push_back({3, (Uint8)button, false});
+	};
+	S->board.hoverScreen = [](int gx, int gy)
+	{
+		int wx, wy;
+		gameToWindow(glm::vec2((gx + 0.5f) / std::max(1, S->surfW), (gy + 0.5f) / std::max(1, S->surfH)), wx, wy);
+		if (wx != S->vmX || wy != S->vmY) pushMotion(wx, wy);
 	};
 	resetPanel();
 	logGLErrors("createResources");
@@ -653,14 +659,18 @@ static void updateHandsAndTable(float dt, bool simulated)
 	fc.sharp = Options::vrSharpPopups;
 	fc.style = Options::vrPopupEffect == 1 ? 1 : 0;
 	fc.clickScreen = S->board.clickScreen;
-	fc.hover = [](int gx, int gy)
+	fc.hover = S->board.hoverScreen;
+	fc.mouse = [](int gx, int gy, int button, bool down)
 	{
+		// the mouse goes there now (the game sees the hover), the button follows two frames later
 		int wx, wy;
 		gameToWindow(glm::vec2((gx + 0.5f) / std::max(1, S->surfW), (gy + 0.5f) / std::max(1, S->surfH)), wx, wy);
-		if (wx != S->vmX || wy != S->vmY) pushMotion(wx, wy);
+		if (down && (wx != S->vmX || wy != S->vmY)) pushMotion(wx, wy);
+		S->pendingButtons.push_back({2, (Uint8)button, down, wx, wy});
 	};
 	fc.haptic = ctx.haptic;
 	S->floatWin.update(fc, S->handsVis, dt);
+	S->board.baseFingers(S->handsVis, ctx.handBusy, ctx.haptic, dt);
 	S->colliders.clear();
 	S->table.colliders(S->colliders);
 }
@@ -931,8 +941,12 @@ static void updateHeadsetInput(float dt)
 	float sy = H[1].stick.y;
 	Uint32 now = SDL_GetTicks();
 	bool mapOnTop = !S->game->getStates().empty() && dynamic_cast<BattlescapeState*>(S->game->getStates().back());
-	if (S->pointerOnPanel && !mapOnTop && std::fabs(sy) > 0.55f && now >= S->wheelNext)
+	int fgx, fgy;
+	bool floatScroll = !S->pointerOnPanel && S->floatWin.scrollPoint(fgx, fgy);
+	if ((S->pointerOnPanel || floatScroll) && !mapOnTop && std::fabs(sy) > 0.55f && now >= S->wheelNext)
 	{
+		// at a floating window, the wheel turns where a finger last was on it (or its middle)
+		if (floatScroll) S->board.hoverScreen(fgx, fgy);
 		Uint8 b = sy > 0 ? SDL_BUTTON_WHEELUP : SDL_BUTTON_WHEELDOWN;
 		pushButton(b, true);
 		pushButton(b, false);
@@ -1466,6 +1480,38 @@ static void runScript()
 				Log(LOG_INFO) << "[VR] script: testufo " << n << " ufos, " << sent << " craft sent";
 			}
 		}
+		else if (c.op == "dragfloat")
+		{
+			// dragfloat gx gy dy : a fingertip presses the floating window at game pixel gx, gy, slides dy
+			// game pixels down the glass (negative: up) and lifts (scrolls lists)
+			glm::vec3 a, b, n;
+			if (S->floatWin.pointAt((float)num(0, 160), (float)num(1, 100), a, n) && S->floatWin.pointAt((float)num(0, 160), (float)(num(1, 100) + num(2, 0)), b, n))
+			{
+				Hands probe;
+				Pose at;
+				probe.simulate(1, at, 0.f, 1.f, true, 0.f, {});
+				glm::vec3 off = probe.pose[1].tip(F_INDEX);
+				S->simHand = true;
+				S->simGrip.rot = glm::quat(1.f, 0.f, 0.f, 0.f);
+				S->simIndex = 0.f; S->simOthers = 1.f; S->simThumb = true;
+				S->simGrip.pos = a - off + n * 0.04f;
+				std::deque<ScriptCmd> seq;
+				auto add = [&](const std::string &op, std::vector<std::string> args) { seq.push_back({op, args}); };
+				auto f = [](float v) { return std::to_string(v); };
+				glm::vec3 p0 = a - off - n * 0.005f, p1 = b - off - n * 0.005f, p2 = b - off + n * 0.05f;
+				add("waitframes", {"3"});
+				add("handmove", {f(p0.x), f(p0.y), f(p0.z), "4"});
+				add("waitframes", {"6"});
+				add("handmove", {f(p1.x), f(p1.y), f(p1.z), "16"});
+				add("waitframes", {"20"});
+				add("handmove", {f(p2.x), f(p2.y), f(p2.z), "4"});
+				add("waitframes", {"8"});
+				add("status", {});
+				for (auto it = seq.rbegin(); it != seq.rend(); ++it) S->script.push_front(*it);
+				continue;
+			}
+			Log(LOG_WARNING) << "[VR] script: dragfloat has no target";
+		}
 		else if (c.op == "waitfloat")
 		{
 			// waitfloat maxms [open] : wait until a floating pop-up starts to appear (or is fully open)
@@ -1540,7 +1586,7 @@ static void runScript()
 			S->simStep = (to - S->simGrip.pos) / (float)n;
 			S->simFrames = n;
 		}
-		else if (c.op == "poketile" || c.op == "pokenear" || c.op == "pokeunit" || c.op == "pokebutton" || c.op == "pokemenu" || c.op == "pokekey" || c.op == "pokefloat" || c.op == "pokedome" || c.op == "pinchitem" || c.op == "pinchto")
+		else if (c.op == "poketile" || c.op == "pokenear" || c.op == "pokeunit" || c.op == "pokebutton" || c.op == "pokemenu" || c.op == "pokekey" || c.op == "pokefloat" || c.op == "pokedome" || c.op == "pokebase" || c.op == "holdbase" || c.op == "pinchitem" || c.op == "pinchto")
 		{
 			// test macros that steer the scripted hand: poke a point with the index finger, or pinch
 			Hands probe;
@@ -1568,6 +1614,7 @@ static void runScript()
 			else if (c.op == "pokebutton") ok = !c.args.empty() && S->table.buttonCenter(c.args[0], target);
 			glm::vec3 pushDir(0.f, -1.f, 0.f);
 			if (c.op == "pokemenu") { glm::vec3 n; ok = S->table.menuKeyCenter((int)num(0, 0), target, n); pushDir = -n; }
+			else if (c.op == "pokebase" || c.op == "holdbase") ok = S->board.baseCellTop((int)num(0, 0), (int)num(1, 0), target);
 			else if (c.op == "pokedome")
 			{
 				// pokedome dx dz : press the dome where it faces direction (dx, up, dz) from its centre
@@ -1610,6 +1657,21 @@ static void runScript()
 			{
 				// start a little in front of the target, push through it, come back
 				glm::vec3 from = grip - pushDir * 0.05f, to = grip + pushDir * 0.02f, back = grip - pushDir * 0.06f;
+				if (c.op == "pokebase" || c.op == "holdbase")
+				{
+					// a quick tap (or a long press) on the base: down, stay, up
+					S->simGrip.pos = from;
+					S->simIndex = 0.f; S->simOthers = 1.f; S->simThumb = true;
+					add("waitframes", {"3"});
+					add("handmove", {f(to.x), f(to.y), f(to.z), "4"});
+					add("waitframes", {"5"});
+					if (c.op == "holdbase") add("wait", {"2200"});
+					add("handmove", {f(back.x), f(back.y), f(back.z), "3"});
+					add("waitframes", {"5"});
+					add("status", {});
+					for (auto it = seq.rbegin(); it != seq.rend(); ++it) S->script.push_front(*it);
+					continue;
+				}
 				S->simGrip.pos = from;
 				S->simIndex = 0.f; S->simOthers = 1.f; S->simThumb = true;
 				add("waitframes", {"4"});
@@ -1629,7 +1691,8 @@ static void runScript()
 			const HandPose &hp = S->handsVis.pose[1];
 			glm::vec3 t = hp.tip(F_INDEX);
 			Log(LOG_INFO) << "[VR] status: " << S->table.status() << " | tip " << t.x << "," << t.y << "," << t.z
-				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch << " | " << S->floatWin.status();
+				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch << " | " << S->floatWin.status()
+				<< " | " << S->board.baseStatus();
 		}
 		else if (c.op == "shot") { S->pendingShot = c.args.empty() ? "vr_shot.png" : c.args[0]; return; }
 		else if (c.op == "gameshot" && !S->pixels.empty())
@@ -1787,7 +1850,12 @@ void frame()
 	S->frameCount++;
 	for (auto it = S->pendingButtons.begin(); it != S->pendingButtons.end();)
 	{
-		if (--it->frames <= 0) { pushButton(it->button, it->down); it = S->pendingButtons.erase(it); }
+		if (--it->frames <= 0)
+		{
+			if (it->wx >= 0 && (it->wx != S->vmX || it->wy != S->vmY)) pushMotion(it->wx, it->wy);
+			pushButton(it->button, it->down);
+			it = S->pendingButtons.erase(it);
+		}
 		else ++it;
 	}
 

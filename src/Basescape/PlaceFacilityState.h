@@ -54,6 +54,11 @@ public:
 	void btnCancelClick(Action *action);
 	/// Handler for clicking the base view.
 	void viewClick(Action *action);
+	/// VR: what is being placed where, for the war table.
+	Base *vrBase() const { return _base; }
+	BaseView *vrView() const { return _view; }
+	const RuleBaseFacility *vrRule() const { return _rule; }
+	BaseFacility *vrMoving() const { return _origFac; }
 };
 
 }

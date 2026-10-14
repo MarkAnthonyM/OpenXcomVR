@@ -82,6 +82,10 @@ TESTS = [  # script, save, check, what it covers
     ("ib", "outside.asav", has("[open N8OpenXcom12InfoboxStateE"), "a self-closing battle message stays readable (shots/ib_infobox.png)"),
     ("db", "geo_test.asav", has("screens=10111"), "geoscape dashboards on the back wall (shots/db_wall.png)"),
     ("va", "geo_test.asav", check_float, "the same with voxel-assembly pop-ups (-vrPopupEffect 1)"),
+    ("bt", "geo_test.asav", has("tap STR_HANGAR", "float: open N8OpenXcom14CraftInfoStateE"), "base on the table; tapping a hangar opens its craft (shots/bt_base.png)"),
+    ("bb", "geo_test.asav", has("build at 1,1", "place at 1,1", "sites=1"), "tap an empty spot, pick a laboratory, tap to place it (shots/bb_scaffold.png)"),
+    ("bh", "geo_test.asav", has("hold STR_LABORATORY", "float: open N8OpenXcom17ErrorMessageStateE"), "holding a facility asks to dismantle it (here: refused, the game's rule)"),
+    ("bd", "geo_test.asav", has("float: scrolled at"), "dragging a finger on a floating list scrolls it (shots/bd_scrolled.png)"),
     ("br", None, has("float: open N8OpenXcom13BriefingStateE", "float: touch 160,172"), "the briefing floats; touching OK starts the battle"),
 ]
 
@@ -101,7 +105,12 @@ def main():
         r = check(log) if "Segmentation" not in log else "crash"
         ok = r is True
         print("%-4s %-4s %s%s" % (name, "ok" if ok else "FAIL", what, "" if ok else "  -> " + str(r)))
-        if not ok: failed.append(name)
+        if not ok:
+            failed.append(name)
+            # keep the evidence: the next test overwrites the log
+            if os.path.exists(LOG):
+                import shutil
+                shutil.copy(LOG, os.path.join(VRDEV, "run", "fail_%s.log" % name))
     print("\nscreenshots: %s" % os.path.join(VRDEV, "run", "shots"))
     print("all passed" if not failed else "FAILED: " + " ".join(failed))
     sys.exit(1 if failed else 0)

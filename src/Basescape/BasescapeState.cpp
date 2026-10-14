@@ -685,4 +685,13 @@ void BasescapeState::edtBaseChange(Action *)
 	_base->setName(_edtBase->getText());
 }
 
+/**
+ * VR: the side buttons, for the war table's console keys.
+ */
+std::vector<InteractiveSurface*> BasescapeState::vrButtons() const
+{
+	return {_btnBaseInfo, _btnSoldiers, _btnCrafts, _btnFacilities, _btnResearch, _btnManufacture,
+		_btnTransfer, _btnPurchase, _btnSell, _btnNewBase, _btnGeoscape};
+}
+
 }

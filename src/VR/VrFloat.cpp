@@ -22,6 +22,8 @@
 #include "../Geoscape/DogfightState.h"
 #include "../Menu/LoadGameState.h"
 #include "../Menu/SaveGameState.h"
+#include "../Basescape/BasescapeState.h"
+#include "../Basescape/PlaceFacilityState.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>
@@ -96,6 +98,11 @@ struct Win
 	float lean = -1.f;          // radians back from vertical, fixed when it opens (faces the eyes)
 	bool armed[2] = {true, true};
 	float cool[2] = {0.f, 0.f};
+	// a finger pressing on the window: the game's mouse button is down until it lifts (a click), or
+	// it drags up or down the glass and scrolls instead
+	bool down[2] = {false, false}, scrolling[2] = {false, false};
+	glm::ivec2 downPx[2];
+	glm::ivec2 lastPx{-1};            // where a finger was last (the right stick scrolls there)
 	std::string name;
 	int style = 0;              // 0 projection (line unfolds), 1 voxel assembly
 	float tableY = 0.f;
@@ -246,9 +253,18 @@ static std::vector<Cand> candidates(Game *game)
 		out.push_back({top, Win::BAR}); // a bar beyond the globe, which stays free for picking
 		return out;
 	}
+	if (dynamic_cast<PlaceFacilityState*>(top))
+	{
+		out.push_back({top, Win::BAR}); // the facility's details and Cancel; the base on the table takes the taps
+		return out;
+	}
 	if (dynamic_cast<ActionMenuState*>(top)) return out;                               // keys on the console
 	if (dynamic_cast<LoadGameState*>(top) || dynamic_cast<SaveGameState*>(top)) return out; // "loading..." flashes
-	if (!top->isScreen() || messageScreen(top)) out.push_back({top, Win::POPUP});
+	// every screen opened from the base screen floats too (research, manufacture, soldiers, craft...)
+	bool fromBase = false;
+	if (!dynamic_cast<BasescapeState*>(top))
+		for (State *s : game->getStates()) if (dynamic_cast<BasescapeState*>(s)) fromBase = true;
+	if (!top->isScreen() || messageScreen(top) || fromBase) out.push_back({top, Win::POPUP});
 	return out;
 }
 
@@ -258,7 +274,7 @@ static glm::ivec4 areaOf(State *s, int W, int H)
 	bool dogfight = dynamic_cast<DogfightState*>(s) != nullptr;
 	// picking on the globe: only the bar with the title and Cancel (the globe's own rotate and
 	// zoom buttons in the corner are the dome's job)
-	bool bar = dynamic_cast<BuildNewBaseState*>(s) || dynamic_cast<SelectDestinationState*>(s);
+	bool bar = dynamic_cast<BuildNewBaseState*>(s) || dynamic_cast<SelectDestinationState*>(s) || dynamic_cast<PlaceFacilityState*>(s);
 	for (Surface *sf : s->vrSurfaces())
 	{
 		if (bar && !dynamic_cast<Window*>(sf)) continue;
@@ -293,7 +309,7 @@ void FloatWindow::Impl::place(Win &w, const FloatContext &ctx, int index, int co
 	{
 	case Win::BAR:
 		// a long bar standing beyond the globe, high enough to be seen over it
-		K = std::min(0.003f, std::min(0.9f / std::max(1, w.rect.z), 0.12f / std::max(1, w.rect.w)));
+		K = std::min(0.003f, std::min(0.9f / std::max(1, w.rect.z), 0.30f / std::max(1, w.rect.w)));
 		O = glm::vec3(cx, ctx.tableY + 0.20f, ctx.table.y + 0.25f);
 		break;
 	case Win::DOGFIGHT:
@@ -492,7 +508,9 @@ void FloatWindow::update(const FloatContext &ctx, const Hands &hands, float dt)
 	}
 	p.sparks.erase(std::remove_if(p.sparks.begin(), p.sparks.end(), [](const Spark &s) { return s.age >= s.life; }), p.sparks.end());
 
-	// fingertips: hovering in front moves the game's mouse there, touching the glass clicks
+	// fingertips: hovering in front moves the game's mouse there; touching the glass presses the
+	// game's mouse button, lifting releases it (a click); dragging up or down scrolls lists instead
+	const int STEP = 14; // game pixels of finger travel per scroll step (a wheel step moves several rows)
 	int hoverHand = -1;
 	float hoverDepth = 1e9f;
 	glm::ivec2 hoverPx(-1);
@@ -500,33 +518,74 @@ void FloatWindow::update(const FloatContext &ctx, const Hands &hands, float dt)
 	{
 		Win &w = *wp;
 		for (int h = 0; h < 2; ++h) w.cool[h] = std::max(0.f, w.cool[h] - dt);
-		if (!w.interactive()) { w.armed[0] = w.armed[1] = true; continue; }
 		for (int h = 0; h < 2; ++h)
 		{
 			const HandPose &P = hands.pose[h];
-			if (!P.valid || P.ghost) { w.armed[h] = true; continue; }
-			float r = P.radius[fingerTip(F_INDEX)];
-			glm::vec3 l = w.local(P.raw[fingerTip(F_INDEX)]);
-			float depth = l.z - r;
-			bool inside = std::fabs(l.x) <= w.W * 0.5f && l.y >= 0.f && l.y <= w.H;
-			glm::ivec2 g = w.pixelAt(l.x, l.y);
+			bool ok = w.interactive() && P.valid && !P.ghost;
+			glm::vec3 l(0.f);
+			float depth = 1e9f;
+			bool inside = false;
+			glm::ivec2 g(-1);
+			if (ok)
+			{
+				float r = P.radius[fingerTip(F_INDEX)];
+				l = w.local(P.raw[fingerTip(F_INDEX)]);
+				depth = l.z - r;
+				inside = std::fabs(l.x) <= w.W * 0.5f && l.y >= 0.f && l.y <= w.H;
+				g = w.pixelAt(l.x, glm::clamp(l.y, 0.f, w.H));
+			}
+			if (w.down[h])
+			{
+				bool lifted = !ok || depth > 0.012f || std::fabs(l.x) > w.W * 0.5f + 0.02f || l.y < -0.02f || l.y > w.H + 0.02f;
+				if (!w.scrolling[h] && !lifted && std::abs(g.y - w.downPx[h].y) > STEP)
+				{
+					// a drag: let go of the button away from everything, then scroll where it started
+					w.scrolling[h] = true;
+					if (ctx.mouse) ctx.mouse(w.rect.x + w.rect.z - 1, w.rect.y + w.rect.w - 1, 1, false);
+					p.lastEvent = "drag";
+				}
+				if (w.scrolling[h] && !lifted)
+				{
+					int travel = g.y - w.downPx[h].y;
+					// finger moving up pushes the list up: further down the list (wheel down)
+					while (travel <= -STEP) { if (ctx.mouse) { ctx.mouse(w.downPx[h].x, w.downPx[h].y, 5, true); ctx.mouse(w.downPx[h].x, w.downPx[h].y, 5, false); } travel += STEP; w.downPx[h].y -= STEP; }
+					while (travel >= STEP) { if (ctx.mouse) { ctx.mouse(w.downPx[h].x, w.downPx[h].y, 4, true); ctx.mouse(w.downPx[h].x, w.downPx[h].y, 4, false); } travel -= STEP; w.downPx[h].y += STEP; }
+				}
+				if (lifted)
+				{
+					if (!w.scrolling[h] && ctx.mouse) ctx.mouse(w.downPx[h].x, w.downPx[h].y, 1, false); // a click
+					w.down[h] = false;
+					w.cool[h] = 0.15f;
+					w.armed[h] = false;
+					std::ostringstream ss;
+					ss << (w.scrolling[h] ? "scrolled at " : "touch ") << w.downPx[h].x << "," << w.downPx[h].y;
+					p.lastEvent = ss.str();
+					Log(LOG_INFO) << "[VR] float: " << p.lastEvent;
+				}
+				if (w.down[h]) { hoverHand = h; hoverDepth = -1.f; hoverPx = w.scrolling[h] ? glm::ivec2(-1) : w.downPx[h]; }
+				continue;
+			}
+			if (!ok) { w.armed[h] = true; continue; }
 			if (!inside || depth > 0.012f) w.armed[h] = true;
 			if (!inside || depth < -0.05f) continue;
+			w.lastPx = g;
 			if (depth < 0.04f && depth < hoverDepth) { hoverDepth = depth; hoverHand = h; hoverPx = g; }
 			if (depth <= 0.003f && w.armed[h] && w.cool[h] <= 0.f)
 			{
 				w.armed[h] = false;
-				w.cool[h] = 0.25f;
-				if (ctx.clickScreen) ctx.clickScreen(g.x, g.y, 1);
+				w.down[h] = true;
+				w.scrolling[h] = false;
+				w.downPx[h] = g;
+				if (ctx.mouse) ctx.mouse(g.x, g.y, 1, true);
 				if (ctx.haptic) ctx.haptic(h, 0.6f, 0.02f);
-				std::ostringstream ss;
-				ss << "touch " << g.x << "," << g.y;
-				p.lastEvent = ss.str();
-				Log(LOG_INFO) << "[VR] float: " << p.lastEvent;
 			}
 		}
+		// the window went away under a pressed finger: let the button go
+		if (!w.interactive())
+			for (int h = 0; h < 2; ++h)
+				if (w.down[h]) { w.down[h] = false; if (ctx.mouse) ctx.mouse(0, 0, 1, false); }
 	}
-	if (hoverHand >= 0 && hoverPx != p.lastHover && ctx.hover) ctx.hover(hoverPx.x, hoverPx.y);
+	if (hoverHand >= 0 && hoverPx.x >= 0 && hoverPx != p.lastHover && ctx.hover) ctx.hover(hoverPx.x, hoverPx.y);
 	p.lastHover = hoverHand >= 0 ? hoverPx : glm::ivec2(-1);
 }
 
@@ -740,6 +799,19 @@ bool FloatWindow::fingerNear(const glm::vec3 &pt) const
 		if (!w.interactive()) continue;
 		glm::vec3 l = w.local(pt);
 		if (std::fabs(l.x) <= w.W * 0.5f + 0.05f && l.y >= -0.05f && l.y <= w.H + 0.05f && l.z > -0.06f && l.z < 0.15f) return true;
+	}
+	return false;
+}
+
+bool FloatWindow::scrollPoint(int &gx, int &gy) const
+{
+	for (auto it = _p->wins.rbegin(); it != _p->wins.rend(); ++it)
+	{
+		const Win &w = **it;
+		if (!w.interactive()) continue;
+		if (w.lastPx.x >= 0) { gx = w.lastPx.x; gy = w.lastPx.y; }
+		else { gx = w.rect.x + w.rect.z / 2; gy = w.rect.y + w.rect.w / 2; }
+		return true;
 	}
 	return false;
 }

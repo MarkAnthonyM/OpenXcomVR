@@ -42,6 +42,7 @@ struct FloatContext
 	int style = 0;                                  // how windows appear: 0 projection, 1 voxel assembly
 	std::function<void(int, int, int)> clickScreen; // game pixel x, y, SDL button
 	std::function<void(int, int)> hover;            // move the game's mouse to a game pixel
+	std::function<void(int, int, int, bool)> mouse; // a mouse button down / up at a game pixel (also the wheel: 4 up, 5 down)
 	std::function<void(int, float, float)> haptic;  // hand, amplitude, seconds
 };
 
@@ -57,6 +58,8 @@ public:
 	/// Laser: distance along the ray and where it lands as a uv over the whole game frame.
 	bool raycast(const glm::vec3 &o, const glm::vec3 &d, float &t, glm::vec2 &gameUV) const;
 	bool isOpen() const;
+	/// Where the right stick scrolls: the last point a finger was on, or the middle of the window (game pixel).
+	bool scrollPoint(int &gx, int &gy) const;
 	/// A point (a fingertip) is close in front of an open window: the laser stays off there.
 	bool fingerNear(const glm::vec3 &point) const;
 	bool isClosed() const;

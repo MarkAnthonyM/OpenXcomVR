@@ -39,6 +39,9 @@
 #include "../Battlescape/Camera.h"
 #include "../Battlescape/ActionMenuState.h"
 #include "../Geoscape/GeoscapeState.h"
+#include "../Basescape/BasescapeState.h"
+#include "../Basescape/MiniBaseView.h"
+#include "../Savegame/Base.h"
 #include "../Geoscape/SelectDestinationState.h"
 #include "../Geoscape/BuildNewBaseState.h"
 #include <glm/gtc/matrix_transform.hpp>
@@ -82,7 +85,8 @@ struct Btn
 	bool target = false;
 	int pressHand = -1;
 	int alert = -1;             // >= 0: a spotted-enemy indicator; its picture and click come from the screen
-	int geo = -1;               // >= 0: a geoscape side button (GeoscapeState::vrButtons order), same idea
+	int geo = -1;               // >= 0: a screen key (its slot in keyTex): the geoscape's or the base screen's own buttons
+	int group = 0, idx = 0;     // screen keys: 0 geoscape (GeoscapeState::vrButtons), 1 base screen (BasescapeState::vrButtons), 2 base selector slot
 	glm::ivec4 scr{0};          // alerts / geoscape keys: the button's rectangle on the game screen
 };
 
@@ -310,14 +314,16 @@ struct Table::Impl
 	}
 	bool usable(const Btn &b) const
 	{
-		if (b.geo >= 0) return geoTop && b.visible && b.open > 0.97f;
+		if (b.geo >= 0) return groupOn(b.group) && b.visible && b.open > 0.97f;
 		return inBattle && bsTop && b.visible && b.open > 0.97f;
 	}
 	// geoscape: its side buttons as keys in the bay
-	static const int GEO_KEYS = 12;
+	static const int GEO_KEYS = 12, BASE_KEYS = 11, MINI_KEYS = 8;
 	GeoscapeState *geo = nullptr;
 	bool geoTop = false;
-	Texture geoTex[GEO_KEYS];
+	BasescapeState *baseScreen = nullptr; // the base screen, while it is the top screen
+	Texture geoTex[GEO_KEYS + BASE_KEYS + MINI_KEYS];
+	bool groupOn(int g) const { return g == 0 ? geoTop : baseScreen != nullptr; }
 
 	void layoutButtons();
 	void syncBattle(TableContext &ctx);
@@ -340,6 +346,7 @@ struct Table::Impl
 	// fingertip taps on the geoscape dome: a click on that spot of the globe (pick a destination,
 	// a base site, a UFO or base)
 	bool globeIn[2] = {false, false};
+	bool globeWasOn = false;
 	float globeCool[2] = {0.f, 0.f};
 	void updateGlobeTaps(TableContext &ctx, const Hands &hands, float dt);
 	void updateWalls(TableContext &ctx, float dt);
@@ -435,12 +442,58 @@ void Table::init(const RoomLayout &layout)
 			Btn b;
 			b.name = names[i];
 			b.geo = i;
+			b.group = 0;
+			b.idx = i;
 			b.visible = false;
 			int row = 1 - i / cols, col = i % cols;
 			float bx = x0 + col * cw, bz = z0 + row * rh;
 			const float m = 0.005f;
 			b.rect = {bx + m, bz + m, bx + cw - m, bz + rh - m};
 			b.delay = 0.04f * col + 0.08f * row;
+			p.btns.push_back(b);
+		}
+	}
+
+	// base screen keys in the bay: Base Info, Soldiers, Equip Craft, Build Facilities, Research,
+	// Manufacture on the far row; Transfer, Purchase, Sell, Build New Base, Geoscape on the near row
+	{
+		const char *names[Impl::BASE_KEYS] = {"baseInfo", "baseSoldiers", "baseCrafts", "baseFacilities", "baseResearch", "baseManufacture",
+			"baseTransfer", "basePurchase", "baseSell", "baseNewBase", "baseGeoscape"};
+		const int cols = 6;
+		float x0 = p.bay.x, x1 = p.bay.z, z0 = p.bay.y, z1 = p.bay.w;
+		float cw = (x1 - x0) / cols, rh = (z1 - z0) * 0.42f;
+		for (int i = 0; i < Impl::BASE_KEYS; ++i)
+		{
+			Btn b;
+			b.name = names[i];
+			b.geo = Impl::GEO_KEYS + i;
+			b.group = 1;
+			b.idx = i;
+			b.visible = false;
+			int row = i / cols, col = i % cols;
+			float bx = x0 + col * cw, bz = z0 + row * rh;
+			const float m = 0.005f;
+			b.rect = {bx + m, bz + m, bx + cw - m, bz + rh - m};
+			b.delay = 0.04f * col + 0.08f * row;
+			p.btns.push_back(b);
+		}
+		// the base selector: one key per base, right of the bay
+		float ax0 = p.bay.z + 0.025f, ax1 = p.table.z - 0.03f;
+		const int mcols = 4;
+		float mw = (ax1 - ax0) / mcols, mh = (z1 - z0) / 2.f;
+		for (int i = 0; i < Impl::MINI_KEYS; ++i)
+		{
+			Btn b;
+			b.name = "baseSelect" + std::to_string(i);
+			b.geo = Impl::GEO_KEYS + Impl::BASE_KEYS + i;
+			b.group = 2;
+			b.idx = i;
+			b.visible = false;
+			int row = i / mcols, col = i % mcols;
+			float bx = ax0 + col * mw, bz = z0 + row * mh;
+			const float m = 0.005f;
+			b.rect = {bx + m, bz + m, bx + mw - m, bz + mh - m};
+			b.delay = 0.05f * i;
 			p.btns.push_back(b);
 		}
 	}
@@ -540,16 +593,30 @@ void Table::Impl::syncGeo(TableContext &ctx)
 		for (State *st : game->getStates())
 			if (auto *g = dynamic_cast<GeoscapeState*>(st)) { geo = g; break; }
 	geoTop = geo && !game->getStates().empty() && game->getStates().back() == (State*)geo;
-	std::vector<InteractiveSurface*> keys;
-	if (geo) keys = geo->vrButtons();
+	baseScreen = !inBattle && !game->getStates().empty() ? dynamic_cast<BasescapeState*>(game->getStates().back()) : nullptr;
+	std::vector<InteractiveSurface*> keys[2];
+	if (geo) keys[0] = geo->vrButtons();
+	if (baseScreen) keys[1] = baseScreen->vrButtons();
 	for (Btn &b : btns)
 	{
 		if (b.geo < 0) continue;
-		InteractiveSurface *s = b.geo < (int)keys.size() ? keys[b.geo] : nullptr;
-		b.visible = s && s->getVisible();
-		if (!b.visible) continue;
-		b.scr = {s->getX(), s->getY(), s->getWidth(), s->getHeight()};
-		if (geoTop && ctx.pixels && b.scr.z > 0 && b.scr.x >= 0 && b.scr.y >= 0 && b.scr.x + b.scr.z <= ctx.surfW && b.scr.y + b.scr.w <= ctx.surfH)
+		if (b.group == 2)
+		{
+			// a slot of the game's base selector (16 pixels each): there while that base exists
+			MiniBaseView *mini = baseScreen ? baseScreen->vrMini() : nullptr;
+			b.visible = mini && game->getSavedGame() && b.idx < (int)game->getSavedGame()->getBases()->size();
+			if (!b.visible) continue;
+			b.scr = {mini->getX() + b.idx * (16), mini->getY(), 16, 16};
+		}
+		else
+		{
+			const std::vector<InteractiveSurface*> &list = keys[b.group];
+			InteractiveSurface *s = b.idx < (int)list.size() ? list[b.idx] : nullptr;
+			b.visible = s && s->getVisible();
+			if (!b.visible) continue;
+			b.scr = {s->getX(), s->getY(), s->getWidth(), s->getHeight()};
+		}
+		if (groupOn(b.group) && ctx.pixels && b.scr.z > 0 && b.scr.x >= 0 && b.scr.y >= 0 && b.scr.x + b.scr.z <= ctx.surfW && b.scr.y + b.scr.w <= ctx.surfH)
 		{
 			std::vector<uint32_t> px((size_t)b.scr.z * b.scr.w);
 			for (int y = 0; y < b.scr.w; ++y)
@@ -643,7 +710,7 @@ void Table::Impl::updateButtons(TableContext &ctx, const Hands &hands, float dt)
 	for (size_t i = 0; i < btns.size(); ++i)
 	{
 		Btn &b = btns[i];
-		bool want = b.geo >= 0 ? geoTop && b.visible : inBattle && b.visible;
+		bool want = b.geo >= 0 ? groupOn(b.group) && b.visible : inBattle && b.visible;
 		if (want && !b.target) b.wait = b.delay;
 		b.target = want;
 		if (want)
@@ -1377,6 +1444,9 @@ void Table::Impl::updateGlobeTaps(TableContext &ctx, const Hands &hands, float d
 		State *top = game->getStates().back();
 		on = top == (State*)geo || dynamic_cast<SelectDestinationState*>(top) || dynamic_cast<BuildNewBaseState*>(top);
 	}
+	// a finger already in the dome when it comes back (a screen closed over it) has to lift first
+	if (on && !globeWasOn) globeIn[0] = globeIn[1] = true;
+	globeWasOn = on;
 	for (int h = 0; h < 2; ++h)
 	{
 		globeCool[h] = std::max(0.f, globeCool[h] - dt);

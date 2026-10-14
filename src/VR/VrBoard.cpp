@@ -17,6 +17,7 @@
  */
 #include "VrGL.h" // first: GL extension headers
 #include "VrBoard.h"
+#include "VrBase.h"
 #include "VrRoom.h"
 #include "../Engine/Game.h"
 #include "../Engine/State.h"
@@ -171,6 +172,8 @@ struct UnitCard
 
 struct Board::Impl
 {
+	BaseDiorama baseView;       // the base screen: the base on the table
+	bool hasBase = false;
 	RoomLayout layout;
 	glm::vec3 viewer{0.f, 1.65f, 0.f};
 	Game *game = nullptr;
@@ -2336,7 +2339,7 @@ void Board::init(const RoomLayout &layout)
 }
 
 void Board::setViewer(const glm::vec3 &head) { _p->viewer = head; }
-void Board::setMapRect(const glm::vec4 &rect) { _p->mapRect = rect; }
+void Board::setMapRect(const glm::vec4 &rect) { _p->mapRect = rect; _p->baseView.init(rect, _p->surfaceY()); }
 BattlescapeState *Board::battleState() const { return _p->hasBattle ? _p->bs : nullptr; }
 SavedBattleGame *Board::battle() const { return _p->hasBattle ? _p->battle : nullptr; }
 
@@ -2463,7 +2466,7 @@ bool Board::selectUnit(BattleUnit *unit)
 	p.tapSelect = 0.5f; // the view stays where it is: the tapped soldier is within reach
 	return p.bs ? p.bs->vrSelectUnit(unit) : false;
 }
-bool Board::hasContent() const { return _p->hasBattle || _p->hasGlobe; }
+bool Board::hasContent() const { return _p->hasBattle || _p->hasGlobe || _p->hasBase; }
 
 void Board::update(Game *game, float dt)
 {
@@ -2491,10 +2494,13 @@ void Board::update(Game *game, float dt)
 		p.updateBattle(dt);
 	}
 
+	// the base screen: the base replaces the globe on the table
+	p.hasBase = !p.hasBattle && sg && p.baseView.update(game, dt);
+
 	// geoscape: find the GeoscapeState on the stack
 	p.geo = nullptr;
 	p.globe = nullptr;
-	if (!p.hasBattle && sg)
+	if (!p.hasBattle && !p.hasBase && sg)
 	{
 		for (State *s : game->getStates())
 			if (auto *g = dynamic_cast<GeoscapeState*>(s)) { p.geo = g; p.globe = g->getGlobe(); break; }
@@ -2541,9 +2547,10 @@ float Board::nightLevel() const
 	return glm::clamp((p.battle->getGlobalShade() - 2) / 8.f, 0.f, 1.f);
 }
 
-void Board::draw(const Shader &sh, const glm::mat4 &, const glm::vec3 &, double)
+void Board::draw(const Shader &sh, const glm::mat4 &, const glm::vec3 &eye, double)
 {
-	if (_p->hasBattle && _p->atlas.tex.valid()) _p->drawBattle(sh);
+	if (_p->hasBase) _p->baseView.draw(sh, eye);
+	else if (_p->hasBattle && _p->atlas.tex.valid()) _p->drawBattle(sh);
 	else if (_p->hasGlobe) _p->drawGlobe(sh);
 }
 
@@ -2552,6 +2559,15 @@ bool Board::raycast(const glm::vec3 &o, const glm::vec3 &d, BoardHit &hit) const
 	Impl &p = *_p;
 	revalidate(p);
 	if (p.hasBattle && (!p.game->getSavedGame() || p.game->getSavedGame()->getSavedBattle() != p.battle)) p.hasBattle = false;
+	if (p.hasBase)
+	{
+		int cx, cy;
+		if (!p.baseView.raycast(o, d, hit.t, hit.point, cx, cy)) return false;
+		hit.base = true;
+		hit.globe = false;
+		hit.tileX = cx; hit.tileY = cy; hit.tileZ = 0;
+		return true;
+	}
 	if (p.hasBattle)
 	{
 		glm::vec4 clip = p.clipRect();
@@ -2605,6 +2621,7 @@ bool Board::raycast(const glm::vec3 &o, const glm::vec3 &d, BoardHit &hit) const
 void Board::hover(const BoardHit &hit)
 {
 	Impl &p = *_p;
+	if (hit.base) { p.baseView.hover(hit.tileX, hit.tileY); return; }
 	p.hoverValid = true;
 	p.hoverGlobe = hit.globe;
 	p.hoverTile = Position(hit.tileX, hit.tileY, hit.tileZ);
@@ -2613,7 +2630,7 @@ void Board::hover(const BoardHit &hit)
 	p.hoverLat = hit.lat;
 }
 
-void Board::hoverNone() { _p->hoverValid = false; }
+void Board::hoverNone() { _p->hoverValid = false; _p->baseView.hoverNone(); }
 
 /// Input can arrive after a screen closed but before the next update(): re-check cached pointers.
 static void revalidate(Board::Impl &p)
@@ -2632,6 +2649,14 @@ static void revalidate(Board::Impl &p)
 void Board::click(int button)
 {
 	Impl &p = *_p;
+	if (p.hasBase)
+	{
+		BaseInput in;
+		in.clickScreen = clickScreen;
+		in.hover = hoverScreen;
+		p.baseView.click(button, in);
+		return;
+	}
 	revalidate(p);
 	if (!p.hoverValid) return;
 	if (p.hasBattle && !p.hoverGlobe)
@@ -2654,6 +2679,7 @@ void Board::click(int button)
 void Board::wheel(int dir)
 {
 	Impl &p = *_p;
+	if (p.hasBase) return;
 	revalidate(p);
 	if (p.hasBattle)
 	{
@@ -2692,6 +2718,7 @@ float Board::curtain() const { return _p->hasBattle ? _p->curtain : 0.f; }
 
 void Board::pan(const glm::vec2 &d)
 {
+	if (_p->hasBase) { _p->baseView.pan(d); return; }
 	Impl &p = *_p;
 	revalidate(p);
 	if (p.hasBattle)
@@ -2715,6 +2742,7 @@ void Board::pan(const glm::vec2 &d)
 
 void Board::rotate(float r)
 {
+	if (_p->hasBase) return;
 	Impl &p = *_p;
 	if (p.hasBattle) p.yaw += r;
 	else if (p.hasGlobe && p.globe)
@@ -2727,6 +2755,7 @@ void Board::rotate(float r)
 
 void Board::zoom(float f)
 {
+	if (_p->hasBase) return;
 	Impl &p = *_p;
 	if (p.hasBattle) p.tileSize = glm::clamp(p.tileSize * f, 0.02f, 0.14f);
 	else if (p.hasGlobe)
@@ -2890,6 +2919,7 @@ bool Board::globeSphere(glm::vec3 &center, float &radius) const
 bool Board::canGrab(const glm::vec3 &hand) const
 {
 	const Impl &p = *_p;
+	if (p.hasBase) return p.baseView.contains(hand, 0.1f);
 	if (p.hasBattle)
 	{
 		glm::vec4 c = p.clipRect();
@@ -2911,6 +2941,14 @@ void Board::updateGrab(int hand, const glm::vec3 &pos)
 {
 	Impl &p = *_p;
 	if (!p.held[hand]) return;
+	if (p.hasBase)
+	{
+		// slide the base across the table
+		glm::vec3 dw = pos - p.lastHand[hand];
+		p.baseView.pan(glm::vec2(dw.x, dw.z));
+		p.lastHand[hand] = pos;
+		return;
+	}
 	revalidate(p);
 	int other = 1 - hand;
 	if (p.hasBattle)
@@ -2960,5 +2998,26 @@ void Board::endGrab(int hand)
 	if (_p->hasBattle) _p->focusTarget = _p->focus;
 }
 
+}
+}
+
+namespace OpenXcom
+{
+namespace VR
+{
+bool Board::baseShown() const { return _p->hasBase; }
+void Board::baseFingers(const Hands &hands, const bool handBusy[2], std::function<void(int, float, float)> haptic, float dt)
+{
+	if (!_p->hasBase) return;
+	BaseInput in;
+	in.clickScreen = clickScreen;
+	in.hover = hoverScreen;
+	in.haptic = haptic;
+	in.handBusy[0] = handBusy[0];
+	in.handBusy[1] = handBusy[1];
+	_p->baseView.fingers(hands, in, dt);
+}
+bool Board::baseCellTop(int cx, int cy, glm::vec3 &w) const { return _p->hasBase && _p->baseView.cellTop(cx, cy, w); }
+std::string Board::baseStatus() const { return _p->baseView.status(); }
 }
 }
