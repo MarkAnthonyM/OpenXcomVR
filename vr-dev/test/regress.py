@@ -49,6 +49,12 @@ def check_v4(log):
     lv = [x["level"] for x in boards(log)]
     return lv == [0, 1, 3, 3, 0] or "levels %s, expected [0, 1, 3, 3, 0]" % lv
 
+def check_float(log):
+    st = re.findall(r"\[VR\] status: .*", log)
+    if "float: open N8OpenXcom10PauseStateE" not in log: return "the options pop-up never floated"
+    if "float: touch 128,158" not in log: return "the finger touch on Cancel didn't click"
+    return (bool(st) and "float=closed" in st[-1]) or "the window didn't close after Cancel"
+
 def check_runs(log):
     return bool(boards(log)) or "no board readout"
 
@@ -67,6 +73,9 @@ TESTS = [  # script, save, check, what it covers
     ("h2", "battle_test.asav", check_runs, "alien turn / hidden movement (look at shots/h1_*.png)"),
     ("nt2", "night.asav", check_runs, "night darkness (look at shots/night_table.png)"),
     ("gl1", "outnight.asav", check_runs, "plasma glow at night (look at shots/gl_*.png)"),
+    ("gk", "geo_test.asav", has("last='button geo1Hour'"), "geoscape keys on the console (dome: shots/gk_dome.png)"),
+    ("fl", "geo_test.asav", check_float, "pop-up floats over the table, a finger touch clicks it (shots/fl_open.png)"),
+    ("kb", "geo_test.asav", has("keyboard='Vr test'"), "table keyboard types a save name (shots/kb_keyboard.png)"),
 ]
 
 def main():

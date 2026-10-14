@@ -145,6 +145,8 @@ public:
 
 	/// Gets the state's 8bpp palette.
 	SDL_Color *getPalette();
+	/// VR: the state's surfaces (pop-up windows and text fields are found through them).
+	const std::vector<Surface*> &vrSurfaces() const { return _surfaces; }
 
 	/// Let the state know the window has been resized.
 	virtual void resize(int &dX, int &dY);

@@ -312,6 +312,11 @@ struct Board::Impl
 	bool globeBuilt = false;
 	float globeRadius = 0.30f;
 	glm::vec3 globeCenter{0.f};
+	// The globe is a dome rising out of the table: its top stays this high above the surface (below
+	// the line of sight to the back-wall screen) and zooming sinks it deeper instead of raising it.
+	// It is tipped toward the player so the area in focus faces up and toward you.
+	static constexpr float DOME_TOP = 0.22f;
+	static constexpr float DOME_TILT = -0.61f; // -35 degrees about x
 	double cenLon = 0.0, cenLat = 0.0;
 	Globe *globe = nullptr;
 	GeoscapeState *geo = nullptr;
@@ -332,6 +337,7 @@ struct Board::Impl
 	{
 		// rotate so the game's globe center faces the player (+Z)
 		return glm::translate(glm::mat4(1.f), globeCenter)
+			* glm::rotate(glm::mat4(1.f), DOME_TILT, {1, 0, 0})
 			* glm::rotate(glm::mat4(1.f), (float)-cenLat, {1, 0, 0})
 			* glm::rotate(glm::mat4(1.f), (float)-cenLon, {0, 1, 0})
 			* glm::scale(glm::mat4(1.f), glm::vec3(globeRadius));
@@ -2497,7 +2503,7 @@ void Board::update(Game *game, float dt)
 	if (p.hasGlobe)
 	{
 		if (!p.globeBuilt) p.buildGlobe();
-		p.globeCenter = p.layout.tableCenter + glm::vec3(0.f, 0.36f, 0.f);
+		p.globeCenter = glm::vec3(p.layout.tableCenter.x, p.surfaceY() + Impl::DOME_TOP - p.globeRadius, p.layout.tableCenter.z);
 		p.globe->getCenter(&p.cenLon, &p.cenLat);
 	}
 }
@@ -2583,6 +2589,7 @@ bool Board::raycast(const glm::vec3 &o, const glm::vec3 &d, BoardHit &hit) const
 		float t = -b - std::sqrt(disc);
 		if (t <= 0.f) return false;
 		glm::vec3 w = o + d * t;
+		if (w.y < p.surfaceY()) return false; // the part of the dome under the table
 		glm::mat4 inv = glm::inverse(p.globeMatrix());
 		glm::vec3 u = glm::normalize(glm::vec3(inv * glm::vec4(w, 1.f)));
 		hit.t = t;
@@ -2656,6 +2663,7 @@ void Board::wheel(int dir)
 	else if (p.hasGlobe)
 	{
 		p.globeRadius = glm::clamp(p.globeRadius * (dir > 0 ? 1.1f : 0.9f), 0.18f, 0.45f);
+		p.globeCenter.y = p.surfaceY() + Impl::DOME_TOP - p.globeRadius;
 	}
 }
 
@@ -2721,7 +2729,11 @@ void Board::zoom(float f)
 {
 	Impl &p = *_p;
 	if (p.hasBattle) p.tileSize = glm::clamp(p.tileSize * f, 0.02f, 0.14f);
-	else if (p.hasGlobe) p.globeRadius = glm::clamp(p.globeRadius * f, 0.18f, 0.45f);
+	else if (p.hasGlobe)
+	{
+		p.globeRadius = glm::clamp(p.globeRadius * f, 0.18f, 0.45f);
+		p.globeCenter.y = p.surfaceY() + Impl::DOME_TOP - p.globeRadius;
+	}
 }
 
 // ------------------------------------------------------------------ minimap (wrist pad, wall screen)
@@ -2875,7 +2887,7 @@ bool Board::canGrab(const glm::vec3 &hand) const
 		return hand.x > c.x - 0.1f && hand.x < c.z + 0.1f && hand.z > c.y - 0.1f && hand.z < c.w + 0.1f
 			&& hand.y < p.surfaceY() + 0.45f && hand.y > p.surfaceY() - 0.15f;
 	}
-	if (p.hasGlobe) return glm::length(hand - p.globeCenter) < p.globeRadius + 0.15f;
+	if (p.hasGlobe) return glm::length(hand - p.globeCenter) < p.globeRadius + 0.15f && hand.y > p.surfaceY() - 0.05f;
 	return false;
 }
 
@@ -2924,7 +2936,10 @@ void Board::updateGrab(int hand, const glm::vec3 &pos)
 		double cl, ca;
 		p.globe->getCenter(&cl, &ca);
 		cl -= dw.x / p.globeRadius;
-		ca = glm::clamp(ca - (double)dw.y / p.globeRadius, -1.5, 1.5);
+		// up the tipped front face of the dome: up and away from the player
+		float c = std::cos(Impl::DOME_TILT), sn = std::sin(Impl::DOME_TILT);
+		float along = dw.y * c + dw.z * sn;
+		ca = glm::clamp(ca - (double)along / p.globeRadius, -1.5, 1.5);
 		p.globe->center(cl, ca);
 	}
 	p.lastHand[hand] = pos;

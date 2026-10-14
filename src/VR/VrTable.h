@@ -7,6 +7,8 @@
  *    starts, hatches open and a spring-loaded button rises for each control.
  *  - Inventory tray (near edge, left): the selected soldier's inventory grid
  *    with small floating voxel models of the items. Pinch an item to move it.
+ *  - Geoscape keys in the bay: the geoscape's side buttons.
+ *  - Keyboard (near edge): unrolls while a game text field waits for typing.
  *  - Finger taps on the map: tap a soldier's head to select, a tile to move.
  *  - Wall screens: soldier stats, minimap and squad roster during a battle.
  */
@@ -37,12 +39,13 @@ struct TableContext
 	std::function<void(int, float, float)> haptic;  // hand, amplitude, seconds
 	bool handBusy[2] = {false, false};              // hand is grabbing something else
 	std::function<void(int)> pressKey;              // SDL key (e.g. Escape to close a menu)
+	std::function<void(int, int)> typeKey;          // SDL key and the character it types (table keyboard)
 	glm::vec3 eye{0.f, 1.3f, 0.f};                  // player's head (world)
 };
 
 struct TableHit
 {
-	enum Kind { NONE, BUTTON, ITEM, TRAY, MENU } kind = NONE;
+	enum Kind { NONE, BUTTON, ITEM, TRAY, MENU, KEY } kind = NONE;
 	float t = 1e9f;
 	int index = -1;
 	glm::vec3 point{0.f};
@@ -81,6 +84,11 @@ public:
 	bool buttonCenter(const std::string &name, glm::vec3 &world) const;
 	/// Test helper: a key of the pop-up action board (front face centre and its normal).
 	bool menuKeyCenter(int index, glm::vec3 &world, glm::vec3 &normal) const;
+	/// The table keyboard: up while the game waits for typed text. Test helpers: a key's face centre
+	/// and its normal, and typing a string through the keys ('\n' = Enter).
+	bool keyboardUp() const;
+	bool kbKeyCenter(const std::string &label, glm::vec3 &world, glm::vec3 &normal) const;
+	bool kbType(const std::string &text, TableContext &ctx);
 	struct Impl;
 private:
 	std::unique_ptr<Impl> _p;

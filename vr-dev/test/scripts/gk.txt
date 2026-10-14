@@ -1,0 +1,8 @@
+wait 9000
+cam 0 1.30 0.10 0 -42
+waitframes 6
+shot shots/gk_dome.png
+pokebutton geo1Hour
+wait 800
+status
+quit

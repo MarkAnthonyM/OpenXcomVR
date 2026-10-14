@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.9.1)
+# OpenXcom Extended — VR Tabletop (prototype 0.10.0)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -29,8 +29,31 @@ stand) in an X-COM command center at a holographic war table:
   **Hidden Movement** the table stays where it is and shows nothing new: no
   shots or blasts out of sight, and doors, broken walls, smoke and fire keep
   how they looked until the aliens come into view or your turn starts.
-- **Geoscape** – a physical globe hovers over the table, with bases, craft,
-  UFOs and mission sites as markers and the real day/night terminator.
+- **Geoscape** – the globe is a dome rising out of the table, tilted toward
+  you, with bases, craft, UFOs and mission sites as markers and the real
+  day/night terminator. Its upper half stands about 22 cm tall, so the wall
+  screen behind it stays in view; spin it with your hand or the left stick
+  (zooming in sinks it deeper). The geoscape's side buttons rise out of the
+  console as keys: the time speeds (5 Secs … 1 Day) on the far row, Intercept,
+  Bases, Graphs, UFOpaedia, Options and Funding on the near row, each showing
+  the game's own button (so the selected speed is lit).
+- **Pop-ups float over the table.** When the game opens a message or a dialog
+  (a UFO sighting, research or production finished, the options and save
+  menus, the abort confirmation, a dogfight...), it is projected as a floating
+  window over the near half of the table, leaning back toward you: a bright
+  line appears, unfolds into the window with rolling scanlines and flicker
+  while voxel sparks fly off its edges, and folds back into the line when the
+  pop-up closes. Touch a button on it with your fingertip (hovering just in
+  front moves the game's cursor there), or point the laser at it like at the
+  wall screen. Both on the geoscape and in battle. Not for the few pop-ups
+  that need the table under them: the action board, and picking a base site or
+  a destination on the globe.
+- **A keyboard appears when the game wants text.** Whenever a text field is
+  waiting for typing (the base name at the start, save names, renaming
+  soldiers and craft, searches), a holographic keyboard unrolls on the near
+  edge of the table, row by row. Press the keys with your fingers. Shift
+  types one capital (a fresh name starts with it on), DEL deletes, ENTER
+  finishes; the floating window above shows what you typed.
 - **The table is a control panel.** Right in front of you along the near edge
   is a console: when a battle starts, hatches open and physical buttons rise for
   the battlescape controls (kneel, end turn, next soldier, level up/down, ...).
@@ -180,6 +203,9 @@ it has to be pulled most of the way.
 | Pinch an item in the inventory tray: rest your index finger on the trigger and your thumb on A | The fingers close on the nearest item (it lights up as your hand approaches) and pick it up; lift either finger over a slot or hand to drop it there (costs TU like in the game). Dropping onto an occupied hand swaps the items. |
 | Press a key on the action board | Choose that firing mode / action, or Cancel |
 | Press a red alien button | Centre the view on that spotted alien |
+| Touch a button on a floating pop-up | Click it (hover just in front to move the cursor there) |
+| Press keys on the table keyboard | Type into the game's text field |
+| Press a geoscape key on the console | Same as that geoscape button (time speed, Intercept, Bases, ...) |
 | Turn your right wrist toward you, tap the minimap with your left index | Move the table to that part of the map |
 
 If SteamVR offers skeletal finger data (`XR_EXT_hand_tracking`), the hands use
@@ -209,7 +235,9 @@ headset on.
   weapon goes to a free hand, the clip to the other hand or the floor). The
   ground area shows five columns at a time in pages (one row; items taller
   than three cells are only on the big screen's inventory).
-- Typing (base names, save names) needs the real keyboard.
+- The base view (Basescape) is still the flat screen; picking a base site or
+  a craft's destination is done on the globe dome with the flat pop-up's
+  Cancel on the wall screen.
 - Items lying on the floor are not shown on the table map yet (they are in the
   tray's ground area and on the screen).
 - The fog hides unexplored ground up to the level you are viewing; walls seen
@@ -229,7 +257,8 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrRoom.*` | Procedural command-center room, war table, controller models. |
 | `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (a critically damped follower turns the game's ~33 steps a second into smooth motion at the headset's frame rate), tile picking, the HUD (wireframe cursor, selected-unit marker, path preview, readouts in the game's font), voxel fog of war, voxel effects (projectiles, explosions, smoke, fire), the whole-map minimap, globe. |
 | `VrHands.*` | Hand skeletons (from XR hand tracking or posed from controller inputs), collision against box colliders with per-finger joint solving, pinch / point gestures. |
-| `VrTable.*` | The table's control panel: hatches and spring buttons, spotted-alien buttons, the pop-up action board, the inventory tray with voxel item models, head/tile taps, the wrist minimap and the live wall screens. |
+| `VrTable.*` | The table's control panel: hatches and spring buttons (battlescape and geoscape keys), spotted-alien buttons, the pop-up action board, the keyboard, the inventory tray with voxel item models, head/tile taps, the wrist minimap and the live wall screens. |
+| `VrFloat.*` | Floating pop-up windows: picks the game's top non-screen state, copies its area of the game frame, the projection effect, finger touches and the laser. |
 | `VrGL.*`, `VrShaders.h` | Tiny GL helper layer (incl. a shadow map target) and the single scene shader: linear lighting into an sRGB target, up to 12 point lights per frame, shadows from the key light, soft room-corner shading, the table's up-glow, the fog material. |
 
 Key ideas:
@@ -267,6 +296,16 @@ Key ideas:
   lists the visible action menu entries and `BattlescapeState::vrVisibleUnitButton`
   the red spotted-alien indicators. The table copies their pictures from the game
   frame and clicks their screen rectangles, so mods' custom actions just appear.
+  The geoscape keys do the same with `GeoscapeState::vrButtons`.
+- **Pop-ups are found, not listed.** Any state the game marks as not a full
+  screen (`State::isScreen`) is a pop-up; its window is the union of its
+  visible surfaces (`State::vrSurfaces`), cut from the game frame each frame.
+  The projection waits for the game's own grow animation to finish
+  (`Window::vrPopupDone`). Touches and laser clicks go back as mouse clicks at
+  the matching game pixel, so every dialog, including mods', just works.
+- **The keyboard types through the game.** A focused, visible `TextEdit` in
+  the top state raises the keyboard; each key sends the same SDL key event
+  (with its character) a real keyboard would.
 - **The pinch is a controller gesture, the animation follows it.** Finger on the
   trigger + thumb on A is the pinch (instant and reliable); the virtual index and
   thumb are bent toward each other with a small IK solver (FABRIK) and eased over
@@ -290,7 +329,8 @@ scrolling switched off in VR (`Camera::mouseOver`, `BattlescapeState::mapPress`)
 going during the intro and cutscenes), `Map::setSelectorTile` /
 `getCursorSize` / `getCursorInfo` (the cursor readout code, moved out of
 `drawTerrain` unchanged so the table can show it too),
-`BattleUnit::get/setFacingSnapshot`, `Globe::getCenter`, `Game::getStates`, and
+`BattleUnit::get/setFacingSnapshot`, `Globe::getCenter`, `Game::getStates`,
+`GeoscapeState::vrButtons`, `State::vrSurfaces`, `Window::vrPopupDone`, and
 `SDL_GetMouseState`/`SDL_WarpMouse` calls routed through `VR::getMouseState` /
 `VR::warpMouse` so the laser pointer is the mouse.
 

@@ -2939,6 +2939,16 @@ Globe *GeoscapeState::getGlobe() const
 }
 
 /**
+ * VR tabletop: the side buttons that get a key on the table console.
+ * @return Intercept, Bases, Graphs, Ufopaedia, Options, Funding, then the six time speeds.
+ */
+std::vector<InteractiveSurface*> GeoscapeState::vrButtons() const
+{
+	return { _btnIntercept, _btnBases, _btnGraphs, _btnUfopaedia, _btnOptions, _btnFunding,
+		_btn5Secs, _btn1Min, _btn5Mins, _btn30Mins, _btn1Hour, _btn1Day };
+}
+
+/**
  * Processes any left-clicks on globe markers,
  * or right-clicks to scroll the globe.
  * @param action Pointer to an action.

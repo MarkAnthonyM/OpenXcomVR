@@ -13,6 +13,7 @@
 #include "VrBoard.h"
 #include "VrHands.h"
 #include "VrTable.h"
+#include "VrFloat.h"
 #include "VrApi.h"
 #include "VrVersion.h"
 #include "../Engine/Game.h"
@@ -117,6 +118,7 @@ struct State
 	Board board;
 	Hands handsVis;
 	Table table;
+	FloatWindow floatWin;         // pop-ups projected over the table
 	std::vector<Collider> colliders;
 	float grabHold[2] = {0.f, 0.f};
 	bool laserOn[2] = {true, true};
@@ -288,6 +290,7 @@ static bool createResources()
 	S->board.init(S->layout);
 	S->handsVis.init();
 	S->table.init(S->layout);
+	S->floatWin.init();
 	S->board.setMapRect(S->table.mapRect());
 	S->board.clickScreen = [](int gx, int gy, int button)
 	{
@@ -534,6 +537,9 @@ static RayHit castRay(const glm::vec3 &o, const glm::vec3 &d)
 	glm::vec2 uv;
 	float t = S->panel.hit(o, d, uv);
 	if (t > 0.f && t < best.t) { best.target = RayHit::PANEL; best.t = t; best.uv = uv; }
+	// a floating pop-up works like the wall screen it mirrors
+	float ft;
+	if (S->floatWin.raycast(o, d, ft, uv) && ft < best.t) { best.target = RayHit::PANEL; best.t = ft; best.uv = uv; }
 	BoardHit bh;
 	if (S->board.raycast(o, d, bh) && bh.t < best.t)
 	{
@@ -596,6 +602,7 @@ static TableContext tableContext()
 	for (int h = 0; h < 2; ++h) ctx.handBusy[h] = S->grab[h].kind != Grab::NONE;
 	ctx.eye = S->mode == MODE_HEADSET ? xfPoint(S->rig, S->head.pos) : S->head.pos;
 	ctx.pressKey = [](int key) { pushKey((SDLKey)key, (Uint16)(key < 128 ? key : 0)); };
+	ctx.typeKey = [](int key, int ch) { pushKey((SDLKey)key, (Uint16)ch); };
 	return ctx;
 }
 
@@ -618,6 +625,26 @@ static void updateHandsAndTable(float dt, bool simulated)
 	}
 	TableContext ctx = tableContext();
 	S->table.update(ctx, S->handsVis, dt);
+	FloatContext fc;
+	fc.game = S->game;
+	fc.pixels = &S->pixels;
+	fc.surfW = S->surfW;
+	fc.surfH = S->surfH;
+	fc.tableY = S->table.surfaceY();
+	{
+		const RoomLayout &L = S->layout;
+		fc.table = {L.tableCenter.x - L.tableSize.x * 0.5f, L.tableCenter.z - L.tableSize.y * 0.5f, L.tableCenter.x + L.tableSize.x * 0.5f, L.tableCenter.z + L.tableSize.y * 0.5f};
+	}
+	fc.keyboard = S->table.keyboardUp();
+	fc.clickScreen = S->board.clickScreen;
+	fc.hover = [](int gx, int gy)
+	{
+		int wx, wy;
+		gameToWindow(glm::vec2((gx + 0.5f) / std::max(1, S->surfW), (gy + 0.5f) / std::max(1, S->surfH)), wx, wy);
+		if (wx != S->vmX || wy != S->vmY) pushMotion(wx, wy);
+	};
+	fc.haptic = ctx.haptic;
+	S->floatWin.update(fc, S->handsVis, dt);
 	S->colliders.clear();
 	S->table.colliders(S->colliders);
 }
@@ -1061,6 +1088,7 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 	// game content on the table (diorama / globe), the table's own controls, live wall screens
 	S->board.draw(sh, vp, eye, S->time);
 	sh.use();
+	S->floatWin.draw(sh);
 	S->table.draw(sh);
 	S->table.drawWalls(sh);
 
@@ -1274,6 +1302,20 @@ static void runScript()
 							sb->getTileEngine()->itemMoveInventory(u->getTile(), u, old, S->game->getMod()->getInventoryGround(), 0, 0);
 		}
 		else if (c.op == "groundkey") { S->table.groundKey((int)num(0, 1)); }
+		else if (c.op == "kbtype")
+		{
+			// kbtype WORDS... : type through the table keyboard's keys (words joined by spaces, "\\n" for Enter)
+			std::string text;
+			for (size_t i = 0; i < c.args.size(); ++i) { if (i) text += ' '; text += c.args[i]; }
+			std::string t2;
+			for (size_t i = 0; i < text.size(); ++i)
+			{
+				if (text[i] == '\\' && i + 1 < text.size() && text[i + 1] == 'n') { t2 += '\n'; ++i; }
+				else t2 += text[i];
+			}
+			TableContext ctx = tableContext();
+			if (!S->table.kbType(t2, ctx)) Log(LOG_WARNING) << "[VR] script: kbtype failed (no keyboard or no key)";
+		}
 		else if (c.op == "items") { Log(LOG_INFO) << "[VR] items: " << S->table.itemsInfo(); }
 		else if (c.op == "boardinfo") { Log(LOG_INFO) << "[VR] board: " << S->board.debugInfo(); }
 		else if (c.op == "refilltu")
@@ -1325,6 +1367,17 @@ static void runScript()
 				c.args = {std::to_string((int)num(0, 30000) - 100)};
 				S->script.push_front(c);
 				S->scriptWaitUntil = now + 100;
+				return;
+			}
+		}
+		else if (c.op == "waitfloat")
+		{
+			// waitfloat maxms : wait until a floating pop-up starts to appear (max num(0) ms)
+			if (S->floatWin.isClosed() && num(0, 10000) > 0)
+			{
+				c.args = {std::to_string((int)num(0, 10000) - 50)};
+				S->script.push_front(c);
+				S->scriptWaitUntil = now + 50;
 				return;
 			}
 		}
@@ -1390,7 +1443,7 @@ static void runScript()
 			S->simStep = (to - S->simGrip.pos) / (float)n;
 			S->simFrames = n;
 		}
-		else if (c.op == "poketile" || c.op == "pokenear" || c.op == "pokeunit" || c.op == "pokebutton" || c.op == "pokemenu" || c.op == "pinchitem" || c.op == "pinchto")
+		else if (c.op == "poketile" || c.op == "pokenear" || c.op == "pokeunit" || c.op == "pokebutton" || c.op == "pokemenu" || c.op == "pokekey" || c.op == "pokefloat" || c.op == "pinchitem" || c.op == "pinchto")
 		{
 			// test macros that steer the scripted hand: poke a point with the index finger, or pinch
 			Hands probe;
@@ -1418,6 +1471,8 @@ static void runScript()
 			else if (c.op == "pokebutton") ok = !c.args.empty() && S->table.buttonCenter(c.args[0], target);
 			glm::vec3 pushDir(0.f, -1.f, 0.f);
 			if (c.op == "pokemenu") { glm::vec3 n; ok = S->table.menuKeyCenter((int)num(0, 0), target, n); pushDir = -n; }
+			else if (c.op == "pokefloat") { glm::vec3 n; ok = S->floatWin.pointAt((float)num(0, 160), (float)num(1, 100), target, n); pushDir = -n; }
+			else if (c.op == "pokekey") { glm::vec3 n; ok = !c.args.empty() && S->table.kbKeyCenter(c.args[0], target, n); pushDir = -n; }
 			else if (c.op == "pinchitem") ok = S->table.itemCenter((int)num(0, 0), target);
 			else if (c.op == "pinchto") ok = S->table.cellCenter(c.args.empty() ? "STR_BACK_PACK" : c.args[0], (float)num(1, 0.5), (float)num(2, 0.5), target);
 			if (!ok) { Log(LOG_WARNING) << "[VR] script: " << c.op << " has no target"; continue; }
@@ -1468,7 +1523,7 @@ static void runScript()
 			const HandPose &hp = S->handsVis.pose[1];
 			glm::vec3 t = hp.tip(F_INDEX);
 			Log(LOG_INFO) << "[VR] status: " << S->table.status() << " | tip " << t.x << "," << t.y << "," << t.z
-				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch;
+				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch << " | " << S->floatWin.status();
 		}
 		else if (c.op == "shot") { S->pendingShot = c.args.empty() ? "vr_shot.png" : c.args[0]; return; }
 		else if (c.op == "gameshot" && !S->pixels.empty())

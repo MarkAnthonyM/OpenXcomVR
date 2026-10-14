@@ -1,0 +1,17 @@
+wait 9000
+pokebutton geoOptions
+waitfloat 15000
+wait 2500
+pokefloat 128 82
+wait 9000
+pokefloat 55 45
+wait 1500
+cam 0 1.30 0.10 0 -42
+waitframes 4
+shot shots/kb_keyboard.png
+kbtype Vr test
+pokekey DEL
+pokekey T
+wait 500
+status
+quit

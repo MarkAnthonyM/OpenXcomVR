@@ -101,6 +101,8 @@ Script commands (one per line; numbers are optional with defaults):
 | `items` | log the tray's items (index, slot, ammo) and the soldier's TU |
 | `unloadright`, `refilltu`, `spotaliens n` | test helpers: empty the right-hand weapon, refill TU, make aliens spotted |
 | `groundkey dir`, `padswipe dy`, `wheel dir` | tray ground pages, left-trackpad level swipe, level change |
+| `pokekey label`, `kbtype words...` | the fingertip presses a table keyboard key (`A`, `DEL`, `ENTER`, `SHIFT`...); type text through the keys (`\n` = Enter) |
+| `pokefloat gx gy`, `waitfloat maxms` | the fingertip touches the floating pop-up over game pixel gx, gy; wait until a pop-up starts to float |
 | `boardpan dx dz`, `boardrotate r`, `boardzoom f`, `minimaptap u v`, `gamecam x y z` | move the table view / the game camera |
 | `hand ...`, `handmove ...`, `handcurl ...`, `handoff` | a scripted right hand (grip pose and finger curls) |
 | `testburst dx dy big` | an explosion effect next to the selected soldier |
@@ -185,6 +187,23 @@ Table console and tray
 - The tray's controls strip is on the map side; nearer the player the raised
   rim would hide them from a seated view.
 
+Geoscape, pop-ups, keyboard (0.10.0)
+- The globe is a dome sunk into the table (`DOME_TOP` 22 cm above the glass,
+  tilted 35° toward the player); zooming sinks it, so it never hides the wall
+  screen. Geoscape side buttons are console keys in the bay: time speeds on
+  the far row (the raised rim hides part of the near row from a seated eye),
+  the six menu buttons on the near row.
+- Pop-ups (any non-screen state except the action menu, BuildNewBase and
+  SelectDestination) float over the near half of the map, leaning back 18°,
+  at most 50 × 32 cm. Effect "D": a line grows, unfolds with scanlines and
+  flicker, voxel sparks fly off the edges; it folds back on close. It waits
+  for the game's Window grow animation. The backing is drawn over whatever
+  stands on the table (depth test always) and before the hands.
+- The keyboard is on the table (not floating), at the near edge above the
+  rim, tilted 14°: digits + DEL, QWERTY, ASDF + ENTER, SHIFT ZXCVBNM - , .,
+  SPACE; 3.6 cm keys. Shift is one-shot and starts on for an empty field. A
+  pop-up lifts a little higher while the keyboard is up.
+
 Room and rendering
 - Walls close; live screens (flat game, stats, roster, minimap) on the back
   wall; wrist minimap shown when the right wrist turns toward the face.
@@ -196,7 +215,9 @@ Room and rendering
 - Quest 3 and Steam Frame layouts have never been run on those headsets.
 - Items lying on the floor aren't shown on the table map; ground items taller
   than three cells are only in the screen's inventory.
-- Typing (save and base names) needs the keyboard.
+- The base view is still only on the screen (part 2 of the geoscape round:
+  voxel base on the table, facility screens as floating windows).
+- Picking a base site / destination on the globe has no floating Cancel.
 - Changing video options in-game stops VR (restart).
 
 ## Where things are

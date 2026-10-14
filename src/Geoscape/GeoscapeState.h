@@ -19,6 +19,7 @@
  */
 #include "../Engine/State.h"
 #include <list>
+#include <vector>
 
 namespace OpenXcom
 {
@@ -111,6 +112,8 @@ public:
 	void popup(State *state);
 	/// Gets the Geoscape globe.
 	Globe *getGlobe() const;
+	/// VR tabletop: the side buttons that get a key on the table console (main buttons, then time speeds).
+	std::vector<InteractiveSurface*> vrButtons() const;
 	/// Handler for clicking the globe.
 	void globeClick(Action *action);
 	/// Handler for clicking the Intercept button.

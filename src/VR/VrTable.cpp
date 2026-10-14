@@ -15,6 +15,7 @@
 #include "../Engine/Options.h"
 #include "../Engine/InteractiveSurface.h"
 #include "../Interface/Text.h"
+#include "../Interface/TextEdit.h"
 #include "../Interface/Cursor.h"
 #include "../Interface/FpsCounter.h"
 #include "../Mod/Mod.h"
@@ -36,6 +37,7 @@
 #include "../Battlescape/Map.h"
 #include "../Battlescape/Camera.h"
 #include "../Battlescape/ActionMenuState.h"
+#include "../Geoscape/GeoscapeState.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <map>
 #include <cmath>
@@ -77,7 +79,8 @@ struct Btn
 	bool target = false;
 	int pressHand = -1;
 	int alert = -1;             // >= 0: a spotted-enemy indicator; its picture and click come from the screen
-	glm::ivec4 scr{0};          // alerts: the indicator's rectangle on the game screen
+	int geo = -1;               // >= 0: a geoscape side button (GeoscapeState::vrButtons order), same idea
+	glm::ivec4 scr{0};          // alerts / geoscape keys: the button's rectangle on the game screen
 };
 
 struct ItemView
@@ -231,6 +234,41 @@ struct Table::Impl
 	glm::vec3 menuKeyWorld(const MenuKey &k, float lift) const { return mO + mRight * k.c.x + mUp * (k.c.y * menuOpen) + mN * lift; }
 	void drawMenu(const Shader &sh) const;
 
+	// the table keyboard: a holographic plate that unrolls in front of the player while the game
+	// waits for typed text (a focused text field: base, save and craft names, renames, searches)
+	struct KbKey
+	{
+		int sym = 0, ch = 0, chShift = 0;   // SDL key and the characters it types (plain, shifted)
+		bool shiftKey = false;
+		std::string label, labelShift;
+		glm::vec2 c{0.f}, half{0.f};        // centre and half size on the plate (u right, v away from the player)
+		int row = 0;                        // 0 nearest
+		int atlas = 0, atlasShift = 0;      // label rows in kbTex
+		float depress = 0.f, laserTimer = 0.f, flash = 0.f;
+		bool latched = false;
+		int hand = -1;
+	};
+	std::vector<KbKey> kb;
+	float kbOpen = 0.f;
+	bool kbShift = false;
+	TextEdit *kbEdit = nullptr;
+	glm::vec3 kO{0.f}, kRight{1, 0, 0}, kUp{0, 0, -1}, kN{0, 1, 0}; // plate origin (near edge, centre) and axes
+	glm::vec2 kSize{0.f};
+	Texture kbTex;
+	int kbRows = 0;
+	static constexpr int KB_LW = 40, KB_LH = 12, KB_ROWS = 5;
+	static constexpr float KB_LIFT = 0.007f, KB_TRAVEL = 0.005f;
+	void initKeyboard();
+	void buildKbLabels(TableContext &ctx);
+	void updateKeyboard(TableContext &ctx, const Hands &hands, float dt);
+	void pressKbKey(int i, int hand, TableContext &ctx);
+	void drawKeyboard(const Shader &sh) const;
+	glm::vec3 kbWorld(glm::vec2 c, float lift) const { return kO + kRight * c.x + kUp * c.y + kN * lift; }
+	// the plate unrolls from the player's side; each row rises as the sweep passes it
+	float kbSweep() const { return smooth01(0.f, 0.55f, kbOpen); }
+	float kbRowUp(int row) const { return smooth01((row + 0.5f) / KB_ROWS * 0.55f, (row + 0.5f) / KB_ROWS * 0.55f + 0.35f, kbOpen); }
+	bool kbUsable(const KbKey &k) const { return kbEdit && kbRowUp(k.row) > 0.97f; }
+
 	// wall screens
 	Wall walls[3];
 	UnitInfoState *stats = nullptr;
@@ -267,10 +305,20 @@ struct Table::Impl
 		float rise = smooth01(0.4f, 1.f, b.open);
 		return glm::mix(sy - CAVITY + 0.004f, sy + CAP_PROUD, rise) - b.depress;
 	}
-	bool usable(const Btn &b) const { return inBattle && bsTop && b.visible && b.open > 0.97f; }
+	bool usable(const Btn &b) const
+	{
+		if (b.geo >= 0) return geoTop && b.visible && b.open > 0.97f;
+		return inBattle && bsTop && b.visible && b.open > 0.97f;
+	}
+	// geoscape: its side buttons as keys in the bay
+	static const int GEO_KEYS = 12;
+	GeoscapeState *geo = nullptr;
+	bool geoTop = false;
+	Texture geoTex[GEO_KEYS];
 
 	void layoutButtons();
 	void syncBattle(TableContext &ctx);
+	void syncGeo(TableContext &ctx);
 	void updateButtons(TableContext &ctx, const Hands &hands, float dt);
 	void pressButton(int i, int hand, TableContext &ctx);
 	void buildGrid(TableContext &ctx);
@@ -364,8 +412,32 @@ void Table::init(const RoomLayout &layout)
 			p.btns.push_back(b);
 		}
 	}
+	// geoscape keys in the bay: the six time speeds (used most) on the far row, Intercept, Bases, Graphs,
+	// UFOpaedia, Options, Funding on the near row; both kept in the bay's far part, which the raised rim
+	// doesn't hide from a seated player
+	{
+		const char *names[Impl::GEO_KEYS] = {"geoIntercept", "geoBases", "geoGraphs", "geoUfopaedia", "geoOptions", "geoFunding",
+			"geo5Secs", "geo1Min", "geo5Mins", "geo30Mins", "geo1Hour", "geo1Day"};
+		const int cols = 6;
+		float x0 = p.bay.x, x1 = p.bay.z, z0 = p.bay.y, z1 = p.bay.w;
+		float cw = (x1 - x0) / cols, rh = (z1 - z0) * 0.42f;
+		for (int i = 0; i < Impl::GEO_KEYS; ++i)
+		{
+			Btn b;
+			b.name = names[i];
+			b.geo = i;
+			b.visible = false;
+			int row = 1 - i / cols, col = i % cols;
+			float bx = x0 + col * cw, bz = z0 + row * rh;
+			const float m = 0.005f;
+			b.rect = {bx + m, bz + m, bx + cw - m, bz + rh - m};
+			b.delay = 0.04f * col + 0.08f * row;
+			p.btns.push_back(b);
+		}
+	}
 
 	p.layoutButtons();
+	p.initKeyboard();
 
 	// meshes
 	MeshData q;
@@ -431,7 +503,7 @@ void Table::Impl::layoutButtons()
 	float halfW = (bay.z - bay.x) * 0.5f;
 	for (Btn &b : btns)
 	{
-		if (b.alert >= 0) continue; // placed once in init()
+		if (b.alert >= 0 || b.geo >= 0) continue; // placed once in init()
 		float vx = (float)visX(b.px.x);
 		glm::vec3 a = bayWorld(vx, (float)b.px.y, sy);
 		glm::vec3 c = bayWorld(vx + b.px.z, (float)(b.px.y + b.px.w), sy);
@@ -448,6 +520,36 @@ const std::vector<glm::vec4> &Table::holes() const { return _p->holes; }
 
 // ------------------------------------------------------------------ battle state
 
+/// Geoscape keys: visible while the geoscape is the top screen; pictures copied from the game frame,
+/// so they show the game's own button (and which time speed is selected).
+void Table::Impl::syncGeo(TableContext &ctx)
+{
+	geo = nullptr;
+	if (!inBattle)
+		for (State *st : game->getStates())
+			if (auto *g = dynamic_cast<GeoscapeState*>(st)) { geo = g; break; }
+	geoTop = geo && !game->getStates().empty() && game->getStates().back() == (State*)geo;
+	std::vector<InteractiveSurface*> keys;
+	if (geo) keys = geo->vrButtons();
+	for (Btn &b : btns)
+	{
+		if (b.geo < 0) continue;
+		InteractiveSurface *s = b.geo < (int)keys.size() ? keys[b.geo] : nullptr;
+		b.visible = s && s->getVisible();
+		if (!b.visible) continue;
+		b.scr = {s->getX(), s->getY(), s->getWidth(), s->getHeight()};
+		if (geoTop && ctx.pixels && b.scr.z > 0 && b.scr.x >= 0 && b.scr.y >= 0 && b.scr.x + b.scr.z <= ctx.surfW && b.scr.y + b.scr.w <= ctx.surfH)
+		{
+			std::vector<uint32_t> px((size_t)b.scr.z * b.scr.w);
+			for (int y = 0; y < b.scr.w; ++y)
+				std::copy_n(&(*ctx.pixels)[(size_t)(b.scr.y + y) * ctx.surfW + b.scr.x], b.scr.z, &px[(size_t)y * b.scr.z]);
+			Texture &t = geoTex[b.geo];
+			if (!t.valid() || t.width() != b.scr.z || t.height() != b.scr.w) t.create(b.scr.z, b.scr.w, false, true);
+			t.update(px.data(), b.scr.z, b.scr.w);
+		}
+	}
+}
+
 void Table::Impl::syncBattle(TableContext &ctx)
 {
 	game = ctx.game;
@@ -456,6 +558,7 @@ void Table::Impl::syncBattle(TableContext &ctx)
 	battle = board ? board->battle() : nullptr;
 	inBattle = bs && battle;
 	bsTop = inBattle && !game->getStates().empty() && game->getStates().back() == (State*)bs;
+	syncGeo(ctx);
 	if (!inBattle) return;
 
 	// live panel layout and visibility
@@ -516,7 +619,7 @@ void Table::Impl::pressButton(int i, int hand, TableContext &ctx)
 	Btn &b = btns[i];
 	if (!usable(b)) return;
 	int gx = icons.x + b.px.x + b.px.z / 2, gy = icons.y + b.px.y + b.px.w / 2;
-	if (b.alert >= 0) { gx = b.scr.x + b.scr.z / 2; gy = b.scr.y + b.scr.w / 2; }
+	if (b.alert >= 0 || b.geo >= 0) { gx = b.scr.x + b.scr.z / 2; gy = b.scr.y + b.scr.w / 2; }
 	ctx.clickScreen(gx, gy, SDL_BUTTON_LEFT);
 	if (hand >= 0 && hand < 2) ctx.haptic(hand, 0.7f, 0.025f); // no sound: the game's own battle buttons are silent
 	lastEvent = "button " + b.name;
@@ -529,7 +632,7 @@ void Table::Impl::updateButtons(TableContext &ctx, const Hands &hands, float dt)
 	for (size_t i = 0; i < btns.size(); ++i)
 	{
 		Btn &b = btns[i];
-		bool want = inBattle && b.visible;
+		bool want = b.geo >= 0 ? geoTop && b.visible : inBattle && b.visible;
 		if (want && !b.target) b.wait = b.delay;
 		b.target = want;
 		if (want)
@@ -1555,6 +1658,243 @@ void Table::Impl::drawMenu(const Shader &sh) const
 	sh.set("uTint", glm::vec4(1.f));
 }
 
+// ------------------------------------------------------------------ table keyboard
+
+void Table::Impl::initKeyboard()
+{
+	const float P = 0.036f, gap = 0.0025f, pad = 0.012f; // 3.6 cm key pitch
+	const float W = 11.5f * P;
+	const float L = -W * 0.5f;
+	kb.clear();
+	auto add = [&](int row, float u0, float w, int sym, int ch, int chShift, const std::string &label, const std::string &labelShift, bool shiftKey = false)
+	{
+		KbKey k;
+		k.sym = sym; k.ch = ch; k.chShift = chShift;
+		k.label = label; k.labelShift = labelShift;
+		k.shiftKey = shiftKey;
+		k.row = row;
+		k.c = {L + (u0 + w * 0.5f) * P, pad + (row + 0.5f) * P};
+		k.half = {w * P * 0.5f - gap, P * 0.5f - gap};
+		kb.push_back(k);
+	};
+	auto letters = [&](int row, float u0, const char *keys)
+	{
+		for (int i = 0; keys[i]; ++i)
+		{
+			char c = keys[i];
+			char C = (char)std::toupper((unsigned char)c);
+			add(row, u0 + i, 1.f, c, c, C, std::string(1, C), std::string(1, C));
+		}
+	};
+	// far row: digits and delete
+	for (int i = 0; i < 10; ++i)
+	{
+		char d = "1234567890"[i];
+		add(4, (float)i, 1.f, d, d, d, std::string(1, d), std::string(1, d));
+	}
+	add(4, 10.f, 1.5f, SDLK_BACKSPACE, 8, 8, "DEL", "DEL");
+	letters(3, 0.25f, "qwertyuiop");
+	letters(2, 0.5f, "asdfghjkl");
+	add(2, 9.5f, 2.f, SDLK_RETURN, 13, 13, "ENTER", "ENTER");
+	add(1, 0.f, 1.5f, 0, 0, 0, "SHIFT", "SHIFT", true);
+	letters(1, 1.5f, "zxcvbnm");
+	add(1, 8.5f, 1.f, SDLK_MINUS, '-', '_', "-", "_");
+	add(1, 9.5f, 1.f, SDLK_COMMA, ',', '\'', ",", "'");
+	add(1, 10.5f, 1.f, SDLK_PERIOD, '.', '!', ".", "!");
+	add(0, 2.75f, 6.f, SDLK_SPACE, ' ', ' ', "SPACE", "SPACE");
+	kSize = {W + pad * 2.f, KB_ROWS * P + pad * 2.f};
+}
+
+/// Key labels in the game's own font, one row per label in a small texture.
+void Table::Impl::buildKbLabels(TableContext &ctx)
+{
+	Mod *mod = ctx.game->getMod();
+	Font *big = mod->getFont("FONT_BIG", false), *small = mod->getFont("FONT_SMALL", false);
+	if (!big || !small) return;
+	std::map<std::string, int> rows;
+	std::vector<std::string> labels;
+	auto rowOf = [&](const std::string &l)
+	{
+		auto it = rows.find(l);
+		if (it != rows.end()) return it->second;
+		int r = (int)labels.size();
+		rows[l] = r;
+		labels.push_back(l);
+		return r;
+	};
+	for (KbKey &k : kb)
+	{
+		// letters show what they type: lower case, or upper case while shift is on
+		std::string plain = k.label;
+		if (k.ch >= 'a' && k.ch <= 'z') plain = std::string(1, (char)k.ch);
+		k.atlas = rowOf(plain);
+		k.atlasShift = rowOf(k.labelShift);
+	}
+	kbRows = (int)labels.size();
+	std::vector<uint32_t> px((size_t)KB_LW * KB_LH * kbRows, 0u);
+	SDL_Color *pal = !ctx.game->getStates().empty() ? ctx.game->getStates().back()->getPalette() : nullptr;
+	for (int r = 0; r < kbRows; ++r)
+	{
+		Text t(KB_LW, KB_LH, 0, 0);
+		t.initText(big, small, ctx.game->getLanguage());
+		if (pal) t.setPalette(pal);
+		if (labels[r].size() == 1) t.setBig(); else t.setSmall();
+		t.setAlign(ALIGN_CENTER);
+		t.setVerticalAlign(ALIGN_MIDDLE);
+		t.setColor(1);
+		t.setText(labels[r]);
+		t.draw();
+		for (int y = 0; y < KB_LH; ++y)
+			for (int x = 0; x < KB_LW; ++x)
+			{
+				int v = t.getPixel(x, y);
+				if (v) px[((size_t)r * KB_LH + y) * KB_LW + x] = v <= 2 ? 0xFFFFFFFFu : 0x90000000u;
+			}
+	}
+	kbTex.create(KB_LW, KB_LH * kbRows, false, true);
+	kbTex.update(px.data(), KB_LW, KB_LH * kbRows);
+}
+
+void Table::Impl::updateKeyboard(TableContext &ctx, const Hands &hands, float dt)
+{
+	// a focused, visible text field in the top state means the game is waiting for typing
+	TextEdit *edit = nullptr;
+	if (game && !game->getStates().empty())
+		for (Surface *s : game->getStates().back()->vrSurfaces())
+			if (TextEdit *te = dynamic_cast<TextEdit*>(s))
+				if (te->getVisible() && te->isFocused()) { edit = te; break; }
+	if (edit && edit != kbEdit) kbShift = edit->getText().empty(); // a fresh name starts with a capital
+	kbEdit = edit;
+	kbOpen = edit ? std::min(1.f, kbOpen + dt / 0.7f) : std::max(0.f, kbOpen - dt / 0.35f);
+	for (KbKey &k : kb) k.flash = std::max(0.f, k.flash - dt);
+	if (kbOpen <= 0.f) return;
+	if (!kbTex.valid()) buildKbLabels(ctx);
+
+	// the plate floats just above the rim at the near edge, tilted up toward the player's eyes
+	const float tilt = glm::radians(14.f);
+	kRight = glm::vec3(1, 0, 0);
+	kUp = glm::vec3(0, std::sin(tilt), -std::cos(tilt));
+	kN = glm::vec3(0, std::cos(tilt), std::sin(tilt));
+	kO = glm::vec3((table.x + table.z) * 0.5f, sy + 0.05f, table.w - 0.035f);
+
+	// fingertips push the keys in; a key types near the bottom of its travel
+	for (int i = 0; i < (int)kb.size(); ++i)
+	{
+		KbKey &k = kb[i];
+		float pushed = 0.f;
+		int by = -1;
+		if (kbUsable(k))
+			for (int h = 0; h < 2; ++h)
+			{
+				const HandPose &P = hands.pose[h];
+				if (!P.valid || P.ghost || ctx.handBusy[h]) continue;
+				glm::vec3 tip = P.raw[fingerTip(F_INDEX)];
+				float r = P.radius[fingerTip(F_INDEX)];
+				glm::vec3 d = tip - kO;
+				glm::vec2 uv(glm::dot(d, kRight), glm::dot(d, kUp));
+				if (std::fabs(uv.x - k.c.x) > k.half.x + r * 0.3f || std::fabs(uv.y - k.c.y) > k.half.y + r * 0.3f) continue;
+				float depth = KB_LIFT - (glm::dot(d, kN) - r); // how far the fingertip is past the key face
+				if (depth > 0.f && depth < 0.05f && depth > pushed) { pushed = depth; by = h; }
+			}
+		if (k.laserTimer > 0.f) { k.laserTimer -= dt; pushed = KB_TRAVEL; }
+		pushed = std::min(pushed, KB_TRAVEL);
+		if (pushed > k.depress) { k.depress = pushed; if (by >= 0) k.hand = by; }
+		else k.depress = std::max(pushed, k.depress - 0.12f * dt);
+		if (!k.latched && k.depress > KB_TRAVEL * 0.7f)
+		{
+			k.latched = true;
+			if (k.laserTimer <= 0.f) pressKbKey(i, k.hand, ctx);
+		}
+		else if (k.latched && k.depress < KB_TRAVEL * 0.3f)
+		{
+			k.latched = false;
+			k.hand = -1;
+		}
+	}
+}
+
+void Table::Impl::pressKbKey(int i, int hand, TableContext &ctx)
+{
+	if (i < 0 || i >= (int)kb.size() || !kbEdit) return;
+	KbKey &k = kb[i];
+	k.flash = 0.18f;
+	if (k.shiftKey)
+	{
+		kbShift = !kbShift;
+	}
+	else
+	{
+		int ch = kbShift ? k.chShift : k.ch;
+		if (ctx.typeKey) ctx.typeKey(k.sym, ch);
+		if (k.sym != SDLK_BACKSPACE && k.sym != SDLK_RETURN) kbShift = false; // one character, like a phone's shift
+	}
+	if (hand >= 0 && hand < 2) ctx.haptic(hand, 0.45f, 0.015f);
+	lastEvent = "keyboard " + (kbShift && !k.shiftKey ? k.labelShift : k.label);
+	Log(LOG_INFO) << "[VR] " << lastEvent;
+}
+
+void Table::Impl::drawKeyboard(const Shader &sh) const
+{
+	if (kbOpen <= 0.f || kb.empty()) return;
+	auto frameAt = [&](glm::vec2 c, glm::vec2 half, float lift) -> glm::mat4
+	{
+		glm::mat4 m(1.f);
+		m[0] = glm::vec4(kRight * (half.x * 2.f), 0.f);
+		m[1] = glm::vec4(kUp * (half.y * 2.f), 0.f);
+		m[2] = glm::vec4(kN, 0.f);
+		m[3] = glm::vec4(kbWorld(c, lift), 1.f);
+		return m;
+	};
+	float sweep = kbSweep();
+	float depth = kSize.y * sweep; // how much of the plate has unrolled
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// plate: dark glass with a glowing frame, unrolling away from the player
+	glm::vec2 pc(0.f, depth * 0.5f), ph(kSize.x * 0.5f, depth * 0.5f);
+	float flick = 0.85f + 0.15f * (float)std::sin(time * 53.0) * (1.f - kbOpen);
+	sh.set("uMode", 2);
+	sh.set("uTint", glm::vec4(0.2f, 1.1f, 1.3f, 0.6f * flick));
+	sh.set("uModel", frameAt(pc, ph + glm::vec2(0.003f), -0.001f));
+	quadFront.draw();
+	sh.set("uTint", glm::vec4(0.012f, 0.025f, 0.035f, 0.9f));
+	sh.set("uModel", frameAt(pc, ph, 0.f));
+	quadFront.draw();
+	// the scan line at the unrolling edge
+	if (sweep < 1.f)
+	{
+		sh.set("uTint", glm::vec4(0.6f, 1.6f, 1.8f, 0.9f));
+		sh.set("uModel", frameAt(glm::vec2(0.f, depth), glm::vec2(kSize.x * 0.5f + 0.01f, 0.0025f), 0.002f));
+		quadFront.draw();
+	}
+	for (const KbKey &k : kb)
+	{
+		float up = kbRowUp(k.row);
+		if (up <= 0.01f) continue;
+		float lift = KB_LIFT * up - k.depress;
+		bool lit = k.latched || k.flash > 0.f || (k.shiftKey && kbShift);
+		// key body: a translucent block
+		sh.set("uMode", 2);
+		sh.set("uTint", lit ? glm::vec4(0.15f, 0.7f, 0.85f, 0.85f) : glm::vec4(0.05f, 0.22f, 0.3f, 0.75f * up));
+		glm::mat4 body = frameAt(k.c, k.half, lift) * glm::scale(glm::mat4(1.f), {1.f, 1.f, std::max(0.0005f, lift)});
+		sh.set("uModel", body * glm::translate(glm::mat4(1.f), {0.f, 0.f, -0.5f}));
+		box.draw();
+		// label
+		if (!kbTex.valid() || kbRows <= 0) continue;
+		int row = kbShift ? k.atlasShift : k.atlas;
+		float lh = k.half.y * 2.f * 0.62f, lw = lh * (float)KB_LW / KB_LH;
+		lw = std::min(lw, k.half.x * 2.f);
+		sh.set("uMode", 4);
+		sh.set("uTint", lit ? glm::vec4(1.4f, 1.4f, 1.4f, 1.f) : glm::vec4(0.55f, 1.0f, 1.15f, up));
+		sh.set("uUVRect", glm::vec4(0.f, (float)row / kbRows, 1.f, 1.f / kbRows));
+		sh.set("uModel", frameAt(k.c, glm::vec2(lw * 0.5f, lh * 0.5f), lift + 0.0006f));
+		kbTex.bind(0);
+		quadFront.draw();
+		sh.set("uUVRect", glm::vec4(0.f, 0.f, 1.f, 1.f));
+	}
+	glDisable(GL_BLEND);
+	sh.set("uTint", glm::vec4(1.f));
+}
+
 // ------------------------------------------------------------------ wrist minimap
 
 void Table::Impl::updateWrist(TableContext &ctx, const Hands &hands, float dt)
@@ -1830,6 +2170,7 @@ void Table::update(TableContext &ctx, const Hands &hands, float dt)
 	p.updateWalls(ctx, dt);
 	p.updateWrist(ctx, hands, dt);
 	p.updateMenu(ctx, hands, dt);
+	p.updateKeyboard(ctx, hands, dt);
 	if (p.warnTimer > 0.f) p.warnTimer -= dt;
 }
 
@@ -1948,7 +2289,19 @@ void Table::draw(const Shader &sh) const
 			sh.set("uMode", 0);
 			sh.set("uTint", glm::vec4(0.13f, 0.14f, 0.16f, 1.f));
 			boxAt(mn, mx);
-			if (b.alert >= 0)
+			if (b.geo >= 0)
+			{
+				if (p.geoTex[b.geo].valid())
+				{
+					sh.set("uMode", 1);
+					float lit = p.usable(b) ? (b.latched ? 1.5f : 1.15f) : 0.45f;
+					sh.set("uTint", glm::vec4(lit, lit, lit, 1.f));
+					sh.set("uTexSize", glm::vec2((float)p.geoTex[b.geo].width(), (float)p.geoTex[b.geo].height()));
+					p.geoTex[b.geo].bind(0);
+					flat({mn.x, mn.z, mx.x, mx.z}, top);
+				}
+			}
+			else if (b.alert >= 0)
 			{
 				if (p.alertTex[b.alert].valid())
 				{
@@ -2134,6 +2487,7 @@ void Table::drawWalls(const Shader &sh) const
 		if (w.live && w.tex.valid()) _p->drawWall(sh, w);
 	_p->drawWrist(sh);
 	_p->drawMenu(sh);
+	_p->drawKeyboard(sh);
 	sh.set("uTint", glm::vec4(1.f));
 }
 
@@ -2166,6 +2520,25 @@ bool Table::raycast(const glm::vec3 &o, const glm::vec3 &d, TableHit &hit) const
 			hit = {TableHit::MENU, t, i, at};
 			any = true;
 		}
+	if (p.kbEdit)
+	{
+		float dn = glm::dot(d, p.kN);
+		if (std::fabs(dn) > 1e-6f)
+			for (int i = 0; i < (int)p.kb.size(); ++i)
+			{
+				const Impl::KbKey &k = p.kb[i];
+				if (!p.kbUsable(k)) continue;
+				glm::vec3 face = p.kbWorld(k.c, Impl::KB_LIFT);
+				float t = glm::dot(face - o, p.kN) / dn;
+				if (t <= 0.f || t >= hit.t) continue;
+				glm::vec3 at = o + d * t;
+				glm::vec3 rel = at - p.kO;
+				glm::vec2 uv(glm::dot(rel, p.kRight), glm::dot(rel, p.kUp));
+				if (std::fabs(uv.x - k.c.x) > k.half.x || std::fabs(uv.y - k.c.y) > k.half.y) continue;
+				hit = {TableHit::KEY, t, i, at};
+				any = true;
+			}
+	}
 	for (size_t i = 0; i < p.btns.size(); ++i)
 	{
 		const Btn &b = p.btns[i];
@@ -2217,6 +2590,12 @@ void Table::pointerClick(const TableHit &hit, int button, TableContext &ctx)
 	{
 		p.held.origin = hit.point + p.held.offset;
 		p.drop(ctx);
+		return;
+	}
+	if (hit.kind == TableHit::KEY && hit.index >= 0 && hit.index < (int)p.kb.size())
+	{
+		p.kb[hit.index].laserTimer = 0.12f;
+		p.pressKbKey(hit.index, -1, ctx);
 		return;
 	}
 	if (hit.kind == TableHit::MENU && hit.index >= 0 && hit.index < (int)p.menuKeys.size())
@@ -2313,6 +2692,47 @@ bool Table::cellCenter(const std::string &slot, float cx, float cy, glm::vec3 &w
 	return true;
 }
 
+bool Table::keyboardUp() const { return _p->kbEdit && _p->kbOpen > 0.97f; }
+
+bool Table::kbKeyCenter(const std::string &label, glm::vec3 &w, glm::vec3 &n) const
+{
+	const Impl &p = *_p;
+	if (!p.kbEdit) return false;
+	for (const Impl::KbKey &k : p.kb)
+		if (k.label == label || k.labelShift == label || (k.ch >= 'a' && k.ch <= 'z' && std::string(1, (char)k.ch) == label))
+		{
+			w = p.kbWorld(k.c, Impl::KB_LIFT);
+			n = p.kN;
+			return true;
+		}
+	return false;
+}
+
+bool Table::kbType(const std::string &text, TableContext &ctx)
+{
+	Impl &p = *_p;
+	if (!p.kbEdit) return false;
+	int shiftKey = -1;
+	for (int i = 0; i < (int)p.kb.size(); ++i) if (p.kb[i].shiftKey) shiftKey = i;
+	for (char c : text)
+	{
+		int ch = c == '\n' ? 13 : (unsigned char)c;
+		int found = -1;
+		bool needShift = false;
+		for (int i = 0; i < (int)p.kb.size() && found < 0; ++i)
+		{
+			const Impl::KbKey &k = p.kb[i];
+			if (k.shiftKey) continue;
+			if (k.ch == ch) { found = i; needShift = false; }
+			else if (k.chShift == ch) { found = i; needShift = true; }
+		}
+		if (found < 0) return false;
+		if (p.kb[found].ch != p.kb[found].chShift && needShift != p.kbShift) p.pressKbKey(shiftKey, -1, ctx);
+		p.pressKbKey(found, -1, ctx);
+	}
+	return true;
+}
+
 std::string Table::status() const
 {
 	const Impl &p = *_p;
@@ -2321,6 +2741,7 @@ std::string Table::status() const
 	std::ostringstream ss;
 	ss << "battle=" << p.inBattle << " top=" << p.bsTop << " buttonsUp=" << open << "/" << p.btns.size()
 		<< " items=" << p.items.size() << " held=" << (p.held.item ? 1 : 0) << " last='" << p.lastEvent << "'";
+	if (p.kbEdit) ss << " keyboard='" << p.kbEdit->getText() << "'" << (p.kbShift ? " shift" : "");
 	return ss.str();
 }
 

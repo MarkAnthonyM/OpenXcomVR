@@ -69,6 +69,8 @@ public:
 	void think() override;
 	/// Popups the window.
 	void popup();
+	/// VR: the pop-up animation has finished (the floating window waits for it).
+	bool vrPopupDone() const { return _popupStep >= 1.0; }
 	/// Draws the window.
 	void draw() override;
 	/// sets the X delta.
