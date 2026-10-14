@@ -599,11 +599,10 @@ void BaseDiorama::fingers(const Hands &hands, const BaseInput &in, float dt)
 		bool inside = usable && px >= 0.f && py >= 0.f && px < PX && py < PX;
 		glm::ivec2 cell = inside ? glm::ivec2((int)px / CELL, (int)py / CELL) : glm::ivec2(-1);
 		float top = inside ? p.heightAt((int)px, (int)py) : 0.f;
-		bool near = inside && tip.y - r < p.sy + top + 0.09f;
+		bool hovering = inside && tip.y - r < p.sy + top + 0.09f;
 		// touch at the surface, let go a little above it (no flicker while the finger rests there)
 		bool touching = inside && tip.y - r <= p.sy + top + (t.down ? 0.012f : 0.004f);
-		if (near && p.fingerCell.x < 0) p.fingerCell = cell;
-		if (std::getenv("OXCE_VR_DEBUG_BASE") && P.valid) Log(LOG_INFO) << "[VR] basefinger h" << h << " usable " << usable << " tip " << tip.x << "," << tip.y << "," << tip.z << " px " << px << "," << py << " top " << top << " sy " << p.sy << " touch " << touching;
+		if (hovering && p.fingerCell.x < 0) p.fingerCell = cell;
 		if (touching && !t.down && t.cool <= 0.f)
 		{
 			t.down = true;
