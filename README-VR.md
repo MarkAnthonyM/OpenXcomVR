@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.12.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.12.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -43,8 +43,7 @@ stand) in an X-COM command center at a holographic war table:
   debriefing, next-turn and monthly report screens, it is projected as a
   floating window over the near half of the table, turned to face you: a
   bright line appears, unfolds into the window with rolling scanlines and
-  flicker while voxel sparks fly off its edges, and folds back into the line
-  when the pop-up closes. Every running dogfight floats side by side.
+  flicker, and folds back into the line when the pop-up closes. Every running dogfight floats side by side.
   Battle messages that close by themselves (a soldier killed, panicked...)
   stay readable for at least 2.5 s. Touch a button with your fingertip
   (hovering just in front moves the game's cursor there); when your hand
@@ -54,11 +53,6 @@ stand) in an X-COM command center at a holographic war table:
   and Cancel) stands beyond the globe, and you touch the spot on the dome with
   your fingertip (or the laser). The action board has its own keys and doesn't
   float.
-  **Two ways to appear:** the projection above (default, `Play VR.bat`), or
-  a **voxel assembly** (`Play VR - voxel pop-ups.bat`, option
-  `vrPopupEffect: 1`): small voxel cubes in the window's colours burst up
-  from the table and snap into place piece by piece to form the window, and
-  on closing it breaks apart and the cubes fall back into the table.
 - **Your base on the table.** Opening a base replaces the globe with the base
   as a voxel relief of the game's own facility pictures (walls, corridors and
   machinery stand out by brightness), its craft parked in their hangars as
@@ -276,9 +270,8 @@ headset on.
   than three cells are only on the big screen's inventory).
 - The geoscape's own full screens (Graphs, UFOpaedia...) are still on the
   wall screen.
-- Floating pop-ups are the game's 320 × 200 pictures: they are made big and
-  turned toward you, and upscaled with Scale2x (`vrSharpPopups`, on by
-  default) for smoother letters, but they can't gain detail.
+- Floating pop-ups are the game's 320 × 200 pictures, made big and turned
+  toward you; small text can still look soft in the headset.
 - Items lying on the floor are not shown on the table map yet (they are in the
   tray's ground area and on the screen).
 - The fog hides unexplored ground up to the level you are viewing; walls seen
@@ -361,7 +354,7 @@ Key ideas:
 
 Engine hooks: `Game.cpp` (startup, event filter, per-loop `VR::frame`),
 `Screen.cpp` (hand the composed frame to VR), `Options` (`vrMode`, `vrTableScale`,
-`vrSeatOffset`, `vrShadows`, `vrSharpPopups`, `vrPopupEffect`),
+`vrSeatOffset`, `vrShadows`),
 `UnitWalkBState` (in VR every visible unit counts as on screen: the engine
 otherwise skips most of the walk animation, and runs at timer interval 0, for
 units outside the flat camera's view, which made them sprint across the table),

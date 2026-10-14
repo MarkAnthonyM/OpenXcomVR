@@ -201,12 +201,13 @@ Geoscape, pop-ups, keyboard (0.10.0)
   Saving bars, plus Briefing, Debriefing, NextTurn, Promotions,
   Commendation(Late), MonthlyReport and MiniMap screens) float over the near
   half of the map, turned to face the eyes when they open (5–50° lean), up
-  to 66 × 42 cm (2.6 mm per game pixel at most), Scale2x twice. Dogfights
+  to 66 × 42 cm (2.6 mm per game pixel at most), the game's pixels as they
+  are (with the screen's scanlines). Dogfights
   float side by side. BuildNewBase / SelectDestination float only their bar,
   far beyond the globe; the dome takes fingertip taps (always on the
   geoscape). Info boxes stay at least 2.5 s. A hand whose fingertip is over
   the table or near a window has no laser on that window (0.10.1). Effect "D": a line grows, unfolds with scanlines and
-  flicker, voxel sparks fly off the edges; it folds back on close. It waits
+  flicker; it folds back on close (no sparks, 0.12.1). It waits
   for the game's Window grow animation. The backing is drawn over whatever
   stands on the table (depth test always) and before the hands.
 - The keyboard is on the table (not floating), at the near edge above the
@@ -214,12 +215,11 @@ Geoscape, pop-ups, keyboard (0.10.0)
   SPACE; 3.6 cm keys. Shift is one-shot and starts on for an empty field. A
   pop-up lifts a little higher while the keyboard is up.
 
-Pop-up effect and wall dashboards (0.11.0)
-- Two pop-up effects, chosen with `vrPopupEffect` (0 projection "D", the
-  default; 1 voxel assembly "A": the picture cut into ~700 cells, each a cube
-  in its average colour rising from the table, bottom rows first, ~1 s;
-  closing breaks it up top first and the cubes fall back). Options given on
-  the command line are saved, so both launchers and the tests name it.
+Wall dashboards (0.11.0)
+- The voxel-assembly pop-up effect ("A") was tried in 0.11 and removed in
+  0.12.1 at the owner's choice; so were the Scale2x upscale of pop-ups and
+  the voxel sparks. A full screen whose Window is growing is briefly marked
+  a pop-up by the game (`Window::vrScreenState` tells): it doesn't float.
 - Back wall: two monitors per side. Geoscape: research (left top),
   production (left bottom), craft status (right top), UFO activity (right
   bottom), refreshed every second (`VrDash.cpp`). Battle: stats and roster on

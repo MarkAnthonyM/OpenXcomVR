@@ -1,0 +1,4 @@
+cam 0 1.38 0.0 0 -30
+wait 9000
+status
+quit

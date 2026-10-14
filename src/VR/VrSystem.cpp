@@ -656,8 +656,6 @@ static void updateHandsAndTable(float dt, bool simulated)
 	}
 	fc.keyboard = S->table.keyboardUp();
 	fc.eye = ctx.eye;
-	fc.sharp = Options::vrSharpPopups;
-	fc.style = Options::vrPopupEffect == 1 ? 1 : 0;
 	fc.clickScreen = S->board.clickScreen;
 	fc.hover = S->board.hoverScreen;
 	fc.mouse = [](int gx, int gy, int button, bool down)

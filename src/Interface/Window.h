@@ -71,6 +71,8 @@ public:
 	void popup();
 	/// VR: the pop-up animation has finished (the floating window waits for it).
 	bool vrPopupDone() const { return _popupStep >= 1.0; }
+	/// VR: its state is really a full screen (the game marks it a pop-up only while this window grows).
+	bool vrScreenState() const { return _screen; }
 	/// Draws the window.
 	void draw() override;
 	/// sets the X delta.

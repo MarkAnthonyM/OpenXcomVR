@@ -55,6 +55,10 @@ def check_float(log):
     if "float: touch 128,158" not in log: return "the finger touch on Cancel didn't click"
     return (bool(st) and "floats=0" in st[-1]) or "the window didn't close after Cancel"
 
+def check_menu(log):
+    if "float: open N8OpenXcom13MainMenuStateE" in log: return "the main menu (a full screen) floated"
+    return "[VR] status:" in log or "the script didn't run"
+
 def check_runs(log):
     return bool(boards(log)) or "no board readout"
 
@@ -81,17 +85,16 @@ TESTS = [  # script, save, check, what it covers
      "destination bar beyond the globe; a fingertip on the dome picks the spot"),
     ("ib", "outside.asav", has("[open N8OpenXcom12InfoboxStateE"), "a self-closing battle message stays readable (shots/ib_infobox.png)"),
     ("db", "geo_test.asav", has("screens=10111"), "geoscape dashboards on the back wall (shots/db_wall.png)"),
-    ("va", "geo_test.asav", check_float, "the same with voxel-assembly pop-ups (-vrPopupEffect 1)"),
     ("bt", "geo_test.asav", has("tap STR_HANGAR", "float: open N8OpenXcom14CraftInfoStateE"), "base on the table; tapping a hangar opens its craft (shots/bt_base.png)"),
     ("bb", "geo_test.asav", has("build at 1,1", "place at 1,1", "sites=1"), "tap an empty spot, pick a laboratory, tap to place it (shots/bb_scaffold.png)"),
     ("bh", "geo_test.asav", has("hold STR_LABORATORY", "float: open N8OpenXcom17ErrorMessageStateE"), "holding a facility asks to dismantle it (here: refused, the game's rule)"),
     ("bd", "geo_test.asav", has("float: scrolled at"), "dragging a finger on a floating list scrolls it (shots/bd_scrolled.png)"),
+    ("mm", None, check_menu, "the main menu at start doesn't flash a floating window"),
     ("br", None, has("float: open N8OpenXcom13BriefingStateE", "float: touch 160,172"), "the briefing floats; touching OK starts the battle"),
 ]
 
-# tests that run another test's script with different options (options given on the command line
-# are saved, so every run names the pop-up effect explicitly)
-VARIANTS = {"va": ("fl", ["-vrPopupEffect", "1"])}
+# tests that run another test's script with extra options: name -> (script, [args])
+VARIANTS = {}
 
 def main():
     want = set(sys.argv[1:])
@@ -99,7 +102,7 @@ def main():
     failed = []
     for name, save, check, what in TESTS:
         if want and name not in want: continue
-        script, extra = VARIANTS.get(name, (name, ["-vrPopupEffect", "0"]))
+        script, extra = VARIANTS.get(name, (name, []))
         subprocess.run([run, script] + (["-load", save] if save else []) + extra, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         log = open(LOG, errors="replace").read() if os.path.exists(LOG) else ""
         r = check(log) if "Segmentation" not in log else "crash"
