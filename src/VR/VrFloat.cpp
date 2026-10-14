@@ -80,7 +80,7 @@ struct Spark
 struct Win
 {
 	enum Phase { OPENING, OPEN, CLOSING, CLOSED } phase = OPENING;
-	enum Kind { POPUP, FAR, DOGFIGHT } kind = POPUP;
+	enum Kind { POPUP, BAR, DOGFIGHT } kind = POPUP;
 	float t = 0.f;              // time in the current phase
 	float shown = 0.f;          // time since it opened
 	float minShow = 0.f;        // keep showing at least this long, even if the game closed it (info boxes)
@@ -212,7 +212,7 @@ static std::vector<Cand> candidates(Game *game)
 	}
 	if (dynamic_cast<BuildNewBaseState*>(top) || dynamic_cast<SelectDestinationState*>(top))
 	{
-		out.push_back({top, Win::FAR}); // a bar beyond the globe, which stays free for picking
+		out.push_back({top, Win::BAR}); // a bar beyond the globe, which stays free for picking
 		return out;
 	}
 	if (dynamic_cast<ActionMenuState*>(top)) return out;                               // keys on the console
@@ -260,7 +260,7 @@ void FloatWindow::Impl::place(Win &w, const FloatContext &ctx, int index, int co
 	glm::vec3 O;
 	switch (w.kind)
 	{
-	case Win::FAR:
+	case Win::BAR:
 		// a long bar standing beyond the globe, high enough to be seen over it
 		K = std::min(0.003f, std::min(0.9f / std::max(1, w.rect.z), 0.12f / std::max(1, w.rect.w)));
 		O = glm::vec3(cx, ctx.tableY + 0.20f, ctx.table.y + 0.25f);
