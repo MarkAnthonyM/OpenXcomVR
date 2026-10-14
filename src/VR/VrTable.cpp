@@ -2,6 +2,7 @@
 #include "VrTable.h"
 #include "VrRoom.h"
 #include "VrBoard.h"
+#include "VrDash.h"
 #include "../Engine/Game.h"
 #include "../Engine/State.h"
 #include "../Engine/Screen.h"
@@ -272,7 +273,7 @@ struct Table::Impl
 	bool kbUsable(const KbKey &k) const { return kbEdit && kbRowUp(k.row) > 0.97f; }
 
 	// wall screens
-	Wall walls[3];
+	Wall walls[5]; // 0 left top, 1 minimap (in the right top monitor), 2 left bottom, 3 right top, 4 right bottom
 	UnitInfoState *stats = nullptr;
 	BattleUnit *statsUnit = nullptr;
 	MiniMapView *minimap = nullptr;
@@ -342,6 +343,7 @@ struct Table::Impl
 	float globeCool[2] = {0.f, 0.f};
 	void updateGlobeTaps(TableContext &ctx, const Hands &hands, float dt);
 	void updateWalls(TableContext &ctx, float dt);
+	void updateBattleWalls(TableContext &ctx);
 	void drawWall(const Shader &sh, const Wall &w) const;
 };
 
@@ -482,6 +484,8 @@ void Table::init(const RoomLayout &layout)
 	p.walls[0] = {layout.statsPos, R, N, layout.statsSize.x, layout.statsSize.y};       // soldier stats
 	p.walls[1] = {layout.minimapPos, R, N, layout.minimapSize.x, layout.minimapSize.y}; // minimap
 	p.walls[2] = {layout.rosterPos, R, N, layout.rosterSize.x, layout.rosterSize.y};    // squad roster
+	p.walls[3] = {layout.craftsPos, R, N, layout.craftsSize.x, layout.craftsSize.y};    // geoscape: craft status
+	p.walls[4] = {layout.ufoPos, R, N, layout.ufoSize.x, layout.ufoSize.y};             // geoscape: UFO activity
 }
 
 void Table::Impl::updateRemap()
@@ -2060,11 +2064,49 @@ void Table::Impl::updateWalls(TableContext &ctx, float dt)
 	for (Wall &w : walls) w.timer -= dt;
 	if (!inBattle)
 	{
-		for (Wall &w : walls) w.live = false;
 		if (stats) { delete stats; stats = nullptr; statsUnit = nullptr; }
 		if (minimap) { delete minimap; minimap = nullptr; minimapFor = nullptr; }
-		return;
+		walls[1].live = false;
+		// geoscape dashboards: research and production on the left, craft and UFOs on the right
+		if (!geo) { for (Wall &w : walls) w.live = false; return; }
+		if (walls[0].timer <= 0.f)
+		{
+			for (Wall &w : walls) w.timer = 1.f;
+			struct D { int wall, w, h; bool (*fn)(Game*, std::vector<uint32_t>&, int, int); };
+			const D dash[] = {{0, 320, 200, Dash::research}, {2, 320, 160, Dash::production},
+				{3, 320, 200, Dash::crafts}, {4, 320, 160, Dash::ufos}};
+			for (const D &d : dash)
+			{
+				Wall &w = walls[d.wall];
+				w.live = d.fn(ctx.game, w.px, d.w, d.h);
+				w.tw = d.w;
+				w.th = d.h;
+			}
+		}
 	}
+	else
+	{
+		walls[3].live = walls[4].live = false;
+		updateBattleWalls(ctx);
+	}
+	for (Wall &w : walls)
+		if (w.live && !w.px.empty())
+		{
+			if (!w.tex.valid() || w.tex.width() != w.tw || w.tex.height() != w.th) w.tex.create(w.tw, w.th, true, true);
+			w.tex.update(w.px.data(), w.tw, w.th);
+			glm::vec3 sum(0.f);
+			int n = 0;
+			for (size_t i = 0; i < w.px.size(); i += 7, ++n)
+			{
+				uint32_t c = w.px[i];
+				sum += glm::vec3((c & 255) / 255.f, ((c >> 8) & 255) / 255.f, ((c >> 16) & 255) / 255.f);
+			}
+			w.avg = n ? sum / (float)n : glm::vec3(0.f);
+		}
+}
+
+void Table::Impl::updateBattleWalls(TableContext &ctx)
+{
 	Game *g = ctx.game;
 	SDL_Color *bpal = bs->getPalette();
 
@@ -2179,21 +2221,6 @@ void Table::Impl::updateWalls(TableContext &ctx, float dt)
 		walls[2].th = H;
 		walls[2].live = row > 0;
 	}
-
-	for (Wall &w : walls)
-		if (w.live && !w.px.empty())
-		{
-			if (!w.tex.valid() || w.tex.width() != w.tw || w.tex.height() != w.th) w.tex.create(w.tw, w.th, true, true);
-			w.tex.update(w.px.data(), w.tw, w.th);
-			glm::vec3 sum(0.f);
-			int n = 0;
-			for (size_t i = 0; i < w.px.size(); i += 7, ++n)
-			{
-				uint32_t c = w.px[i];
-				sum += glm::vec3((c & 255) / 255.f, ((c >> 8) & 255) / 255.f, ((c >> 16) & 255) / 255.f);
-			}
-			w.avg = n ? sum / (float)n : glm::vec3(0.f);
-		}
 }
 
 void Table::screenGlow(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const
@@ -2792,6 +2819,8 @@ std::string Table::status() const
 	ss << "battle=" << p.inBattle << " top=" << p.bsTop << " buttonsUp=" << open << "/" << p.btns.size()
 		<< " items=" << p.items.size() << " held=" << (p.held.item ? 1 : 0) << " last='" << p.lastEvent << "'";
 	if (p.kbEdit) ss << " keyboard='" << p.kbEdit->getText() << "'" << (p.kbShift ? " shift" : "");
+	ss << " screens=";
+	for (const Wall &w : p.walls) ss << (w.live ? '1' : '0');
 	return ss.str();
 }
 

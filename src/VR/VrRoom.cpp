@@ -93,7 +93,8 @@ void buildCommandCenter(MeshData &m, RoomLayout &L)
 	};
 	bezel(L.statsPos, L.statsSize);
 	bezel(L.rosterPos, L.rosterSize);
-	bezel(L.minimapPos, L.minimapSize);
+	bezel(L.craftsPos, L.craftsSize);
+	bezel(L.ufoPos, L.ufoSize);
 	// a strip light under the screens
 	m.addBox({x0 + 0.6f, 0.42f, z0 + 0.01f}, {x1 - 0.6f, 0.45f, z0 + 0.03f}, kCyan * 0.7f, MAT_LIGHT);
 

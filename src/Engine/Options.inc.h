@@ -15,6 +15,7 @@ OPT int vrTableScale; // VR tabletop: war table size in percent of 1.9 x 1.2 m
 OPT int vrSeatOffset; // VR tabletop: player height offset in mm (seat calibration, hold Left B)
 OPT bool vrShadows; // VR tabletop: shadows from the light over the table
 OPT bool vrSharpPopups; // VR tabletop: pixel-art upscale (Scale2x twice) of floating pop-ups
+OPT int vrPopupEffect; // VR tabletop: how pop-ups appear over the table: 0 projection, 1 voxel assembly
 OPT KeyboardType keyboardMode;
 OPT SaveSort saveOrder;
 OPT MusicFormat preferredMusic;

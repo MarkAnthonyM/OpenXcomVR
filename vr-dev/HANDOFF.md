@@ -104,7 +104,7 @@ Script commands (one per line; numbers are optional with defaults):
 | `pokekey label`, `kbtype words...` | the fingertip presses a table keyboard key (`A`, `DEL`, `ENTER`, `SHIFT`...); type text through the keys (`\n` = Enter) |
 | `pokefloat gx gy`, `waitfloat maxms [open]` | the fingertip touches the floating pop-up over game pixel gx, gy; wait until a pop-up starts to float (or is fully open) |
 | `pokedome dx dz` | the fingertip presses the globe dome where it faces (dx, up, dz) from its centre |
-| `testufo n`, `selectdest`, `infobox text` | test helpers: n UFOs next to the first base with its armed craft sent after them (dogfights); the destination picker for the first craft; a battle message box |
+| `testufo n`, `selectdest`, `infobox text`, `testwork` | test helpers: n UFOs next to the first base with its armed craft sent after them (dogfights); the destination picker for the first craft; a battle message box; research and production in the first base |
 | `boardpan dx dz`, `boardrotate r`, `boardzoom f`, `minimaptap u v`, `gamecam x y z` | move the table view / the game camera |
 | `hand ...`, `handmove ...`, `handcurl ...`, `handoff` | a scripted right hand (grip pose and finger curls) |
 | `testburst dx dy big` | an explosion effect next to the selected soldier |
@@ -211,6 +211,18 @@ Geoscape, pop-ups, keyboard (0.10.0)
   rim, tilted 14°: digits + DEL, QWERTY, ASDF + ENTER, SHIFT ZXCVBNM - , .,
   SPACE; 3.6 cm keys. Shift is one-shot and starts on for an empty field. A
   pop-up lifts a little higher while the keyboard is up.
+
+Pop-up effect and wall dashboards (0.11.0)
+- Two pop-up effects, chosen with `vrPopupEffect` (0 projection "D", the
+  default; 1 voxel assembly "A": the picture cut into ~700 cells, each a cube
+  in its average colour rising from the table, bottom rows first, ~1 s;
+  closing breaks it up top first and the cubes fall back). Options given on
+  the command line are saved, so both launchers and the tests name it.
+- Back wall: two monitors per side. Geoscape: research (left top),
+  production (left bottom), craft status (right top), UFO activity (right
+  bottom), refreshed every second (`VrDash.cpp`). Battle: stats and roster on
+  the left, the minimap as a square in the right top monitor, right bottom
+  dark.
 
 Room and rendering
 - Walls close; live screens (flat game, stats, roster, minimap) on the back

@@ -2,8 +2,8 @@ wait 9000
 cam 0 1.38 0.0 0 -30
 waitframes 3
 pokebutton geoOptions
-waitfloat 15000
-wait 2500
+waitfloat 15000 open
+wait 500
 shot shots/fl_open.png
 status
 pokefloat 128 158

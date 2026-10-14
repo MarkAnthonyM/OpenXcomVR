@@ -1,0 +1,10 @@
+wait 9000
+testufo 1
+testwork
+click 300 140
+wait 4000
+cam 0 1.45 0.9 0 0
+waitframes 4
+shot shots/db_wall.png
+status
+quit

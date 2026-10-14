@@ -40,6 +40,8 @@ const float T_UNFOLD = 0.42f; // then unfolds into the window
 const float T_FOLD = 0.24f;   // closing: back into the line
 const float T_SHRINK = 0.10f; // and the line shrinks away
 const float LINE_H = 0.0025f;
+const float T_ASSEMBLE = 1.0f;     // voxel assembly: cubes rise from the table and snap into place
+const float T_SCATTER = 0.75f;     // and fall back into it
 
 float smooth01(float e0, float e1, float x)
 {
@@ -95,14 +97,41 @@ struct Win
 	bool armed[2] = {true, true};
 	float cool[2] = {0.f, 0.f};
 	std::string name;
+	int style = 0;              // 0 projection (line unfolds), 1 voxel assembly
+	float tableY = 0.f;
+	// voxel assembly: the picture cut into cells, each one a cube flying to (or from) its place
+	struct Cell
+	{
+		glm::ivec4 px{0};       // cell in picture pixels (x, y, w, h)
+		glm::vec3 col{0.f};     // its average colour (linear)
+		float delay = 0.f, dur = 0.4f;
+		glm::vec3 jitter{0.f};  // where on the table it comes from / falls to, relative to below its place
+		glm::vec3 axis{1, 0, 0};
+		float spin = 0.f;
+	};
+	std::vector<Cell> cells;
+	float openTime() const { return style == 1 ? T_ASSEMBLE : T_LINE + T_UNFOLD; }
+	float closeTime() const { return style == 1 ? T_SCATTER : T_FOLD + T_SHRINK; }
+	glm::vec3 cellTarget(const Cell &c) const
+	{
+		float u = ((c.px.x + c.px.z * 0.5f) / rect.z - 0.5f) * W;
+		float v = (1.f - (c.px.y + c.px.w * 0.5f) / rect.w) * H;
+		return at(u, v);
+	}
+	/// A cell's progress: 0 on the table .. 1 in place (opening), 0 in place .. 1 back on the table (closing).
+	float cellT(const Cell &c) const { return smooth01(0.f, 1.f, (t - c.delay) / c.dur); }
 
 	void shape(float &fold, float &width) const
 	{
 		switch (phase)
 		{
-		case OPENING: width = smooth01(0.f, T_LINE, t); fold = smooth01(T_LINE, T_LINE + T_UNFOLD, t); break;
+		case OPENING:
+			if (style == 1) { width = 1.f; fold = 0.f; break; }
+			width = smooth01(0.f, T_LINE, t); fold = smooth01(T_LINE, T_LINE + T_UNFOLD, t); break;
 		case OPEN: width = 1.f; fold = 1.f; break;
-		case CLOSING: fold = 1.f - smooth01(0.f, T_FOLD, t); width = 1.f - smooth01(T_FOLD, T_FOLD + T_SHRINK, t); break;
+		case CLOSING:
+			if (style == 1) { width = 1.f; fold = 0.f; break; }
+			fold = 1.f - smooth01(0.f, T_FOLD, t); width = 1.f - smooth01(T_FOLD, T_FOLD + T_SHRINK, t); break;
 		default: width = 0.f; fold = 0.f; break;
 		}
 	}
@@ -169,6 +198,8 @@ struct FloatWindow::Impl
 		}
 	}
 	void place(Win &w, const FloatContext &ctx, int index, int count);
+	void makeCells(Win &w, bool closing);
+	void drawAssembly(const Shader &sh, const Win &w) const;
 	void copyPicture(Win &w, const FloatContext &ctx);
 };
 
@@ -320,6 +351,40 @@ void FloatWindow::Impl::copyPicture(Win &w, const FloatContext &ctx)
 	w.tex.update(src->data(), tw, th);
 }
 
+/// Cuts the current picture into cells (about 700 at most) and gives each cube its timing:
+/// rising from the bottom row up when opening, falling from the top row down when closing.
+void FloatWindow::Impl::makeCells(Win &w, bool closing)
+{
+	w.cells.clear();
+	const glm::ivec4 &R = w.rect;
+	if (R.z <= 0 || w.px.size() < (size_t)R.z * R.w) return;
+	int cs = std::max(5, (int)std::ceil(std::sqrt((float)R.z * R.w / 700.f)));
+	int cols = (R.z + cs - 1) / cs, rows = (R.w + cs - 1) / cs;
+	auto lin = [](float c) { return std::pow(c / 255.f, 2.2f); };
+	for (int ry = 0; ry < rows; ++ry)
+		for (int cx = 0; cx < cols; ++cx)
+		{
+			Win::Cell c;
+			c.px = {cx * cs, ry * cs, std::min(cs, R.z - cx * cs), std::min(cs, R.w - ry * cs)};
+			glm::vec3 sum(0.f);
+			int n = 0;
+			for (int y = c.px.y; y < c.px.y + c.px.w; ++y)
+				for (int x = c.px.x; x < c.px.x + c.px.z; ++x, ++n)
+				{
+					uint32_t v = w.px[(size_t)y * R.z + x];
+					sum += glm::vec3(lin(v & 255), lin((v >> 8) & 255), lin((v >> 16) & 255));
+				}
+			c.col = n ? sum / (float)n : glm::vec3(0.f);
+			float fromBottom = (rows - 1 - ry) / std::max(1.f, rows - 1.f);
+			if (closing) { c.delay = (1.f - fromBottom) * 0.25f + rnd(0.f, 0.15f); c.dur = rnd(0.28f, 0.35f); }
+			else { c.delay = fromBottom * 0.38f + rnd(0.f, 0.22f); c.dur = rnd(0.3f, 0.4f); }
+			c.jitter = glm::vec3(rnd(-0.06f, 0.06f), 0.f, rnd(-0.03f, 0.05f));
+			c.axis = glm::normalize(glm::vec3(rnd(-1.f, 1.f), rnd(-1.f, 1.f), rnd(-1.f, 1.f)) + glm::vec3(0.f, 0.f, 0.01f));
+			c.spin = rnd(1.5f, 4.f) * (rnd() < 0.5f ? -1.f : 1.f);
+			w.cells.push_back(c);
+		}
+}
+
 // ------------------------------------------------------------------ per frame
 
 void FloatWindow::update(const FloatContext &ctx, const Hands &hands, float dt)
@@ -342,14 +407,15 @@ void FloatWindow::update(const FloatContext &ctx, const Hands &hands, float dt)
 		if (w.src)
 			for (const Cand &c : cands) if (c.s == w.src) w.alive = true;
 		if (!w.alive) w.src = nullptr;
-		if (w.phase == Win::OPENING && w.t >= T_LINE + T_UNFOLD) { w.phase = Win::OPEN; w.t = 0.f; }
+		if (w.phase == Win::OPENING && w.t >= w.openTime()) { w.phase = Win::OPEN; w.t = 0.f; }
 		if ((w.phase == Win::OPENING || w.phase == Win::OPEN) && !w.alive && (w.phase == Win::OPEN && w.shown >= w.minShow))
 		{
 			w.phase = Win::CLOSING;
 			w.t = 0.f;
 			p.lastEvent = "close " + w.name;
+			if (w.style == 1) p.makeCells(w, true);
 		}
-		if (w.phase == Win::CLOSING && w.t >= T_FOLD + T_SHRINK) w.phase = Win::CLOSED;
+		if (w.phase == Win::CLOSING && w.t >= w.closeTime()) w.phase = Win::CLOSED;
 	}
 	p.wins.erase(std::remove_if(p.wins.begin(), p.wins.end(), [](const std::unique_ptr<Win> &w) { return w->phase == Win::CLOSED; }), p.wins.end());
 
@@ -371,6 +437,8 @@ void FloatWindow::update(const FloatContext &ctx, const Hands &hands, float dt)
 		w->rect = r;
 		w->name = typeid(*c.s).name();
 		if (dynamic_cast<InfoboxState*>(c.s)) w->minShow = 2.5f;
+		w->style = ctx.style;
+		w->tableY = ctx.tableY;
 		p.lastEvent = "open " + w->name;
 		Log(LOG_INFO) << "[VR] float: open " << w->name << " " << r.x << "," << r.y << " " << r.z << "x" << r.w;
 		p.wins.push_back(std::move(w));
@@ -394,12 +462,14 @@ void FloatWindow::update(const FloatContext &ctx, const Hands &hands, float dt)
 			if (w.kind == Win::DOGFIGHT) { idx = dogIndex++; cnt = std::max(1, dogCount); }
 			p.place(w, ctx, idx, cnt);
 		}
+		if (w.style == 1 && w.phase == Win::OPENING && w.cells.empty() && !w.px.empty()) p.makeCells(w, false);
 	}
 
 	// sparks off the moving edges
 	for (auto &wp : p.wins)
 	{
 		const Win &w = *wp;
+		if (w.style == 1) continue; // the cubes are the effect
 		float fold = 0.f, width = 0.f;
 		w.shape(fold, width);
 		if (w.phase == Win::OPENING)
@@ -462,6 +532,71 @@ void FloatWindow::update(const FloatContext &ctx, const Hands &hands, float dt)
 
 // ------------------------------------------------------------------ drawing
 
+/// Voxel assembly: cells already in place show their piece of the picture; the others are cubes
+/// in their average colour, rising from the table (opening) or falling back into it (closing).
+void FloatWindow::Impl::drawAssembly(const Shader &sh, const Win &w) const
+{
+	if (w.cells.empty() || !w.tex.valid() || w.W <= 0.f) return;
+	const bool closing = w.phase == Win::CLOSING;
+	const float cw = w.W / w.rect.z, ch = w.H / w.rect.w; // metres per picture pixel
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// pieces in place: covering whatever stands on the table there, like the window's backing
+	glDepthFunc(GL_ALWAYS);
+	sh.set("uMode", 1);
+	sh.set("uScan", 0.f);
+	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uTexSize", glm::vec2((float)w.tex.width(), (float)w.tex.height()));
+	w.tex.bind(0);
+	for (const Win::Cell &c : w.cells)
+	{
+		float k = w.cellT(c);
+		bool inPlace = closing ? k <= 0.f : k >= 1.f;
+		if (!inPlace) continue;
+		glm::vec2 centre((c.px.x + c.px.z * 0.5f - w.rect.z * 0.5f) * cw, (w.rect.w - (c.px.y + c.px.w * 0.5f)) * ch);
+		sh.set("uUVRect", glm::vec4((float)c.px.x / w.rect.z, (float)c.px.y / w.rect.w, (float)c.px.z / w.rect.z, (float)c.px.w / w.rect.w));
+		sh.set("uModel", w.frame(centre, glm::vec2(c.px.z * cw * 0.5f, c.px.w * ch * 0.5f), 0.f));
+		quad.draw();
+	}
+	sh.set("uUVRect", glm::vec4(0.f, 0.f, 1.f, 1.f));
+	sh.set("uScan", 1.f);
+	glDepthFunc(GL_LEQUAL);
+	// cubes on their way
+	sh.set("uMode", 2);
+	glm::mat4 basis(1.f);
+	basis[0] = glm::vec4(w.right, 0.f);
+	basis[1] = glm::vec4(w.up, 0.f);
+	basis[2] = glm::vec4(w.n, 0.f);
+	for (const Win::Cell &c : w.cells)
+	{
+		float k = w.cellT(c);
+		if (closing ? k <= 0.f || k >= 1.f : k >= 1.f) continue;
+		glm::vec3 target = w.cellTarget(c);
+		glm::vec3 floor(target.x + c.jitter.x, w.tableY + 0.004f, target.z + c.jitter.z + 0.02f);
+		glm::vec3 pos;
+		float spin;
+		if (!closing)
+		{
+			if (w.t < c.delay) continue; // still inside the table
+			// rise with a little overshoot, then snap in; the tumble settles as it arrives
+			float e = 1.f - (1.f - k) * (1.f - k);
+			pos = glm::mix(floor, target, e) + w.n * (std::sin(k * 3.14159f) * 0.025f);
+			spin = (1.f - e) * c.spin;
+		}
+		else
+		{
+			// break off, then drop back into the table, faster and faster
+			pos = glm::mix(target, floor, k * k) + w.n * (std::sin(k * 3.14159f) * 0.03f);
+			spin = k * c.spin;
+		}
+		float size = std::max(c.px.z * cw, c.px.w * ch) * 0.92f;
+		float glow = closing ? 1.f + 0.6f * (1.f - k) : 1.f + 0.8f * (1.f - k);
+		sh.set("uTint", glm::vec4(c.col * glow + glm::vec3(0.02f, 0.08f, 0.1f) * (1.f - k), 1.f));
+		sh.set("uModel", glm::translate(glm::mat4(1.f), pos) * glm::rotate(glm::mat4(1.f), spin, c.axis) * basis
+			* glm::scale(glm::mat4(1.f), glm::vec3(size, size, size * 0.7f)));
+		box.draw();
+	}
+}
+
 void FloatWindow::draw(const Shader &sh) const
 {
 	const Impl &p = *_p;
@@ -470,6 +605,11 @@ void FloatWindow::draw(const Shader &sh) const
 	for (const auto &wp : p.wins)
 	{
 		const Win &w = *wp;
+		if (w.style == 1 && (w.phase == Win::OPENING || w.phase == Win::CLOSING))
+		{
+			p.drawAssembly(sh, w);
+			continue;
+		}
 		float fold = 0.f, width = 0.f;
 		w.shape(fold, width);
 		glm::vec2 mid(0.f, w.H * 0.5f);

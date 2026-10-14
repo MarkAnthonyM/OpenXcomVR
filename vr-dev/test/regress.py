@@ -80,8 +80,14 @@ TESTS = [  # script, save, check, what it covers
     ("sd", "geo_test.asav", has("SelectDestinationStateE 0,0 256x28", "globe tap", "float: open N8OpenXcom23ConfirmDestinationStateE"),
      "destination bar beyond the globe; a fingertip on the dome picks the spot"),
     ("ib", "outside.asav", has("[open N8OpenXcom12InfoboxStateE"), "a self-closing battle message stays readable (shots/ib_infobox.png)"),
+    ("db", "geo_test.asav", has("screens=10111"), "geoscape dashboards on the back wall (shots/db_wall.png)"),
+    ("va", "geo_test.asav", check_float, "the same with voxel-assembly pop-ups (-vrPopupEffect 1)"),
     ("br", None, has("float: open N8OpenXcom13BriefingStateE", "float: touch 160,172"), "the briefing floats; touching OK starts the battle"),
 ]
+
+# tests that run another test's script with different options (options given on the command line
+# are saved, so every run names the pop-up effect explicitly)
+VARIANTS = {"va": ("fl", ["-vrPopupEffect", "1"])}
 
 def main():
     want = set(sys.argv[1:])
@@ -89,7 +95,8 @@ def main():
     failed = []
     for name, save, check, what in TESTS:
         if want and name not in want: continue
-        subprocess.run([run, name] + (["-load", save] if save else []), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        script, extra = VARIANTS.get(name, (name, ["-vrPopupEffect", "0"]))
+        subprocess.run([run, script] + (["-load", save] if save else []) + extra, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         log = open(LOG, errors="replace").read() if os.path.exists(LOG) else ""
         r = check(log) if "Segmentation" not in log else "crash"
         ok = r is True

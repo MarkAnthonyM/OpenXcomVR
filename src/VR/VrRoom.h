@@ -45,8 +45,12 @@ struct RoomLayout
 	glm::vec2 statsSize{1.36f, 0.85f};
 	glm::vec3 rosterPos{-2.05f, 0.98f, -2.665f};
 	glm::vec2 rosterSize{1.36f, 0.68f};
-	glm::vec3 minimapPos{2.05f, 1.62f, -2.665f};
-	glm::vec2 minimapSize{1.1f, 1.1f};
+	glm::vec3 craftsPos{2.05f, 1.86f, -2.665f};   // right, top: craft status (geoscape); the minimap in battle
+	glm::vec2 craftsSize{1.36f, 0.85f};
+	glm::vec3 ufoPos{2.05f, 0.98f, -2.665f};      // right, bottom: UFO activity (geoscape)
+	glm::vec2 ufoSize{1.36f, 0.68f};
+	glm::vec3 minimapPos{2.05f, 1.86f, -2.665f};  // a square inside the top right monitor
+	glm::vec2 minimapSize{0.85f, 0.85f};
 };
 
 /// Builds the static X-COM style command center: room shell, consoles, war table.

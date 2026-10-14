@@ -6,9 +6,11 @@
  * confirmations, the options and save menus, research or production reports;
  * also the briefing, debriefing and next-turn screens, and every running
  * dogfight side by side), its picture is projected as a floating window over the table,
- * tilted toward the player. It materializes as a projection: a bright line
+ * tilted toward the player. It materializes as a projection (a bright line
  * unfolds into the window with scanlines and flicker while voxel sparks fly
- * off its edges, and folds back into the line when the pop-up closes.
+ * off its edges, and folds back into the line when the pop-up closes), or,
+ * with vrPopupEffect 1, as a voxel assembly (cubes rise from the table and
+ * snap into place to form the window, and fall back into it on close).
  *
  * Fingertips press the window's buttons (a touch clicks where it lands); the
  * laser treats the window like the wall screen.
@@ -37,6 +39,7 @@ struct FloatContext
 	bool keyboard = false;                          // the table keyboard is up: float above it
 	glm::vec3 eye{0.f, 1.3f, 0.f};                  // the player's head: windows lean to face it
 	bool sharp = true;                              // pixel-art upscale of the pictures
+	int style = 0;                                  // how windows appear: 0 projection, 1 voxel assembly
 	std::function<void(int, int, int)> clickScreen; // game pixel x, y, SDL button
 	std::function<void(int, int)> hover;            // move the game's mouse to a game pixel
 	std::function<void(int, float, float)> haptic;  // hand, amplitude, seconds

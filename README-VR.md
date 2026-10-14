@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.10.1)
+# OpenXcom Extended — VR Tabletop (prototype 0.11.0)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -54,6 +54,11 @@ stand) in an X-COM command center at a holographic war table:
   and Cancel) stands beyond the globe, and you touch the spot on the dome with
   your fingertip (or the laser). The action board has its own keys and doesn't
   float.
+  **Two ways to appear:** the projection above (default, `Play VR.bat`), or
+  a **voxel assembly** (`Play VR - voxel pop-ups.bat`, option
+  `vrPopupEffect: 1`): small voxel cubes in the window's colours burst up
+  from the table and snap into place piece by piece to form the window, and
+  on closing it breaks apart and the cubes fall back into the table.
 - **A keyboard appears when the game wants text.** Whenever a text field is
   waiting for typing (the base name at the start, save names, renaming
   soldiers and craft, searches), a holographic keyboard unrolls on the near
@@ -83,8 +88,13 @@ stand) in an X-COM command center at a holographic war table:
   of your wrist toward you like checking a watch, and tap the map with your left
   index finger to move the table there.
 - **The back wall** holds the game screen (menus, research, base management:
-  point at it and use the trigger as a mouse) with the selected soldier's stats,
-  the squad roster and a minimap beside it.
+  point at it and use the trigger as a mouse) with two monitors on each side.
+  In battle: the selected soldier's stats and the squad roster on the left, a
+  minimap on the right. On the geoscape they are always-on dashboards:
+  research (projects, scientists, progress) and production (items, engineers,
+  units made, the unit in the works, time left) on the left; craft status
+  (status, fuel, hull, where it's heading) and UFO activity (this month's
+  activity by area, and the UFOs on radar now) on the right.
 - **The room reacts**: the light over the table casts shadows of the figures and
   your hands onto the map, the table glows up onto everything above it, the
   screens tint the room, muzzle flashes and explosions light it up, night
@@ -242,8 +252,8 @@ headset on.
   weapon goes to a free hand, the clip to the other hand or the floor). The
   ground area shows five columns at a time in pages (one row; items taller
   than three cells are only on the big screen's inventory).
-- The base view (Basescape) and the geoscape's full screens (Funding,
-  Graphs, UFOpaedia...) are still on the wall screen.
+- The base view (Basescape) and the geoscape's full screens (Graphs,
+  UFOpaedia...) are still on the wall screen.
 - Floating pop-ups are the game's 320 × 200 pictures: they are made big and
   turned toward you, and upscaled with Scale2x (`vrSharpPopups`, on by
   default) for smoother letters, but they can't gain detail.
@@ -267,7 +277,8 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (a critically damped follower turns the game's ~33 steps a second into smooth motion at the headset's frame rate), tile picking, the HUD (wireframe cursor, selected-unit marker, path preview, readouts in the game's font), voxel fog of war, voxel effects (projectiles, explosions, smoke, fire), the whole-map minimap, globe. |
 | `VrHands.*` | Hand skeletons (from XR hand tracking or posed from controller inputs), collision against box colliders with per-finger joint solving, pinch / point gestures. |
 | `VrTable.*` | The table's control panel: hatches and spring buttons (battlescape and geoscape keys), spotted-alien buttons, the pop-up action board, the keyboard, the inventory tray with voxel item models, head/tile taps, the wrist minimap and the live wall screens. |
-| `VrFloat.*` | Floating pop-up windows: picks the game's top non-screen state, copies its area of the game frame, the projection effect, finger touches and the laser. |
+| `VrFloat.*` | Floating pop-up windows: picks the game's top non-screen state, copies its area of the game frame, the projection and voxel-assembly effects, finger touches and the laser. |
+| `VrDash.*` | The geoscape dashboards on the back-wall monitors, drawn with the game's fonts straight from the saved game. |
 | `VrGL.*`, `VrShaders.h` | Tiny GL helper layer (incl. a shadow map target) and the single scene shader: linear lighting into an sRGB target, up to 12 point lights per frame, shadows from the key light, soft room-corner shading, the table's up-glow, the fog material. |
 
 Key ideas:
@@ -327,7 +338,7 @@ Key ideas:
 
 Engine hooks: `Game.cpp` (startup, event filter, per-loop `VR::frame`),
 `Screen.cpp` (hand the composed frame to VR), `Options` (`vrMode`, `vrTableScale`,
-`vrSeatOffset`, `vrShadows`, `vrSharpPopups`),
+`vrSeatOffset`, `vrShadows`, `vrSharpPopups`, `vrPopupEffect`),
 `UnitWalkBState` (in VR every visible unit counts as on screen: the engine
 otherwise skips most of the walk animation, and runs at timer interval 0, for
 units outside the flat camera's view, which made them sprint across the table),

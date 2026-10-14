@@ -24,6 +24,10 @@
 #include "../Savegame/Base.h"
 #include "../Savegame/Craft.h"
 #include "../Savegame/Ufo.h"
+#include "../Savegame/ResearchProject.h"
+#include "../Savegame/Production.h"
+#include "../Mod/RuleResearch.h"
+#include "../Mod/RuleManufacture.h"
 #include "../Battlescape/InfoboxState.h"
 #include "../Geoscape/SelectDestinationState.h"
 #include "../Geoscape/GeoscapeState.h"
@@ -647,6 +651,7 @@ static void updateHandsAndTable(float dt, bool simulated)
 	fc.keyboard = S->table.keyboardUp();
 	fc.eye = ctx.eye;
 	fc.sharp = Options::vrSharpPopups;
+	fc.style = Options::vrPopupEffect == 1 ? 1 : 0;
 	fc.clickScreen = S->board.clickScreen;
 	fc.hover = [](int gx, int gy)
 	{
@@ -1399,6 +1404,35 @@ static void runScript()
 			for (OpenXcom::State *st : S->game->getStates()) if ((geo = dynamic_cast<GeoscapeState*>(st))) break;
 			if (geo && sg && !sg->getBases()->empty() && !sg->getBases()->front()->getCrafts()->empty())
 				S->game->pushState(new SelectDestinationState({sg->getBases()->front()->getCrafts()->front()}, geo->getGlobe()));
+		}
+		else if (c.op == "testwork")
+		{
+			// test helper: research and production in the first base, for the wall dashboards
+			SavedGame *sg = S->game->getSavedGame();
+			if (sg && !sg->getBases()->empty())
+			{
+				Base *b = sg->getBases()->front();
+				const char *res[] = {"STR_LASER_WEAPONS", "STR_MOTION_SCANNER", "STR_MEDI_KIT"};
+				int k = 0;
+				for (const char *id : res)
+					if (RuleResearch *r = S->game->getMod()->getResearch(id))
+					{
+						ResearchProject *rp = new ResearchProject(r, r->getCost());
+						rp->setAssigned(4 + 6 * k++);
+						b->addResearch(rp);
+					}
+				const char *man[] = {"STR_MOTION_SCANNER", "STR_MEDI_KIT"};
+				k = 0;
+				for (const char *id : man)
+					if (RuleManufacture *m = S->game->getMod()->getManufacture(id))
+					{
+						Production *pr = new Production(m, 5);
+						pr->setAssignedEngineers(5 + 5 * k);
+						pr->setTimeSpent(m->getManufactureTime() * (1 + k) + m->getManufactureTime() / 3);
+						b->addProduction(pr);
+						++k;
+					}
+			}
 		}
 		else if (c.op == "testufo")
 		{
