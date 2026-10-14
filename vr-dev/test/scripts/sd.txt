@@ -1,0 +1,10 @@
+wait 9000
+cam 0 1.30 0.10 0 -30
+selectdest
+waitfloat 8000 open
+wait 500
+shot shots/sd_bar.png
+pokedome 0 0.3
+wait 3000
+status
+quit

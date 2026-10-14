@@ -1,0 +1,8 @@
+wait 9000
+cam 0 1.38 0.0 0 -30
+infobox Sachin Saini has been killed
+waitfloat 5000
+wait 3000
+status
+shot shots/ib_infobox.png
+quit

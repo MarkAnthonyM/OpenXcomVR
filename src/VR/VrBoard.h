@@ -95,6 +95,8 @@ public:
 	void lights(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const;
 	bool alert() const;
 	float nightLevel() const;
+	/// The geoscape dome as a sphere (world centre, radius); false when no globe is shown.
+	bool globeSphere(glm::vec3 &center, float &radius) const;
 	bool canGrab(const glm::vec3 &handWorld) const;
 	void beginGrab(int hand, const glm::vec3 &handWorld);
 	void updateGrab(int hand, const glm::vec3 &handWorld);

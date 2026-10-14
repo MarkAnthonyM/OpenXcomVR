@@ -20,6 +20,14 @@
 #include "../Savegame/SavedBattleGame.h"
 #include "../Savegame/BattleUnit.h"
 #include "../Savegame/Tile.h"
+#include "../Savegame/SavedGame.h"
+#include "../Savegame/Base.h"
+#include "../Savegame/Craft.h"
+#include "../Savegame/Ufo.h"
+#include "../Battlescape/InfoboxState.h"
+#include "../Geoscape/SelectDestinationState.h"
+#include "../Geoscape/GeoscapeState.h"
+#include "../Mod/RuleCraft.h"
 #include "../Battlescape/Position.h"
 #include "../Engine/Screen.h"
 #include "../Engine/Options.h"
@@ -529,6 +537,7 @@ struct RayHit
 	glm::vec2 uv{0.f};
 	BoardHit board;
 	TableHit table;
+	bool floating = false; // PANEL through a floating pop-up
 };
 
 static RayHit castRay(const glm::vec3 &o, const glm::vec3 &d)
@@ -539,7 +548,7 @@ static RayHit castRay(const glm::vec3 &o, const glm::vec3 &d)
 	if (t > 0.f && t < best.t) { best.target = RayHit::PANEL; best.t = t; best.uv = uv; }
 	// a floating pop-up works like the wall screen it mirrors
 	float ft;
-	if (S->floatWin.raycast(o, d, ft, uv) && ft < best.t) { best.target = RayHit::PANEL; best.t = ft; best.uv = uv; }
+	if (S->floatWin.raycast(o, d, ft, uv) && ft < best.t) { best.target = RayHit::PANEL; best.t = ft; best.uv = uv; best.floating = true; }
 	BoardHit bh;
 	if (S->board.raycast(o, d, bh) && bh.t < best.t)
 	{
@@ -636,6 +645,8 @@ static void updateHandsAndTable(float dt, bool simulated)
 		fc.table = {L.tableCenter.x - L.tableSize.x * 0.5f, L.tableCenter.z - L.tableSize.y * 0.5f, L.tableCenter.x + L.tableSize.x * 0.5f, L.tableCenter.z + L.tableSize.y * 0.5f};
 	}
 	fc.keyboard = S->table.keyboardUp();
+	fc.eye = ctx.eye;
+	fc.sharp = Options::vrSharpPopups;
 	fc.clickScreen = S->board.clickScreen;
 	fc.hover = [](int gx, int gy)
 	{
@@ -867,6 +878,8 @@ static void updateHeadsetInput(float dt)
 		RayHit hit = castRay(o, d);
 		glm::vec3 handPos = S->handsVis.pose[h].valid ? S->handsVis.pose[h].tip(F_INDEX) : o;
 		S->laserOn[h] = !overTable(handPos) || hit.target == RayHit::PANEL;
+		// a fingertip reaching for a floating pop-up presses it; the laser would fight it for the cursor
+		if (hit.floating && (overTable(handPos) || S->floatWin.fingerNear(handPos))) S->laserOn[h] = false;
 		if (!S->laserOn[h])
 		{
 			if (h == S->pointerHand) { S->pointerOnPanel = false; S->pointerOnBoard = false; S->board.hoverNone(); S->table.pointerMove(nullptr); }
@@ -948,6 +961,7 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uAmbient", 1.f - 0.7f * S->night);
 	sh.set("uNight", S->night);
 	sh.set("uGlowCount", 0);
+	sh.set("uScan", 1.f);
 	sh.set("uAlert", S->alertLevel);
 	sh.set("uRoomMin", glm::vec3(L.roomX0, 0.f, L.roomZ0));
 	sh.set("uRoomMax", glm::vec3(L.roomX1, L.roomH, L.roomZ1));
@@ -1370,12 +1384,61 @@ static void runScript()
 				return;
 			}
 		}
+		else if (c.op == "infobox")
+		{
+			// test helper: one of the battlescape's self-closing message boxes
+			std::string text;
+			for (size_t i = 0; i < c.args.size(); ++i) { if (i) text += ' '; text += c.args[i]; }
+			if (S->board.battle()) S->game->pushState(new InfoboxState(text));
+		}
+		else if (c.op == "selectdest")
+		{
+			// test helper: pick a destination for the first base's first craft (as from the craft screen)
+			SavedGame *sg = S->game->getSavedGame();
+			GeoscapeState *geo = nullptr;
+			for (OpenXcom::State *st : S->game->getStates()) if ((geo = dynamic_cast<GeoscapeState*>(st))) break;
+			if (geo && sg && !sg->getBases()->empty() && !sg->getBases()->front()->getCrafts()->empty())
+				S->game->pushState(new SelectDestinationState({sg->getBases()->front()->getCrafts()->front()}, geo->getGlobe()));
+		}
+		else if (c.op == "testufo")
+		{
+			// test helper: a detected UFO hovering next to the first base, and the base's armed craft
+			// sent after it (a dogfight starts as soon as time runs)
+			SavedGame *sg = S->game ? S->game->getSavedGame() : nullptr;
+			if (sg && !sg->getBases()->empty())
+			{
+				Base *b = sg->getBases()->front();
+				int n = (int)num(0, 1), sent = 0;
+				for (int i = 0; i < n; ++i)
+				{
+					Ufo *u = new Ufo(S->game->getMod()->getUfo("STR_SMALL_SCOUT"), sg->getId("STR_UFO_UNIQUE"));
+					u->setId(sg->getId("STR_UFO"));
+					u->setLongitude(b->getLongitude() + 0.004 * (i + 1));
+					u->setLatitude(b->getLatitude());
+					u->setAltitude("STR_LOW_UC");
+					u->setStatus(Ufo::FLYING);
+					u->setSpeed(0);
+					u->setDetected(true);
+					sg->getUfos()->push_back(u);
+					for (Craft *cr : *b->getCrafts())
+						if (cr->getStatus() == "STR_READY" && cr->getNumWeapons() > 0 && !cr->getDestination())
+						{
+							cr->setDestination(u);
+							cr->setStatus("STR_OUT");
+							++sent;
+							break;
+						}
+				}
+				Log(LOG_INFO) << "[VR] script: testufo " << n << " ufos, " << sent << " craft sent";
+			}
+		}
 		else if (c.op == "waitfloat")
 		{
-			// waitfloat maxms : wait until a floating pop-up starts to appear (max num(0) ms)
-			if (S->floatWin.isClosed() && num(0, 10000) > 0)
+			// waitfloat maxms [open] : wait until a floating pop-up starts to appear (or is fully open)
+			bool wantOpen = c.args.size() > 1 && c.args[1] == "open";
+			if ((wantOpen ? !S->floatWin.isOpen() : S->floatWin.isClosed()) && num(0, 10000) > 0)
 			{
-				c.args = {std::to_string((int)num(0, 10000) - 50)};
+				c.args = {std::to_string((int)num(0, 10000) - 50), wantOpen ? "open" : ""};
 				S->script.push_front(c);
 				S->scriptWaitUntil = now + 50;
 				return;
@@ -1443,7 +1506,7 @@ static void runScript()
 			S->simStep = (to - S->simGrip.pos) / (float)n;
 			S->simFrames = n;
 		}
-		else if (c.op == "poketile" || c.op == "pokenear" || c.op == "pokeunit" || c.op == "pokebutton" || c.op == "pokemenu" || c.op == "pokekey" || c.op == "pokefloat" || c.op == "pinchitem" || c.op == "pinchto")
+		else if (c.op == "poketile" || c.op == "pokenear" || c.op == "pokeunit" || c.op == "pokebutton" || c.op == "pokemenu" || c.op == "pokekey" || c.op == "pokefloat" || c.op == "pokedome" || c.op == "pinchitem" || c.op == "pinchto")
 		{
 			// test macros that steer the scripted hand: poke a point with the index finger, or pinch
 			Hands probe;
@@ -1471,6 +1534,15 @@ static void runScript()
 			else if (c.op == "pokebutton") ok = !c.args.empty() && S->table.buttonCenter(c.args[0], target);
 			glm::vec3 pushDir(0.f, -1.f, 0.f);
 			if (c.op == "pokemenu") { glm::vec3 n; ok = S->table.menuKeyCenter((int)num(0, 0), target, n); pushDir = -n; }
+			else if (c.op == "pokedome")
+			{
+				// pokedome dx dz : press the dome where it faces direction (dx, up, dz) from its centre
+				glm::vec3 C; float R;
+				ok = S->board.globeSphere(C, R);
+				glm::vec3 n = glm::normalize(glm::vec3((float)num(0, 0), 1.f, (float)num(1, 0)));
+				target = C + n * R;
+				pushDir = -n;
+			}
 			else if (c.op == "pokefloat") { glm::vec3 n; ok = S->floatWin.pointAt((float)num(0, 160), (float)num(1, 100), target, n); pushDir = -n; }
 			else if (c.op == "pokekey") { glm::vec3 n; ok = !c.args.empty() && S->table.kbKeyCenter(c.args[0], target, n); pushDir = -n; }
 			else if (c.op == "pinchitem") ok = S->table.itemCenter((int)num(0, 0), target);

@@ -53,7 +53,7 @@ def check_float(log):
     st = re.findall(r"\[VR\] status: .*", log)
     if "float: open N8OpenXcom10PauseStateE" not in log: return "the options pop-up never floated"
     if "float: touch 128,158" not in log: return "the finger touch on Cancel didn't click"
-    return (bool(st) and "float=closed" in st[-1]) or "the window didn't close after Cancel"
+    return (bool(st) and "floats=0" in st[-1]) or "the window didn't close after Cancel"
 
 def check_runs(log):
     return bool(boards(log)) or "no board readout"
@@ -76,6 +76,11 @@ TESTS = [  # script, save, check, what it covers
     ("gk", "geo_test.asav", has("last='button geo1Hour'"), "geoscape keys on the console (dome: shots/gk_dome.png)"),
     ("fl", "geo_test.asav", check_float, "pop-up floats over the table, a finger touch clicks it (shots/fl_open.png)"),
     ("kb", "geo_test.asav", has("keyboard='Vr test'"), "table keyboard types a save name (shots/kb_keyboard.png)"),
+    ("df", "geo_test.asav", has("float: open N8OpenXcom13DogfightStateE"), "a dogfight floats over the table (shots/df_dogfight.png)"),
+    ("sd", "geo_test.asav", has("SelectDestinationStateE 0,0 256x28", "globe tap", "float: open N8OpenXcom23ConfirmDestinationStateE"),
+     "destination bar beyond the globe; a fingertip on the dome picks the spot"),
+    ("ib", "outside.asav", has("[open N8OpenXcom12InfoboxStateE"), "a self-closing battle message stays readable (shots/ib_infobox.png)"),
+    ("br", None, has("float: open N8OpenXcom13BriefingStateE", "float: touch 160,172"), "the briefing floats; touching OK starts the battle"),
 ]
 
 def main():
@@ -84,7 +89,7 @@ def main():
     failed = []
     for name, save, check, what in TESTS:
         if want and name not in want: continue
-        subprocess.run([run, name, "-load", save], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run([run, name] + (["-load", save] if save else []), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         log = open(LOG, errors="replace").read() if os.path.exists(LOG) else ""
         r = check(log) if "Segmentation" not in log else "crash"
         ok = r is True

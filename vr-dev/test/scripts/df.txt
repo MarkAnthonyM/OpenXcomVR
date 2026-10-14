@@ -1,0 +1,9 @@
+wait 9000
+cam 0 1.38 0.0 0 -30
+testufo 1
+click 300 140
+waitfloat 30000 open
+wait 1500
+shot shots/df_dogfight.png
+status
+quit

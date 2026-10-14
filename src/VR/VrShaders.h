@@ -58,6 +58,7 @@ uniform vec2 uTexSize;
 uniform vec3 uEye;
 uniform float uTime;
 uniform vec4 uTint;
+uniform float uScan;         // game panel scanlines (1 on, 0 off)
 uniform int uLightCount;
 uniform vec3 uLightPos[12];  // light 0 is the overhead light over the table and casts the shadows
 uniform vec3 uLightCol[12];
@@ -220,7 +221,7 @@ void main()
 		vec2 uv = (floor(texel) + region) / uTexSize;
 		vec3 c = texture(uTex, uv).rgb;
 		// faint scanlines, only visible up close
-		c *= 0.94 + 0.06 * sin(texel.y * 6.2831853);
+		c *= 1.0 - uScan * (0.06 - 0.06 * sin(texel.y * 6.2831853));
 		fragColor = vec4(c * uTint.rgb * 1.15, 1.0);
 		return;
 	}

@@ -1,0 +1,12 @@
+wait 8000
+click 208 100
+wait 6000
+click 40 184
+waitfloat 20000 open
+wait 1000
+cam 0 1.30 0.10 0 -30
+waitframes 3
+shot shots/br_briefing.png
+pokefloat 160 172
+wait 6000
+quit

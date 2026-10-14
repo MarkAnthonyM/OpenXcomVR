@@ -2878,6 +2878,15 @@ void Board::centerOnTile(const glm::vec2 &tile)
 	syncCamera(p);
 }
 
+bool Board::globeSphere(glm::vec3 &center, float &radius) const
+{
+	const Impl &p = *_p;
+	if (!p.hasGlobe || p.hasBattle) return false;
+	center = p.globeCenter;
+	radius = p.globeRadius;
+	return true;
+}
+
 bool Board::canGrab(const glm::vec3 &hand) const
 {
 	const Impl &p = *_p;

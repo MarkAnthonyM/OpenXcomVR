@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.10.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.10.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -39,15 +39,21 @@ stand) in an X-COM command center at a holographic war table:
   the game's own button (so the selected speed is lit).
 - **Pop-ups float over the table.** When the game opens a message or a dialog
   (a UFO sighting, research or production finished, the options and save
-  menus, the abort confirmation, a dogfight...), it is projected as a floating
-  window over the near half of the table, leaning back toward you: a bright
-  line appears, unfolds into the window with rolling scanlines and flicker
-  while voxel sparks fly off its edges, and folds back into the line when the
-  pop-up closes. Touch a button on it with your fingertip (hovering just in
-  front moves the game's cursor there), or point the laser at it like at the
-  wall screen. Both on the geoscape and in battle. Not for the few pop-ups
-  that need the table under them: the action board, and picking a base site or
-  a destination on the globe.
+  menus, the abort confirmation, messages in battle), and for the briefing,
+  debriefing, next-turn and monthly report screens, it is projected as a
+  floating window over the near half of the table, turned to face you: a
+  bright line appears, unfolds into the window with rolling scanlines and
+  flicker while voxel sparks fly off its edges, and folds back into the line
+  when the pop-up closes. Every running dogfight floats side by side.
+  Battle messages that close by themselves (a soldier killed, panicked...)
+  stay readable for at least 2.5 s. Touch a button with your fingertip
+  (hovering just in front moves the game's cursor there); when your hand
+  reaches for a window its laser switches off so the two don't fight over the
+  cursor. From further away the laser works on it like on the wall screen.
+  While you pick a base site or a craft's destination, the game's bar (title
+  and Cancel) stands beyond the globe, and you touch the spot on the dome with
+  your fingertip (or the laser). The action board has its own keys and doesn't
+  float.
 - **A keyboard appears when the game wants text.** Whenever a text field is
   waiting for typing (the base name at the start, save names, renaming
   soldiers and craft, searches), a holographic keyboard unrolls on the near
@@ -204,6 +210,7 @@ it has to be pulled most of the way.
 | Press a key on the action board | Choose that firing mode / action, or Cancel |
 | Press a red alien button | Centre the view on that spotted alien |
 | Touch a button on a floating pop-up | Click it (hover just in front to move the cursor there) |
+| Touch the globe dome with your index finger | Click that spot of the globe: a destination, a base site, a UFO or base |
 | Press keys on the table keyboard | Type into the game's text field |
 | Press a geoscape key on the console | Same as that geoscape button (time speed, Intercept, Bases, ...) |
 | Turn your right wrist toward you, tap the minimap with your left index | Move the table to that part of the map |
@@ -235,9 +242,11 @@ headset on.
   weapon goes to a free hand, the clip to the other hand or the floor). The
   ground area shows five columns at a time in pages (one row; items taller
   than three cells are only on the big screen's inventory).
-- The base view (Basescape) is still the flat screen; picking a base site or
-  a craft's destination is done on the globe dome with the flat pop-up's
-  Cancel on the wall screen.
+- The base view (Basescape) and the geoscape's full screens (Funding,
+  Graphs, UFOpaedia...) are still on the wall screen.
+- Floating pop-ups are the game's 320 × 200 pictures: they are made big and
+  turned toward you, and upscaled with Scale2x (`vrSharpPopups`, on by
+  default) for smoother letters, but they can't gain detail.
 - Items lying on the floor are not shown on the table map yet (they are in the
   tray's ground area and on the screen).
 - The fog hides unexplored ground up to the level you are viewing; walls seen
@@ -298,7 +307,9 @@ Key ideas:
   frame and clicks their screen rectangles, so mods' custom actions just appear.
   The geoscape keys do the same with `GeoscapeState::vrButtons`.
 - **Pop-ups are found, not listed.** Any state the game marks as not a full
-  screen (`State::isScreen`) is a pop-up; its window is the union of its
+  screen (`State::isScreen`) is a pop-up (plus a short list of message-like
+  full screens; dogfights come from `GeoscapeState::vrDogfights`, since the
+  geoscape draws them itself); its window is the union of its
   visible surfaces (`State::vrSurfaces`), cut from the game frame each frame.
   The projection waits for the game's own grow animation to finish
   (`Window::vrPopupDone`). Touches and laser clicks go back as mouse clicks at
@@ -316,7 +327,7 @@ Key ideas:
 
 Engine hooks: `Game.cpp` (startup, event filter, per-loop `VR::frame`),
 `Screen.cpp` (hand the composed frame to VR), `Options` (`vrMode`, `vrTableScale`,
-`vrSeatOffset`, `vrShadows`),
+`vrSeatOffset`, `vrShadows`, `vrSharpPopups`),
 `UnitWalkBState` (in VR every visible unit counts as on screen: the engine
 otherwise skips most of the walk animation, and runs at timer interval 0, for
 units outside the flat camera's view, which made them sprint across the table),
@@ -330,7 +341,7 @@ going during the intro and cutscenes), `Map::setSelectorTile` /
 `getCursorSize` / `getCursorInfo` (the cursor readout code, moved out of
 `drawTerrain` unchanged so the table can show it too),
 `BattleUnit::get/setFacingSnapshot`, `Globe::getCenter`, `Game::getStates`,
-`GeoscapeState::vrButtons`, `State::vrSurfaces`, `Window::vrPopupDone`, and
+`GeoscapeState::vrButtons` / `vrDogfights`, `State::vrSurfaces`, `Window::vrPopupDone`, and
 `SDL_GetMouseState`/`SDL_WarpMouse` calls routed through `VR::getMouseState` /
 `VR::warpMouse` so the laser pointer is the mouse.
 

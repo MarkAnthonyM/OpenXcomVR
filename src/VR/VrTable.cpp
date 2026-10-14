@@ -38,6 +38,8 @@
 #include "../Battlescape/Camera.h"
 #include "../Battlescape/ActionMenuState.h"
 #include "../Geoscape/GeoscapeState.h"
+#include "../Geoscape/SelectDestinationState.h"
+#include "../Geoscape/BuildNewBaseState.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <map>
 #include <cmath>
@@ -334,6 +336,11 @@ struct Table::Impl
 	void drop(TableContext &ctx);
 	void warn(TableContext &ctx, const std::string &id);
 	void updateTaps(TableContext &ctx, const Hands &hands, float dt);
+	// fingertip taps on the geoscape dome: a click on that spot of the globe (pick a destination,
+	// a base site, a UFO or base)
+	bool globeIn[2] = {false, false};
+	float globeCool[2] = {0.f, 0.f};
+	void updateGlobeTaps(TableContext &ctx, const Hands &hands, float dt);
 	void updateWalls(TableContext &ctx, float dt);
 	void drawWall(const Shader &sh, const Wall &w) const;
 };
@@ -1356,6 +1363,48 @@ int Table::Impl::pickItem(const glm::vec3 &pp) const
 
 // ------------------------------------------------------------------ finger taps on the map
 
+void Table::Impl::updateGlobeTaps(TableContext &ctx, const Hands &hands, float dt)
+{
+	glm::vec3 C;
+	float R;
+	bool on = !inBattle && board && board->globeSphere(C, R) && game && !game->getStates().empty();
+	if (on)
+	{
+		State *top = game->getStates().back();
+		on = top == (State*)geo || dynamic_cast<SelectDestinationState*>(top) || dynamic_cast<BuildNewBaseState*>(top);
+	}
+	for (int h = 0; h < 2; ++h)
+	{
+		globeCool[h] = std::max(0.f, globeCool[h] - dt);
+		const HandPose &P = hands.pose[h];
+		if (!on || !P.valid || P.ghost || P.pinch || ctx.handBusy[h] || !P.indexExtended) { globeIn[h] = false; continue; }
+		glm::vec3 tip = P.tip(F_INDEX);
+		float r = P.radius[fingerTip(F_INDEX)];
+		float d = glm::length(tip - C);
+		bool in = d < R + r * 0.5f && tip.y > sy + 0.004f;
+		if (in && !globeIn[h] && globeCool[h] <= 0.f)
+		{
+			// click the spot under the fingertip: a ray from just outside the dome toward its centre
+			glm::vec3 n = glm::normalize(tip - C);
+			BoardHit hit;
+			if (board->raycast(C + n * (R + 0.05f), -n, hit) && hit.globe)
+			{
+				board->hover(hit);
+				board->click(SDL_BUTTON_LEFT);
+				ctx.haptic(h, 0.5f, 0.03f);
+				std::ostringstream ss;
+				ss << "globe tap " << glm::degrees(hit.lon) << "," << glm::degrees(hit.lat);
+				lastEvent = ss.str();
+				Log(LOG_INFO) << "[VR] " << lastEvent;
+			}
+			globeCool[h] = 0.4f;
+		}
+		// lift the finger clear of the surface before the next tap
+		if (in) globeIn[h] = true;
+		else if (d > R + 0.012f) globeIn[h] = false;
+	}
+}
+
 void Table::Impl::updateTaps(TableContext &ctx, const Hands &hands, float dt)
 {
 	for (int h = 0; h < 2; ++h)
@@ -2167,6 +2216,7 @@ void Table::update(TableContext &ctx, const Hands &hands, float dt)
 	p.updateTrayKeys(hands, dt);
 	if (p.hapticHand >= 0) ctx.haptic(p.hapticHand, 0.5f, 0.02f);
 	p.updateTaps(ctx, hands, dt);
+	p.updateGlobeTaps(ctx, hands, dt);
 	p.updateWalls(ctx, dt);
 	p.updateWrist(ctx, hands, dt);
 	p.updateMenu(ctx, hands, dt);

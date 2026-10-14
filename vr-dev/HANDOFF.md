@@ -102,7 +102,9 @@ Script commands (one per line; numbers are optional with defaults):
 | `unloadright`, `refilltu`, `spotaliens n` | test helpers: empty the right-hand weapon, refill TU, make aliens spotted |
 | `groundkey dir`, `padswipe dy`, `wheel dir` | tray ground pages, left-trackpad level swipe, level change |
 | `pokekey label`, `kbtype words...` | the fingertip presses a table keyboard key (`A`, `DEL`, `ENTER`, `SHIFT`...); type text through the keys (`\n` = Enter) |
-| `pokefloat gx gy`, `waitfloat maxms` | the fingertip touches the floating pop-up over game pixel gx, gy; wait until a pop-up starts to float |
+| `pokefloat gx gy`, `waitfloat maxms [open]` | the fingertip touches the floating pop-up over game pixel gx, gy; wait until a pop-up starts to float (or is fully open) |
+| `pokedome dx dz` | the fingertip presses the globe dome where it faces (dx, up, dz) from its centre |
+| `testufo n`, `selectdest`, `infobox text` | test helpers: n UFOs next to the first base with its armed craft sent after them (dogfights); the destination picker for the first craft; a battle message box |
 | `boardpan dx dz`, `boardrotate r`, `boardzoom f`, `minimaptap u v`, `gamecam x y z` | move the table view / the game camera |
 | `hand ...`, `handmove ...`, `handcurl ...`, `handoff` | a scripted right hand (grip pose and finger curls) |
 | `testburst dx dy big` | an explosion effect next to the selected soldier |
@@ -193,9 +195,15 @@ Geoscape, pop-ups, keyboard (0.10.0)
   screen. Geoscape side buttons are console keys in the bay: time speeds on
   the far row (the raised rim hides part of the near row from a seated eye),
   the six menu buttons on the near row.
-- Pop-ups (any non-screen state except the action menu, BuildNewBase and
-  SelectDestination) float over the near half of the map, leaning back 18°,
-  at most 50 × 32 cm. Effect "D": a line grows, unfolds with scanlines and
+- Pop-ups (any non-screen state except the action menu and the Loading /
+  Saving bars, plus Briefing, Debriefing, NextTurn, Promotions,
+  Commendation(Late), MonthlyReport and MiniMap screens) float over the near
+  half of the map, turned to face the eyes when they open (5–50° lean), up
+  to 66 × 42 cm (2.6 mm per game pixel at most), Scale2x twice. Dogfights
+  float side by side. BuildNewBase / SelectDestination float only their bar,
+  far beyond the globe; the dome takes fingertip taps (always on the
+  geoscape). Info boxes stay at least 2.5 s. A hand whose fingertip is over
+  the table or near a window has no laser on that window (0.10.1). Effect "D": a line grows, unfolds with scanlines and
   flicker, voxel sparks fly off the edges; it folds back on close. It waits
   for the game's Window grow animation. The backing is drawn over whatever
   stands on the table (depth test always) and before the hands.

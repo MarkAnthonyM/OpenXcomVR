@@ -114,6 +114,8 @@ public:
 	Globe *getGlobe() const;
 	/// VR tabletop: the side buttons that get a key on the table console (main buttons, then time speeds).
 	std::vector<InteractiveSurface*> vrButtons() const;
+	/// VR: the running dogfights (drawn by the geoscape itself, not as states on the stack).
+	const std::list<DogfightState*> &vrDogfights() const { return _dogfights; }
 	/// Handler for clicking the globe.
 	void globeClick(Action *action);
 	/// Handler for clicking the Intercept button.
