@@ -88,6 +88,9 @@ uniform vec4 uSunKey;        // outdoor battle: xyz world direction towards the 
 uniform vec3 uSunKeyCol;     // map (and what is over it) instead of light 0, and casts the shadows
 uniform vec4 uSunArea;       // the map on the table (world xz rect): where the sun shines
 uniform vec3 uSunKeySky;     // the sky's light over the map
+uniform float uMapShade;     // outdoor battle: how bright the map's darkness leaves an unlit tile (the game's shade
+uniform vec3 uLampCol;       // as a factor); tiles brighter than that carry the game's own light, lit in this colour
+uniform int uShape;          // mode 7: 0 a round glow, 1 a light shaft
 uniform float uFlash;        // lightning (0..1): lights the map's surfaces from their own colour, however dark the night
 uniform vec4 uCloud;         // cloud shadows: strength, scale per map voxel, drift (map voxels)
 uniform mat4 uMapInv;        // world -> battle map voxels
@@ -131,6 +134,7 @@ float shadowFactor(vec3 n)
 }
 
 bool gNoSun = false;         // the holo glass around the map keeps the room's light (no sun glare on it)
+bool gMap = false;           // a surface of the battle map: under the sun the room's lights stay off it
 
 /// How much of a point is under the battle's sun: over the map, up to about head height above it.
 float sunMask()
@@ -159,6 +163,7 @@ vec3 lighting(vec3 base, vec3 n, float spec, float rough)
 		float s = pow(max(dot(n, h), 0.0), mix(80.0, 8.0, rough)) * spec;
 		vec3 c = (base * ndl + s) * uLightCol[i] / d2;
 		if (i == 0) c *= (uSunKey.w > 0.5) ? (1.0 - sunK) : shadowFactor(n);
+		else if (gMap) c *= 1.0 - sunK;
 		col += c;
 	}
 	if (sunK > 0.0)
@@ -281,6 +286,16 @@ void main()
 		fragColor = vec4(vColor.rgb * uTint.rgb, vColor.a * uTint.a);
 		return;
 	}
+	if (uMode == 7)
+	{
+		// soft sprites: a round glow (halo, stars) or a light shaft (soft sides, fading at both ends)
+		vec2 q = vUV * 2.0 - 1.0;
+		float a = uShape == 0 ? pow(max(0.0, 1.0 - length(q)), 2.2)
+			: (1.0 - smoothstep(0.15, 1.0, abs(q.x))) * smoothstep(-1.0, -0.75, q.y) * (1.0 - smoothstep(-0.1, 1.0, q.y));
+		if (a * vColor.a * uTint.a < 0.002) discard;
+		fragColor = vec4(vColor.rgb * uTint.rgb, a * vColor.a * uTint.a);
+		return;
+	}
 	if (uMode == 6)
 	{
 		// low mist: soft wisps drifting over open ground (uTex: where the sky is open, per map tile)
@@ -317,7 +332,22 @@ void main()
 			glow += uGlowCol[i] * f * f * (0.35 + 0.65 * max(dot(n, L / max(d, 1e-4)), 0.0));
 		}
 		// lightning: a flash shows the map in its own colours for a moment (only what is on the table already)
-		if (uFlash > 0.0) glow += vec3(0.75, 0.82, 1.0) * uFlash * 0.55 * (0.55 + 0.45 * max(n.y, 0.0)) * sunMask();
+		gMap = true;
+		float sk = sunMask();
+		if (uFlash > 0.0) glow += vec3(0.75, 0.82, 1.0) * uFlash * 0.55 * (0.55 + 0.45 * max(n.y, 0.0)) * sk;
+		if (sk > 0.5 && uMapShade > 0.0)
+		{
+			// under the sun or moon a tile's brightness has two parts: the darkness around it, lit by the
+			// sun or moon and the sky (with shadows), and the game's own light where the tile is brighter
+			// than that (soldiers' light, flares, fires), lit by a lamp of its own
+			float b = max(dot(vColor.rgb * uTint.rgb, vec3(1.0 / 3.0)), 1e-4);
+			vec3 albedo = base / b;
+			float amb = min(b, uMapShade), loc = max(b - uMapShade, 0.0);
+			vec3 bAmb = albedo * amb;
+			vec3 c = lighting(bAmb, n, 0.1 * k, 0.8) + bAmb * 0.22 + albedo * loc * uLampCol * (0.8 + 0.2 * max(n.y, 0.0));
+			fragColor = vec4(c + t.rgb * glow, 1.0);
+			return;
+		}
 		fragColor = vec4(lighting(base, n, 0.1 * k, 0.8) + base * 0.22 + t.rgb * glow, 1.0);
 		return;
 	}

@@ -21,7 +21,7 @@ namespace VR
 
 namespace
 {
-const int W = 240, H = 310;                 // the panel's picture (pixels)
+const int W = 240, H = 330;                 // the panel's picture (pixels)
 const float PW = 0.125f;                    // its width on the wrist (metres)
 const float PH = PW * H / W;
 
@@ -94,7 +94,8 @@ struct WristDebug::Impl
 		b.push_back({"TURNL", "TURN -15", 4, 170, 76, 25});
 		b.push_back({"TURNR", "TURN +15", 82, 170, 76, 25});
 		b.push_back({"REAL", "REAL", 160, 170, 76, 25});
-		b.push_back({"STRIKE", "STRIKE LIGHTNING", 4, 222, 232, 25});
+		b.push_back({"STRIKE", "STRIKE LIGHTNING", 4, 222, 115, 25});
+		b.push_back({"VANILLA", Options::vrVanillaSky ? "VANILLA: ON" : "VANILLA: OFF", 121, 222, 115, 25});
 		return b;
 	}
 
@@ -114,6 +115,7 @@ struct WristDebug::Impl
 		else if (id == "TURNR") board->rotateSun(15.f);
 		else if (id == "REAL") board->realSun();
 		else if (id == "STRIKE") board->testStrike();
+		else if (id == "VANILLA") { Options::vrVanillaSky = !Options::vrVanillaSky; board->skyChanged(); }
 		else return false;
 		lastPress = id;
 		pressFlash = 0.25f;
@@ -138,7 +140,7 @@ void WristDebug::Impl::render()
 		bool on = (b.id == "INFO" && page == 0) || (b.id == "CONTROLS" && page == 1);
 		std::string lw = b.id;
 		std::transform(lw.begin(), lw.end(), lw.begin(), ::tolower);
-		bool weatherOn = lw == I.forced; // the weather button in force (AUTO when none)
+		bool weatherOn = lw == I.forced || (b.id == "VANILLA" && Options::vrVanillaSky); // the weather button in force (AUTO when none)
 		bool flash = pressFlash > 0.f && lastPress == b.id;
 		uint32_t bg = flash ? C(90, 200, 230) : (on || weatherOn) ? C(40, 90, 150) : BAND;
 		cv.rect(b.x, b.y, b.w, b.h, bg);
@@ -159,7 +161,8 @@ void WristDebug::Impl::render()
 		line(cv.tr(I.mission));
 		line("Terrain: " + I.terrain);
 		line("Sets: " + I.sets, DIM);
-		line(I.outdoor ? "Outdoors" : "Indoors (" + I.indoorWhy + "): no sun, no weather", I.outdoor ? TEXT : AMBER);
+		if (I.vanilla) line("VANILLA: the pre-0.13 table (no sky)", AMBER);
+		else line(I.outdoor ? "Outdoors" : "Indoors (" + I.indoorWhy + "): no sun, no weather", I.outdoor ? TEXT : AMBER);
 		if (I.site)
 			line(fmt("Site %.1f", std::fabs(I.lat)) + (I.lat >= 0 ? "N " : "S ") + fmt("%.1f", std::fabs(I.lon)) + (I.lon >= 0 ? "E" : "W"));
 		else line("Site: unknown", DIM);
@@ -174,9 +177,18 @@ void WristDebug::Impl::render()
 		line("Darkness from " + I.shadeFrom, DIM);
 		if (I.outdoor)
 		{
-			line(std::string(I.sky == "night" ? "Moon" : "Sun") + " from " + compass(I.sunAz) + fmt(" (%.0f), %.0f high", I.sunAz, I.sunElev));
+			bool isNight = I.sky.compare(0, 5, "night") == 0;
+			if (I.starlit) line("No moon in the sky: starlight only");
+			else line(std::string(isNight ? "Moon" : "Sun") + " from " + compass(I.sunAz) + fmt(" (%.0f), %.0f high", I.sunAz, I.sunElev));
 			line(I.realKnown ? fmt("Real sun at the site: %.0f high", I.realElev) + (I.realElev < 0.f ? " (below)" : "") : std::string("Real sun: not known"), DIM);
 			line("Direction: " + I.sunFrom, I.sunFrom == "set by hand" ? AMBER : DIM);
+			if (I.sky.compare(0, 5, "night") == 0)
+			{
+				std::string ph = fmt("%.0f%% ", I.moonIllum * 100.f) + (I.moonWaxing ? "waxing" : "waning");
+				if (I.starlit) line("Moon " + ph + ", below the horizon: starlit", AMBER);
+				else line("Moon " + ph + fmt(", %.0f high", I.moonAlt) + (I.moonKnown ? "" : " (rolled)"));
+			}
+			if (I.cover > 0.02f) line(fmt("Clouds hide %.0f%% of the ", I.cover * 100.f) + (I.sky.compare(0, 5, "night") == 0 ? "moon" : "sun"), DIM);
 			cv.text(6, y, 40, "Sun", TEXT); cv.rect(34, y, 30, 8, toPx(I.sunCol)); cv.frame(34, y, 30, 8, LINE);
 			cv.text(80, y, 40, "Sky", TEXT); cv.rect(104, y, 30, 8, toPx(I.skyCol)); cv.frame(104, y, 30, 8, LINE);
 			cv.text(146, y, 90, fmt("x%.2f", std::max(I.sunCol.r, std::max(I.sunCol.g, I.sunCol.b))), DIM);
@@ -208,13 +220,14 @@ void WristDebug::Impl::render()
 	{
 		cv.text(4, 28, W - 8, "WEATHER  (now: " + (I.forced == "auto" ? std::string("the mission's roll") : I.forced) + ")", GOLD);
 		cv.text(4, 104, W - 8, fmt("DARKNESS  table %.0f, game %.0f", I.shade, I.shadeGame), GOLD);
-		cv.text(4, 156, W - 8, std::string(I.sky == "night" ? "MOON" : "SUN") + "  from " + compass(I.sunAz) + fmt(" (%.0f)", I.sunAz) + " - " + I.sunFrom, GOLD);
-		cv.text(4, 208, W - 8, fmt("LIGHTNING  strikes %.0f", I.strikes), GOLD);
-		y = 256;
+		cv.text(4, 156, W - 8, std::string(I.sky.compare(0, 5, "night") == 0 ? (I.starlit ? "MOON (down)" : "MOON") : "SUN") + "  from " + compass(I.sunAz) + fmt(" (%.0f)", I.sunAz) + " - " + I.sunFrom, GOLD);
+		cv.text(4, 208, W - 8, fmt("LIGHTNING  strikes %.0f", I.strikes) + "      SKY", GOLD);
+		y = 262;
 		line("These change the table only: the game's", DIM);
 		line("darkness, what soldiers see and the flat", DIM);
 		line("screen stay as they are. Forced weather and", DIM);
 		line("a turned sun carry on into the next battles.", DIM);
+		line("VANILLA is the vrVanillaSky setting (saved).", DIM);
 	}
 }
 

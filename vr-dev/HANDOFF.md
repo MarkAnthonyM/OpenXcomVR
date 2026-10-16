@@ -110,6 +110,7 @@ Script commands (one per line; numbers are optional with defaults):
 | `boardpan dx dz`, `boardrotate r`, `boardzoom f`, `minimaptap u v`, `gamecam x y z` | move the table view / the game camera |
 | `hand ...`, `handmove ...`, `handcurl ...`, `handoff` | a scripted right hand (grip pose and finger curls) |
 | `testburst dx dy big` | an explosion effect next to the selected soldier |
+| `skyclock day hour minute` | the date and time the sun and moon are worked out for (`skyclock -1` = the game's clock); takes effect at the next re-roll (`weather`, `shade`) |
 | `dbgpin on [dist]`, `dbgpage n`, `dbgpress ID` | the wrist debug panel (needs `-vrDebugPanel true`): hold it in front of the eye (the preview has no left hand to turn), show page 0 info / 1 controls, press a control (`RAIN`, `DARKER`, `TURNR`, `REAL`, `STRIKE`...) |
 | `weather kind`, `strike`, `shade n`, `sunaz deg` | the battle's weather (`rain`, `snow`, `dust`, `sand`, `mist`, `clouds`, `clear`, `auto`), a lightning strike now, the mission's darkness (global shade, relit and rebuilt), the sun's direction for the following re-rolls (`-1` normal); `weather`/`shade` re-roll the sky, so set `sunaz` first |
 | `boardinfo`, `status` | log the table view (focus, where the soldier sits, level) / the table state |
@@ -139,7 +140,8 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   does this).
 - Branch `vr-prototype-weather` (from vr-prototype 0.13.0): exploring the
   weather and time of day. Its builds are `0.13.0-weather.<n>`; it has the
-  sky debug panel on the left wrist (`vrDebugPanel`, `VrDebug.cpp`).
+  sky debug panel on the left wrist (`vrDebugPanel`, `VrDebug.cpp`), the moon,
+  the sky visuals and vanilla mode (`vrVanillaSky`).
 - Released so far: 0.12.2 (the first published release; 0.9.1 was prepared but never published). The
   tags proto-0.1.0 ... proto-0.8.0 on the fork are from before the tag-only-releases rule.
 
@@ -288,6 +290,17 @@ Room and rendering
   fall under a roof that the view level hides, and thin out near hands and
   the cursor. Lightning lights only what is drawn on the table.
   `vrWeather` off removes the weather, not the sun.
+- 0.13.0-weather.2: the moon is computed (low-precision orbit from the game
+  date/time and the site; phase from the sun-moon elongation), starlit when
+  below the horizon; darkness 10-11 is a twilight blend. Under the sun/moon a
+  map tile's brightness is split in the shader (mode 3): min(tile, map shade)
+  is lit by sun/moon + sky, the rest is the game's own light, lit by uLampCol
+  (scaled like the old night key so brightness matches); point lights other
+  than the key stay off map surfaces (gMap). The disc, its clouds, halo,
+  stars and light shafts are built per frame in world space (Weather::drawSky)
+  and drawn with the rain after everything solid (Board::drawWeather), or the
+  back-wall screens drawn later would cover them. `vrVanillaSky` = the
+  pre-0.13 table (Weather treats it like indoors).
 - The wrist debug panel's darkness buttons are a table-only offset
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.

@@ -36,6 +36,7 @@ struct BoardSky
 	glm::mat4 mapInv{1.f};          // world -> map voxels
 	glm::vec4 area{0.f};            // the map on the table (world xz rect)
 	float flash = 0.f;              // lightning
+	float mapShade = 0.f;           // the map's darkness as a brightness factor (tiles brighter carry the game's own light)
 };
 
 struct BoardHit
@@ -70,6 +71,8 @@ public:
 	/// Rebuilds geometry when the game state changed. Needs the GL context.
 	void update(Game *game, float dt);
 	void draw(const Shader &sh, const glm::mat4 &viewProj, const glm::vec3 &eye, double time);
+	/// Rain, snow, mist and the sky over an outdoor battle: see-through, drawn after the room's solid parts.
+	void drawWeather(const Shader &sh) const;
 	bool raycast(const glm::vec3 &o, const glm::vec3 &d, BoardHit &hit) const;
 	/// Table area (world xz rect: xmin, zmin, xmax, zmax) the battle map is shown in.
 	void setMapRect(const glm::vec4 &rect);
@@ -134,6 +137,8 @@ public:
 	void rotateSun(float degrees);
 	void realSun();
 	void setShadeOffset(int offset);
+	/// vrVanillaSky changed: the sky is worked out again (vanilla: the pre-0.13 table).
+	void skyChanged();
 	int shadeOffset() const;
 	SkyInfo skyInfo() const;
 	/// The geoscape dome as a sphere (world centre, radius); false when no globe is shown.

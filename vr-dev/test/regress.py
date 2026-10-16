@@ -97,6 +97,10 @@ TESTS = [  # script, save, check, what it covers
      "sun and weather over the battle (shots/wx_*.png: rain, lightning, snow, dust, sand, clouds, mist, dusk, night)"),
     ("dbg", "outside.asav", has("debug panel: RAIN", "debug panel: TURNR", "dbg=shown page=1", "sky=day sun=137,62"),
      "the sky debug panel: info and controls pages (shots/dbg_*.png)"),
+    ("sky", "outside.asav", has("moon=99%,70", "night (starlit)", "cover="),
+     "sun and moon disc, clouds past it, light shafts, real full moon, starlit night (shots/sky_*.png)"),
+    ("sky2", "outnight.asav", has("sky=vanilla", "moon=99%,70"),
+     "night: the soldiers' light is its own lamp; vanilla mode (shots/sky2_*.png)"),
     ("mm", None, check_menu, "the main menu at start doesn't flash a floating window"),
     ("br", None, has("float: open N8OpenXcom13BriefingStateE", "float: touch 160,172"), "the briefing floats; touching OK starts the battle"),
 ]

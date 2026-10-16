@@ -377,6 +377,7 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "vrShadows", &vrShadows, true));
 	_info.push_back(OptionInfo(OPTION_OXCE, "vrWeather", &vrWeather, true));
 	_info.push_back(OptionInfo(OPTION_OXCE, "vrDebugPanel", &vrDebugPanel, false));
+	_info.push_back(OptionInfo(OPTION_OXCE, "vrVanillaSky", &vrVanillaSky, false));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceDisableThinkingProgressBar", &oxceDisableThinkingProgressBar, false));
 
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceEmbeddedOnly", &oxceEmbeddedOnly, true));

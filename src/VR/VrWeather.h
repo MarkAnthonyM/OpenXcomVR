@@ -56,6 +56,11 @@ struct WeatherView
 	float light = 1.f;                   // how bright the map is (the game's darkness, 0..1)
 	std::function<float(int, int)> stop; // a tile column: the height rain and snow stop at (a roof, the ground)
 	std::function<bool(int, int)> open;  // a tile column: explored ground under the open sky (the mist lies there)
+	// the sky over the table (world): the sun or moon disc, its clouds, light shafts and stars
+	glm::mat4 board{1.f};                // map voxels -> world
+	glm::vec3 head{0.f};                 // the player's head (world)
+	glm::vec4 mapRect{0.f};              // the map on the table (world xz rect)
+	float tableY = 0.f;
 };
 
 /// Everything the left-wrist debug panel shows about the sky (VrDebug).
@@ -82,6 +87,12 @@ struct SkyInfo
 	int drawn = 0, strikes = 0;
 	float nextStrike = -1.f;
 	uint32_t seed = 0;
+	bool vanilla = false;                        // vrVanillaSky: the pre-0.13 table
+	bool moonKnown = false;                      // worked out from the date, time and site
+	float moonIllum = 0.f, moonAlt = 0.f, moonAz = 0.f;
+	bool moonWaxing = false;
+	bool starlit = false;                        // a night without the moon: only the sky lights the map
+	float cover = 0.f;                           // how much of the sun or moon its clouds hide right now
 };
 
 class Weather
@@ -96,6 +107,9 @@ public:
 	void update(float dt, const WeatherView &view);
 	/// Rain, snow, dust and mist (board matrix: map voxels -> world). Mist needs uMapInv set.
 	void draw(const Shader &sh, const glm::mat4 &M) const;
+	/// The sky over the table (world space): the sun or moon beyond the table edge with its halo and
+	/// passing clouds, light shafts at low sun or in mist, stars at night.
+	void drawSky(const Shader &sh) const;
 	const SkyLight &sky() const;
 	std::string status() const;
 	SkyInfo info() const;
@@ -107,6 +121,9 @@ public:
 	static void force(const std::string &kind);
 	/// Tests: the sun's direction (degrees from north, clockwise) for the next battles; < 0 back to normal.
 	static void forceSun(float azimuth);
+	/// Tests: the date and time the sun and moon are worked out for (day of month, hour, minute; day < 0 =
+	/// the game's own clock). The weather roll keeps the game's clock.
+	static void forceClock(int day, int hour, int minute);
 	/// Tests: a lightning strike now (rain only).
 	void strike();
 	struct Impl;

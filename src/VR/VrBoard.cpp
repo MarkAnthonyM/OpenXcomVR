@@ -1131,6 +1131,10 @@ void Board::Impl::updateBattle(float dt)
 		v.light = shadeFactor(globalShade());
 		v.stop = [this](int x, int y) { return (x < 0 || y < 0 || x >= mx || y >= my) ? 0.f : stopCache[(size_t)y * mx + x]; };
 		v.open = [this](int x, int y) { return x >= 0 && y >= 0 && x < mx && y < my && openCache[(size_t)y * mx + x] != 0; };
+		v.board = boardMatrix();
+		v.head = viewer;
+		v.mapRect = mapRect;
+		v.tableY = surfaceY();
 		weather.update(dt, v);
 	}
 	++unitFrame;
@@ -1400,7 +1404,6 @@ void Board::Impl::drawBattle(const Shader &sh)
 		if (fc.mesh && !fc.empty) fc.mesh->draw();
 	glDisable(GL_BLEND);
 
-	weather.draw(sh, M);
 	drawEffects(sh, M);
 
 	drawHud(sh, M);
@@ -2645,6 +2648,7 @@ bool Board::sky(BoardSky &out) const
 	out.mapInv = glm::inverse(M);
 	out.area = p.clipRect();
 	out.flash = s.flash;
+	out.mapShade = shadeFactor(p.globalShade());
 	return true;
 }
 
@@ -2662,7 +2666,6 @@ void Board::rotateSun(float degrees)
 {
 	Impl &p = *_p;
 	float az = Weather::forcedSun() >= 0.f ? Weather::forcedSun() : p.weather.info().sunAz;
-	if (p.weather.info().sky == "night") az = std::fmod(az + 180.f, 360.f); // the moon stands opposite
 	Weather::forceSun(std::fmod(az + degrees + 720.f, 360.f));
 	if (p.hasBattle && p.battle) p.weather.begin(p.game, p.battle, p.shadeOffset);
 }
@@ -2684,6 +2687,12 @@ void Board::setShadeOffset(int offset)
 
 int Board::shadeOffset() const { return _p->shadeOffset; }
 
+void Board::skyChanged()
+{
+	Impl &p = *_p;
+	if (p.hasBattle && p.battle) p.weather.begin(p.game, p.battle, p.shadeOffset);
+}
+
 SkyInfo Board::skyInfo() const { return _p->hasBattle ? _p->weather.info() : SkyInfo(); }
 
 void Board::testStrike() { _p->weather.strike(); }
@@ -2703,6 +2712,17 @@ float Board::nightLevel() const
 	if (!p.hasBattle || !p.battle) return 0.f;
 	// the game's darkness runs 0 (day) .. 15; night missions sit around 10 and up
 	return glm::clamp((p.globalShade() - 2) / 8.f, 0.f, 1.f);
+}
+
+void Board::drawWeather(const Shader &sh) const
+{
+	const Impl &p = *_p;
+	if (!p.hasBattle || p.hasBase || p.shadowPass || !p.atlas.tex.valid()) return;
+	// after the room's solid parts (the back wall screens too): see-through things last
+	sh.set("uClip", p.clipRect());
+	p.weather.draw(sh, p.boardMatrix());
+	p.weather.drawSky(sh);
+	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
 }
 
 void Board::draw(const Shader &sh, const glm::mat4 &, const glm::vec3 &eye, double)

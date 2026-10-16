@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.1)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.2)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -120,13 +120,28 @@ stand) in an X-COM command center at a holographic war table:
   game's palette shading (measured from the palette, applied in linear light),
   so lit areas, flares and fires stand out and unlit ground is near black; the
   fog over unexplored ground darkens with the night too.
-- **The sun over the mission.** On an outdoor mission the table is lit by the
-  sun standing where it really stands over the landing site at that hour (the
-  far edge of the table is north), while the game's own darkness level for
-  the mission sets how high it is and its colour: a high white sun with short
-  shadows by day, a low gold or deep orange one with long shadows at dawn and
-  dusk, faint blue moonlight at night. The tiles stay exactly as dark as the
-  game makes them; the room picks up a little of the light's colour.
+- **The sun and moon over the mission.** On an outdoor mission the table is
+  lit by the sun standing where it really stands over the landing site at
+  that hour (the far edge of the table is north), while the game's own
+  darkness level for the mission sets how high it is and its colour: a high
+  white sun with short shadows by day, a low gold or deep orange one with long
+  shadows at dawn and dusk, fading into the night sky at darkness 10-11. At
+  night (darkness 12-15) the real moon takes over: its position and phase are
+  worked out from the game's date and time and the site (the game itself has
+  no moon), so a full moon gives brighter light and clearer shadows than a
+  thin one; when the moon is below the horizon only a dim starlit sky lights
+  the map. The sun or moon hangs as a small glowing voxel disc beyond the
+  table edge in its direction (the moon shows its phase); on cloudy missions
+  voxel clouds drift past it and the light on the map dims while one covers
+  it. At a low sun, and in mist or dust, faint shafts of light slant across
+  the map; on clear nights stars glitter above the table. The game's own
+  light (soldiers' light, flares, fires: wherever a tile is lighter than the
+  map's darkness) is a warm lamp of its own, so the pools around soldiers look
+  the same wherever you turn the map, and the room's lights no longer reach
+  the map. The tiles stay exactly as dark as the game makes them. Everything
+  here is for show only: the game's darkness and what soldiers see are
+  unchanged. `vrVanillaSky` (default off) brings back the table as it was
+  before all this: the room's light over the table, no sun, moon or weather.
 - **Weather.** Each outdoor mission rolls its own weather (the same mission
   always gets the same, so a reload keeps it): snow on polar and mountain
   maps (about half the time), rain on jungle, forest, farmland and city maps
@@ -154,7 +169,9 @@ stand) in an X-COM command center at a holographic war table:
   frame time. **CONTROLS** forces the weather (AUTO gives the mission's own
   roll back), darkens or lightens the table's map (GAME goes back to the
   game's level), turns the sun 15° either way (REAL gives the real sun back)
-  and strikes lightning. The controls change the table only: the game's
+  and strikes lightning; VANILLA switches `vrVanillaSky` on and off. The info
+  page also shows the moon's phase and height (or "starlit") and how much of
+  the sun or moon its clouds hide. The controls change the table only: the game's
   darkness, what your soldiers see and the flat screen stay as they are.
   Forced weather and a turned sun carry on into the next battles until you
   press AUTO / REAL.

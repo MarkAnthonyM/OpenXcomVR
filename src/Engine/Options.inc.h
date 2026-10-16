@@ -15,6 +15,7 @@ OPT int vrTableScale; // VR tabletop: war table size in percent of 1.9 x 1.2 m
 OPT int vrSeatOffset; // VR tabletop: player height offset in mm (seat calibration, hold Left B)
 OPT bool vrShadows; // VR tabletop: shadows from the light over the table
 OPT bool vrDebugPanel; // VR tabletop: the sky debug panel on the left wrist (weather / time of day tests)
+OPT bool vrVanillaSky; // VR tabletop: the table as before 0.13 (the room's light over the table, no sun, moon or weather)
 OPT bool vrWeather; // VR tabletop: rain, snow, dust, clouds and mist over outdoor battles
 OPT KeyboardType keyboardMode;
 OPT SaveSort saveOrder;
