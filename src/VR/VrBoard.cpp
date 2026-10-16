@@ -1237,9 +1237,32 @@ void Board::Impl::drawUnits(const Shader &sh)
 		if (Tile *ut = u->getTile()) ub = shadeFactor(tileShade(ut));
 		sh.set("uTint", glm::vec4(ub, ub, ub, 1.f));
 		sh.set("uModel", m);
+		// the sun or moon behind a figure (as you see it) lights a thin edge round it
+		glm::vec4 rim(0.f);
+		const SkyLight &sk = weather.sky();
+		if (sk.on && !shadowPass)
+		{
+			glm::vec2 ld(sk.dir.x, sk.dir.z), vd(p.x - viewerVox.x, p.z - viewerVox.z);
+			if (glm::length(ld) > 1e-3f && glm::length(vd) > 1e-3f)
+			{
+				float back = glm::dot(glm::normalize(ld), glm::normalize(vd));
+				float low = 1.f - glm::smoothstep(0.45f, 0.8f, sk.dir.y);
+				// a faint edge in the light's colour (not its strength: it must stay a hint, not an outline)
+				float m = std::max(sk.col.r, std::max(sk.col.g, sk.col.b));
+				if (m > 1e-3f)
+				{
+					float k = (globalShade() >= 12 ? 0.07f : 0.12f) * glm::smoothstep(0.1f, 0.8f, back) * low * glm::clamp(m * 3.f, 0.f, 1.f);
+					glm::vec3 c = sk.col / m * k;
+					if (k > 0.004f) rim = glm::vec4(c, 1.f);
+				}
+			}
+		}
+		sh.set("uRim", rim);
+		sh.set("uTexSize", glm::vec2((float)card.tex->width(), (float)card.tex->height()));
 		card.tex->bind(0);
 		quad.draw();
 	}
+	sh.set("uRim", glm::vec4(0.f));
 	sh.set("uTint", glm::vec4(1.f));
 }
 
@@ -2649,6 +2672,7 @@ bool Board::sky(BoardSky &out) const
 	out.area = p.clipRect();
 	out.flash = s.flash;
 	out.mapShade = shadeFactor(p.globalShade());
+	out.moonFloor = s.moonFloor;
 	return true;
 }
 
@@ -2686,6 +2710,12 @@ void Board::setShadeOffset(int offset)
 }
 
 int Board::shadeOffset() const { return _p->shadeOffset; }
+
+void Board::shiftSkyClock(double days, bool reset)
+{
+	Weather::shiftClock(days, reset);
+	skyChanged();
+}
 
 void Board::skyChanged()
 {

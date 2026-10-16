@@ -1006,6 +1006,8 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uSunKeySky", sky.sky);
 	sh.set("uFlash", sky.flash);
 	sh.set("uMapShade", sky.on ? sky.mapShade : 0.f);
+	sh.set("uMoonFloor", sky.on ? sky.moonFloor : 0.f);
+	sh.set("uRim", glm::vec4(0.f));
 	// the game's own light (soldiers, flares, fires): a warm lamp, as bright as the room light used to make it
 	sh.set("uLampCol", glm::vec3(1.0f, 0.93f, 0.82f) * (1.f - 0.45f * S->night));
 	sh.set("uCloud", sky.cloud);
@@ -1065,6 +1067,20 @@ static void computeLights(float dt)
 	add(L.lightPos[1], L.lightCol[1] * S->roomTint * fill);  // (1-3: room fills)
 	add(L.lightPos[2], L.lightCol[2] * S->roomTint * fill);
 	add(L.lightPos[3], L.lightCol[3] * S->roomTint * fill);
+	// the light's side of the room glows faintly in its colour, low down, as if through haze (dawn, dusk
+	// and moonlit nights; nothing by day or under a starless sky)
+	if (S->sky.on && glm::length(S->sky.col) > 1e-3f)
+	{
+		glm::vec2 hz(S->sky.dir.x, S->sky.dir.z);
+		if (glm::length(hz) > 1e-3f)
+		{
+			hz = glm::normalize(hz);
+			float low = 1.f - glm::smoothstep(0.25f, 0.6f, S->sky.dir.y);
+			glm::vec3 c = S->sky.col / std::max(0.01f, std::max(S->sky.col.r, std::max(S->sky.col.g, S->sky.col.b)));
+			float k = (S->night > 0.9f ? 0.35f : 1.f) * low * glm::clamp(glm::length(S->sky.col) * 1.5f, 0.f, 1.f);
+			if (k > 0.01f) add(glm::vec3(T.x + hz.x * 2.0f, T.y + 0.35f, T.z + hz.y * 2.0f), c * 1.2f * k);
+		}
+	}
 	// lightning over the battle: a flash fills the room
 	if (S->sky.flash > 0.01f) add({T.x + 0.3f, T.y + 1.5f, T.z - 0.5f}, glm::vec3(0.75f, 0.82f, 1.0f) * 6.f * S->sky.flash);
 	add(S->panel.pos + glm::vec3(0.f, 0.f, 0.6f), S->gameGlow * 0.9f);          // the game screen's light
@@ -1506,6 +1522,7 @@ static void runScript()
 			glm::vec3 fwd = S->head.forward();
 			S->table.debugPanel().testPin(num(0, 1) > 0.5, S->head.pos + fwd * (float)num(1, 0.3), -fwd);
 		}
+		else if (c.op == "skyshift") { Weather::shiftClock(num(0, 0), c.args.empty()); S->board.skyChanged(); }
 		else if (c.op == "skyclock") { Weather::forceClock((int)num(0, -1), (int)num(1, 0), (int)num(2, 0)); }
 		else if (c.op == "dbgpage") { S->table.debugPanel().testPage((int)num(0, 0)); }
 		else if (c.op == "dbgpress") { if (c.args.empty() || !S->table.debugPanel().testPress(c.args[0])) Log(LOG_INFO) << "[VR] debug panel: no control " << (c.args.empty() ? "" : c.args[0]); }

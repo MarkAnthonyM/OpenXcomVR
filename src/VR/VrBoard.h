@@ -37,6 +37,7 @@ struct BoardSky
 	glm::vec4 area{0.f};            // the map on the table (world xz rect)
 	float flash = 0.f;              // lightning
 	float mapShade = 0.f;           // the map's darkness as a brightness factor (tiles brighter carry the game's own light)
+	float moonFloor = 0.f;          // moonlit night: the unlit ground shows at least this bright under the moon
 };
 
 struct BoardHit
@@ -139,6 +140,8 @@ public:
 	void setShadeOffset(int offset);
 	/// vrVanillaSky changed: the sky is worked out again (vanilla: the pre-0.13 table).
 	void skyChanged();
+	/// The debug panel's sky clock: move the time the sun and moon are worked out for (days; reset = the game's).
+	void shiftSkyClock(double days, bool reset = false);
 	int shadeOffset() const;
 	SkyInfo skyInfo() const;
 	/// The geoscape dome as a sphere (world centre, radius); false when no globe is shown.

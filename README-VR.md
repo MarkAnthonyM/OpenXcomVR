@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.2)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.3)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -129,12 +129,14 @@ stand) in an X-COM command center at a holographic war table:
   night (darkness 12-15) the real moon takes over: its position and phase are
   worked out from the game's date and time and the site (the game itself has
   no moon), so a full moon gives brighter light and clearer shadows than a
-  thin one; when the moon is below the horizon only a dim starlit sky lights
-  the map. The sun or moon hangs as a small glowing voxel disc beyond the
-  table edge in its direction (the moon shows its phase); on cloudy missions
-  voxel clouds drift past it and the light on the map dims while one covers
-  it. At a low sun, and in mist or dust, faint shafts of light slant across
-  the map; on clear nights stars glitter above the table. The game's own
+  thin one, and the unlit ground shows faintly under a bright moon; when the
+  moon is below the horizon only a dim starlit sky lights the map, as black as
+  the game makes it. The sun and moon are never shown as objects: you see them
+  in their light. Figures with the light behind them (as you look at them) get
+  a faint edge of its colour, the room glows faintly in its colour on the side
+  it comes from at dawn, dusk and on moonlit nights, and cloud shadows drift
+  across the map by day and on moonlit nights, where a passing cloud swallows
+  the moonlight on part of the battlefield for a while. The game's own
   light (soldiers' light, flares, fires: wherever a tile is lighter than the
   map's darkness) is a warm lamp of its own, so the pools around soldiers look
   the same wherever you turn the map, and the room's lights no longer reach
@@ -169,7 +171,12 @@ stand) in an X-COM command center at a holographic war table:
   frame time. **CONTROLS** forces the weather (AUTO gives the mission's own
   roll back), darkens or lightens the table's map (GAME goes back to the
   game's level), turns the sun 15° either way (REAL gives the real sun back)
-  and strikes lightning; VANILLA switches `vrVanillaSky` on and off. The info
+  and strikes lightning; VANILLA switches `vrVanillaSky` on and off. The SKY
+  CLOCK row moves the date and time the sun and moon are worked out for (the
+  game's own clock and darkness stay as they are): -1H / +1H, +12H to swap day
+  and night (New Battle always lands at noon, when a full moon is down), -MOON
+  / +MOON to step four days (about an eighth of the moon's cycle) and GAME to
+  go back to the game's clock. The info
   page also shows the moon's phase and height (or "starlit") and how much of
   the sun or moon its clouds hide. The controls change the table only: the game's
   darkness, what your soldiers see and the flat screen stay as they are.

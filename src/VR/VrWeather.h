@@ -41,6 +41,7 @@ struct SkyLight
 	float cloud = 0.f;               // cloud shadows: how dark (0 clear sky)
 	glm::vec2 cloudOffset{0.f};      // their drift (map voxels)
 	float flash = 0.f;               // lightning right now (0..1)
+	float moonFloor = 0.f;           // moonlit night: how bright the unlit ground shows (a tile brightness factor)
 };
 
 /// What the weather needs to know about the table each frame (map voxels).
@@ -93,6 +94,8 @@ struct SkyInfo
 	bool moonWaxing = false;
 	bool starlit = false;                        // a night without the moon: only the sky lights the map
 	float cover = 0.f;                           // how much of the sun or moon its clouds hide right now
+	std::string skyClock;                        // the date and time the sun and moon are worked out for
+	double skyShift = 0.0;                       // the debug panel's shift of that clock from the game's (days)
 };
 
 class Weather
@@ -124,6 +127,10 @@ public:
 	/// Tests: the date and time the sun and moon are worked out for (day of month, hour, minute; day < 0 =
 	/// the game's own clock). The weather roll keeps the game's clock.
 	static void forceClock(int day, int hour, int minute);
+	/// The debug panel: move the sky's clock (sun and moon only) by this many days from now on (0 = back
+	/// to the game's clock); the game's own clock and darkness are untouched.
+	static void shiftClock(double days, bool reset = false);
+	static double clockShift();
 	/// Tests: a lightning strike now (rain only).
 	void strike();
 	struct Impl;

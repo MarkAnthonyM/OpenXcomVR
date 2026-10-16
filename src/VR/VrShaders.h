@@ -91,6 +91,8 @@ uniform vec3 uSunKeySky;     // the sky's light over the map
 uniform float uMapShade;     // outdoor battle: how bright the map's darkness leaves an unlit tile (the game's shade
 uniform vec3 uLampCol;       // as a factor); tiles brighter than that carry the game's own light, lit in this colour
 uniform int uShape;          // mode 7: 0 a round glow, 1 a light shaft
+uniform float uMoonFloor;    // moonlit night: the unlit ground shows at least this bright under the moon
+uniform vec4 uRim;           // mode 3 standees: rgb an edge of light round the figure (backlit by the sun or moon), a on
 uniform float uFlash;        // lightning (0..1): lights the map's surfaces from their own colour, however dark the night
 uniform vec4 uCloud;         // cloud shadows: strength, scale per map voxel, drift (map voxels)
 uniform mat4 uMapInv;        // world -> battle map voxels
@@ -145,6 +147,14 @@ float sunMask()
 	return (1.0 - smoothstep(0.0, 0.03, length(q))) * smoothstep(-0.12, -0.08, h) * (1.0 - smoothstep(0.6, 0.8, h));
 }
 
+/// Cloud shadows drifting over the battle map: 1 in the clear, less under a cloud.
+float cloudAt()
+{
+	if (uCloud.x <= 0.0) return 1.0;
+	vec2 mp = (uMapInv * vec4(vWorld, 1.0)).xz;
+	return 1.0 - uCloud.x * smoothstep(0.42, 0.62, fbm((mp - uCloud.zw) * uCloud.y));
+}
+
 vec3 lighting(vec3 base, vec3 n, float spec, float rough)
 {
 	vec3 v = normalize(uEye - vWorld);
@@ -173,12 +183,7 @@ vec3 lighting(vec3 base, vec3 n, float spec, float rough)
 		float ndl = max(dot(n, L), 0.0);
 		vec3 hv = normalize(L + v);
 		float s = pow(max(dot(n, hv), 0.0), mix(80.0, 8.0, rough)) * spec;
-		float cl = 1.0;
-		if (uCloud.x > 0.0)
-		{
-			vec2 mp = (uMapInv * vec4(vWorld, 1.0)).xz;
-			cl = 1.0 - uCloud.x * smoothstep(0.42, 0.62, fbm((mp - uCloud.zw) * uCloud.y));
-		}
+		float cl = cloudAt();
 		// shadows from the sun are deeper than the room light's
 		float sh = mix(0.08, 1.0, (shadowFactor(n) - 0.25) / 0.75);
 		col += sunK * ((base * ndl + s) * uSunKeyCol * sh * cl + base * uSunKeySky * (0.6 + 0.4 * n.y));
@@ -318,6 +323,15 @@ void main()
 		if (t.a < 0.02) discard;
 		vec3 base = t.rgb * vColor.rgb * uTint.rgb;
 		if (uMode == 4) { fragColor = vec4(base, t.a * uTint.a); return; }
+		vec3 rim = vec3(0.0);
+		if (uRim.a > 0.5)
+		{
+			// the figure's silhouette: opaque texels next to transparent ones
+			vec2 tx = 1.0 / max(uTexSize, vec2(1.0));
+			float e = (1.0 - texture(uTex, vUV + vec2(tx.x, 0.0)).a) + (1.0 - texture(uTex, vUV - vec2(tx.x, 0.0)).a)
+				+ (1.0 - texture(uTex, vUV + vec2(0.0, tx.y)).a) + (1.0 - texture(uTex, vUV - vec2(0.0, tx.y)).a);
+			rim = uRim.rgb * clamp(e, 0.0, 1.0);
+		}
 		// the highlight follows the surface's own brightness, so a tile darkened by the night stays dark
 		float k = dot(vColor.rgb * uTint.rgb, vec3(1.0 / 3.0));
 		// glowing shots and blasts light the surface from its unlit colour, so they show at night too
@@ -342,13 +356,14 @@ void main()
 			// than that (soldiers' light, flares, fires), lit by a lamp of its own
 			float b = max(dot(vColor.rgb * uTint.rgb, vec3(1.0 / 3.0)), 1e-4);
 			vec3 albedo = base / b;
-			float amb = min(b, uMapShade), loc = max(b - uMapShade, 0.0);
+			// a moonlit night shows the unlit ground faintly; a cloud passing over the moon swallows it
+			float amb = max(min(b, uMapShade), uMoonFloor * (uMoonFloor > 0.0 ? cloudAt() : 1.0)), loc = max(b - uMapShade, 0.0);
 			vec3 bAmb = albedo * amb;
 			vec3 c = lighting(bAmb, n, 0.1 * k, 0.8) + bAmb * 0.22 + albedo * loc * uLampCol * (0.8 + 0.2 * max(n.y, 0.0));
-			fragColor = vec4(c + t.rgb * glow, 1.0);
+			fragColor = vec4(c + t.rgb * glow + rim, 1.0);
 			return;
 		}
-		fragColor = vec4(lighting(base, n, 0.1 * k, 0.8) + base * 0.22 + t.rgb * glow, 1.0);
+		fragColor = vec4(lighting(base, n, 0.1 * k, 0.8) + base * 0.22 + t.rgb * glow + rim, 1.0);
 		return;
 	}
 

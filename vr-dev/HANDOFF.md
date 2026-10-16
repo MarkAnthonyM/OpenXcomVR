@@ -110,6 +110,7 @@ Script commands (one per line; numbers are optional with defaults):
 | `boardpan dx dz`, `boardrotate r`, `boardzoom f`, `minimaptap u v`, `gamecam x y z` | move the table view / the game camera |
 | `hand ...`, `handmove ...`, `handcurl ...`, `handoff` | a scripted right hand (grip pose and finger curls) |
 | `testburst dx dy big` | an explosion effect next to the selected soldier |
+| `skyshift days` | move the sky clock like the panel's SKY CLOCK keys (no argument: back to the game's clock); re-rolls the sky at once |
 | `skyclock day hour minute` | the date and time the sun and moon are worked out for (`skyclock -1` = the game's clock); takes effect at the next re-roll (`weather`, `shade`) |
 | `dbgpin on [dist]`, `dbgpage n`, `dbgpress ID` | the wrist debug panel (needs `-vrDebugPanel true`): hold it in front of the eye (the preview has no left hand to turn), show page 0 info / 1 controls, press a control (`RAIN`, `DARKER`, `TURNR`, `REAL`, `STRIKE`...) |
 | `weather kind`, `strike`, `shade n`, `sunaz deg` | the battle's weather (`rain`, `snow`, `dust`, `sand`, `mist`, `clouds`, `clear`, `auto`), a lightning strike now, the mission's darkness (global shade, relit and rebuilt), the sun's direction for the following re-rolls (`-1` normal); `weather`/`shade` re-roll the sky, so set `sunaz` first |
@@ -296,9 +297,15 @@ Room and rendering
   map tile's brightness is split in the shader (mode 3): min(tile, map shade)
   is lit by sun/moon + sky, the rest is the game's own light, lit by uLampCol
   (scaled like the old night key so brightness matches); point lights other
-  than the key stay off map surfaces (gMap). The disc, its clouds, halo,
-  stars and light shafts are built per frame in world space (Weather::drawSky)
-  and drawn with the rain after everything solid (Board::drawWeather), or the
+  than the key stay off map surfaces (gMap). The owner turned down a visible
+  sun or moon (a voxel disc with puffy clouds, stars, light shafts looked
+  cartoony and took the menace away; weather.3): they show only through
+  light. A thin rim of the light's colour on backlit standees (mode 3, uRim:
+  silhouette texels of the card), a coloured room light low on the light's
+  side, cloud shadows at night too (moonlit nights roll clouds 60%), and on a
+  moonlit night the unlit ground's brightness is at least uMoonFloor (up to
+  0.05 for a full, high moon) times the cloud shadow. Weather and the (now
+  empty) sky are drawn after the room's solid parts (Board::drawWeather): the
   back-wall screens drawn later would cover them. `vrVanillaSky` = the
   pre-0.13 table (Weather treats it like indoors).
 - The wrist debug panel's darkness buttons are a table-only offset

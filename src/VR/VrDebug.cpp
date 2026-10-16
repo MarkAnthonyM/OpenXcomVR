@@ -21,7 +21,7 @@ namespace VR
 
 namespace
 {
-const int W = 240, H = 330;                 // the panel's picture (pixels)
+const int W = 240, H = 380;                 // the panel's picture (pixels)
 const float PW = 0.125f;                    // its width on the wrist (metres)
 const float PH = PW * H / W;
 
@@ -94,8 +94,10 @@ struct WristDebug::Impl
 		b.push_back({"TURNL", "TURN -15", 4, 170, 76, 25});
 		b.push_back({"TURNR", "TURN +15", 82, 170, 76, 25});
 		b.push_back({"REAL", "REAL", 160, 170, 76, 25});
-		b.push_back({"STRIKE", "STRIKE LIGHTNING", 4, 222, 115, 25});
-		b.push_back({"VANILLA", Options::vrVanillaSky ? "VANILLA: ON" : "VANILLA: OFF", 121, 222, 115, 25});
+		const char *ck[6][2] = {{"HOURM", "-1H"}, {"HOURP", "+1H"}, {"HALFDAY", "+12H"}, {"PHASEM", "-MOON"}, {"PHASEP", "+MOON"}, {"NOW", "GAME"}};
+		for (int i = 0; i < 6; ++i) b.push_back({ck[i][0], ck[i][1], 4 + i * 39, 234, 37, 25});
+		b.push_back({"STRIKE", "STRIKE LIGHTNING", 4, 286, 115, 25});
+		b.push_back({"VANILLA", Options::vrVanillaSky ? "VANILLA: ON" : "VANILLA: OFF", 121, 286, 115, 25});
 		return b;
 	}
 
@@ -115,6 +117,12 @@ struct WristDebug::Impl
 		else if (id == "TURNR") board->rotateSun(15.f);
 		else if (id == "REAL") board->realSun();
 		else if (id == "STRIKE") board->testStrike();
+		else if (id == "HOURM") board->shiftSkyClock(-1.0 / 24.0);
+		else if (id == "HOURP") board->shiftSkyClock(1.0 / 24.0);
+		else if (id == "HALFDAY") board->shiftSkyClock(0.5);
+		else if (id == "PHASEM") board->shiftSkyClock(-4.0);   // whole days keep the time of day; four is about an eighth of a moon
+		else if (id == "PHASEP") board->shiftSkyClock(4.0);
+		else if (id == "NOW") board->shiftSkyClock(0.0, true);
 		else if (id == "VANILLA") { Options::vrVanillaSky = !Options::vrVanillaSky; board->skyChanged(); }
 		else return false;
 		lastPress = id;
@@ -168,7 +176,8 @@ void WristDebug::Impl::render()
 		else line("Site: unknown", DIM);
 		{
 			int lh = (int)I.localH, lm = (int)((I.localH - lh) * 60.f);
-			line(fmt("GMT %02.0f:%02.0f", I.gmtH, I.gmtM) + (I.site ? fmt("   local %02.0f:%02.0f", lh, lm) : std::string()));
+			line(I.skyClock.substr(0, 10) + fmt("  GMT %02.0f:%02.0f", I.gmtH, I.gmtM) + (I.site ? fmt("  local %02.0f:%02.0f", lh, lm) : std::string()),
+				I.skyShift != 0.0 ? AMBER : TEXT);
 		}
 		y += 3;
 		head("LIGHT");
@@ -188,7 +197,6 @@ void WristDebug::Impl::render()
 				if (I.starlit) line("Moon " + ph + ", below the horizon: starlit", AMBER);
 				else line("Moon " + ph + fmt(", %.0f high", I.moonAlt) + (I.moonKnown ? "" : " (rolled)"));
 			}
-			if (I.cover > 0.02f) line(fmt("Clouds hide %.0f%% of the ", I.cover * 100.f) + (I.sky.compare(0, 5, "night") == 0 ? "moon" : "sun"), DIM);
 			cv.text(6, y, 40, "Sun", TEXT); cv.rect(34, y, 30, 8, toPx(I.sunCol)); cv.frame(34, y, 30, 8, LINE);
 			cv.text(80, y, 40, "Sky", TEXT); cv.rect(104, y, 30, 8, toPx(I.skyCol)); cv.frame(104, y, 30, 8, LINE);
 			cv.text(146, y, 90, fmt("x%.2f", std::max(I.sunCol.r, std::max(I.sunCol.g, I.sunCol.b))), DIM);
@@ -221,13 +229,21 @@ void WristDebug::Impl::render()
 		cv.text(4, 28, W - 8, "WEATHER  (now: " + (I.forced == "auto" ? std::string("the mission's roll") : I.forced) + ")", GOLD);
 		cv.text(4, 104, W - 8, fmt("DARKNESS  table %.0f, game %.0f", I.shade, I.shadeGame), GOLD);
 		cv.text(4, 156, W - 8, std::string(I.sky.compare(0, 5, "night") == 0 ? (I.starlit ? "MOON (down)" : "MOON") : "SUN") + "  from " + compass(I.sunAz) + fmt(" (%.0f)", I.sunAz) + " - " + I.sunFrom, GOLD);
-		cv.text(4, 208, W - 8, fmt("LIGHTNING  strikes %.0f", I.strikes) + "      SKY", GOLD);
-		y = 262;
-		line("These change the table only: the game's", DIM);
-		line("darkness, what soldiers see and the flat", DIM);
-		line("screen stay as they are. Forced weather and", DIM);
-		line("a turned sun carry on into the next battles.", DIM);
+		{
+			double sh = I.skyShift;
+			int d = (int)(sh >= 0 ? std::floor(sh) : -std::floor(-sh)), h = (int)std::lround((sh - d) * 24.0);
+			cv.text(4, 208, W - 8, "SKY CLOCK  " + I.skyClock, GOLD);
+			cv.text(4, 220, W - 8, sh == 0.0 ? std::string("the game's own clock (sun and moon only)")
+				: fmt("game clock %+.0f d %+.0f h (sun and moon only)", d, h), sh == 0.0 ? DIM : AMBER);
+		}
+		cv.text(4, 272, W - 8, fmt("LIGHTNING  strikes %.0f", I.strikes) + "      SKY", GOLD);
+		y = 318;
+		line("Table only: the game's darkness, sight and", DIM);
+		line("flat screen stay as they are. Forced weather,", DIM);
+		line("a turned sun and the clock carry on.", DIM);
 		line("VANILLA is the vrVanillaSky setting (saved).", DIM);
+		line("+12H swaps day and night; -/+MOON moves the", DIM);
+		line("clock 4 days (about 1/8 of the moon's cycle).", DIM);
 	}
 }
 
