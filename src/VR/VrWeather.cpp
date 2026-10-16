@@ -642,7 +642,7 @@ void Weather::Impl::updateSky(float dt, const WeatherView &v)
 		glm::vec3 right = glm::cross(glm::vec3(0, 1, 0), toEye);
 		right = glm::length(right) > 1e-3f ? glm::normalize(right) : glm::vec3(1, 0, 0);
 		glm::vec3 up = glm::cross(toEye, right);
-		float near = glm::smoothstep(0.3f, 0.65f, dEye);   // fades when it would be right at the head
+		float nearFade = glm::smoothstep(0.3f, 0.65f, dEye);   // fades when it would be right at the head
 		float low = 1.f - glm::clamp((sunElev - 12.f) / 50.f, 0.f, 1.f);
 		float r = night ? 0.034f : 0.038f + 0.026f * low;
 		float dim = overcast ? 0.45f : 1.f;
@@ -670,7 +670,7 @@ void Weather::Impl::updateSky(float dt, const WeatherView &v)
 		}
 		if (overcast) coverNow = std::max(coverNow, 0.5f);
 		// halo
-		float haloA = (night ? 0.16f : 0.34f + 0.15f * low) * near * dim * (1.f - 0.7f * cover);
+		float haloA = (night ? 0.16f : 0.34f + 0.15f * low) * nearFade * dim * (1.f - 0.7f * cover);
 		sprite(glowMd, P - toEye * 0.005f, right, up, r * (night ? 3.2f : 4.5f + 2.f * low), glm::vec4(tint, haloA));
 		// the voxel disc (the moon shows its phase: the unlit part is a faint earthlit grey)
 		const int N = 13;
@@ -685,7 +685,7 @@ void Weather::Impl::updateSky(float dt, const WeatherView &v)
 				if (!night)
 				{
 					glm::vec3 c = glm::mix(glm::vec3(1.f, 0.98f, 0.9f), tint, glm::clamp(rr * 1.2f + 0.3f * low, 0.f, 1.f)) * (1.6f - 0.4f * rr);
-					col = glm::vec4(c * dim, near);
+					col = glm::vec4(c * dim, nearFade);
 				}
 				else
 				{
@@ -694,7 +694,7 @@ void Weather::Impl::updateSky(float dt, const WeatherView &v)
 					uint32_t hsh = (uint32_t)(ix * 73856093) ^ (uint32_t)(iy * 19349663);
 					hsh ^= hsh >> 13; hsh *= 0x5bd1e995; hsh ^= hsh >> 15;
 					float crater = (hsh & 7) == 0 ? 0.8f : 1.f;
-					col = lit ? glm::vec4(glm::vec3(0.88f, 0.9f, 0.97f) * 1.3f * crater * dim, near) : glm::vec4(0.07f, 0.08f, 0.11f, 0.55f * near);
+					col = lit ? glm::vec4(glm::vec3(0.88f, 0.9f, 0.97f) * 1.3f * crater * dim, nearFade) : glm::vec4(0.07f, 0.08f, 0.11f, 0.55f * nearFade);
 				}
 				axisCube(cubeMd, P + right * (x * r) + up * (y * r), right, up, toEye, cell * 0.46f, col);
 			}
@@ -711,7 +711,7 @@ void Weather::Impl::updateSky(float dt, const WeatherView &v)
 				float h = pf.s * cr.r(0.22f, 0.34f);
 				float shade = 0.75f + 0.35f * glm::clamp(o.y / 0.45f, -1.f, 1.f);
 				glm::vec3 c = glm::mix(glm::vec3(1.f), tint, night ? 0.6f : 0.35f) * bright * shade;
-				axisCube(cubeMd, Q + right * (o.x * pf.s) + up * (o.y * pf.s) + toEye * (o.z * pf.s), right, up, toEye, h, glm::vec4(c, 0.92f * pf.alpha * near));
+				axisCube(cubeMd, Q + right * (o.x * pf.s) + up * (o.y * pf.s) + toEye * (o.z * pf.s), right, up, toEye, h, glm::vec4(c, 0.92f * pf.alpha * nearFade));
 			}
 		}
 	}
