@@ -9,6 +9,9 @@ V=$(sed -n 's/.*OXCE_VR_PROTOTYPE_VERSION "\(.*\)".*/\1/p' "$VR_REPO/src/VR/VrVe
 [ -n "$V" ] || { echo "no version in VrVersion.h"; exit 1; }
 EXE="$VR_WIN_BUILD/bin/openxcom.exe"
 [ -f "$EXE" ] || { echo "build first: vr-dev/build-windows.sh"; exit 1; }
+# the exe must be the build of this version (a stale build once went out as 0.13.0)
+grep -aq "VR prototype $V" "$EXE" || { echo "$EXE is not a $V build: run vr-dev/build-windows.sh"; exit 1; }
+[ "$EXE" -nt "$VR_REPO/src/VR/VrVersion.h" ] || { echo "$EXE is older than the sources: run vr-dev/build-windows.sh"; exit 1; }
 C=$(git -C "$VR_REPO" rev-parse HEAD)
 git -C "$VR_REPO" diff --quiet HEAD -- src CMakeLists.txt || echo "WARNING: uncommitted source changes; BUILD-INFO.txt will name $C anyway"
 N="OXCE-VR-Prototype-$V-Windows"
