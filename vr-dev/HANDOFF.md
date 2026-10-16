@@ -110,6 +110,7 @@ Script commands (one per line; numbers are optional with defaults):
 | `boardpan dx dz`, `boardrotate r`, `boardzoom f`, `minimaptap u v`, `gamecam x y z` | move the table view / the game camera |
 | `hand ...`, `handmove ...`, `handcurl ...`, `handoff` | a scripted right hand (grip pose and finger curls) |
 | `testburst dx dy big` | an explosion effect next to the selected soldier |
+| `dbgpin on [dist]`, `dbgpage n`, `dbgpress ID` | the wrist debug panel (needs `-vrDebugPanel true`): hold it in front of the eye (the preview has no left hand to turn), show page 0 info / 1 controls, press a control (`RAIN`, `DARKER`, `TURNR`, `REAL`, `STRIKE`...) |
 | `weather kind`, `strike`, `shade n`, `sunaz deg` | the battle's weather (`rain`, `snow`, `dust`, `sand`, `mist`, `clouds`, `clear`, `auto`), a lightning strike now, the mission's darkness (global shade, relit and rebuilt), the sun's direction for the following re-rolls (`-1` normal); `weather`/`shade` re-roll the sky, so set `sunaz` first |
 | `boardinfo`, `status` | log the table view (focus, where the soldier sits, level) / the table state |
 | `log text`, `quit` | |
@@ -136,6 +137,9 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   but untested until someone has tried them. The zip includes `LICENSE.txt`,
   `THIRD-PARTY-NOTICES.txt`, `licenses/` and `BUILD-INFO.txt` (package.sh
   does this).
+- Branch `vr-prototype-weather` (from vr-prototype 0.13.0): exploring the
+  weather and time of day. Its builds are `0.13.0-weather.<n>`; it has the
+  sky debug panel on the left wrist (`vrDebugPanel`, `VrDebug.cpp`).
 - Released so far: 0.12.2 (the first published release; 0.9.1 was prepared but never published). The
   tags proto-0.1.0 ... proto-0.8.0 on the fork are from before the tag-only-releases rule.
 
@@ -284,6 +288,10 @@ Room and rendering
   fall under a roof that the view level hides, and thin out near hands and
   the cursor. Lightning lights only what is drawn on the table.
   `vrWeather` off removes the weather, not the sun.
+- The wrist debug panel's darkness buttons are a table-only offset
+  (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
+  and the sky worked out again); the game's global shade is never touched.
+  The weather roll keeps using the game's darkness for its seed.
 
 ## Known gaps
 

@@ -12,6 +12,7 @@
 #include "VrRoom.h"
 #include "VrBoard.h"
 #include "VrWeather.h"
+#include "VrDebug.h"
 #include "VrHands.h"
 #include "VrTable.h"
 #include "VrFloat.h"
@@ -1492,6 +1493,14 @@ static void runScript()
 		else if (c.op == "weather") { S->board.forceWeather(c.args.empty() ? "auto" : c.args[0]); }
 		else if (c.op == "strike") { S->board.testStrike(); }
 		else if (c.op == "sunaz") { Weather::forceSun((float)num(0, -1)); }
+		else if (c.op == "dbgpin")
+		{
+			// hold the wrist debug panel in front of the eye (the preview has no left hand to turn)
+			glm::vec3 fwd = S->head.forward();
+			S->table.debugPanel().testPin(num(0, 1) > 0.5, S->head.pos + fwd * (float)num(1, 0.3), -fwd);
+		}
+		else if (c.op == "dbgpage") { S->table.debugPanel().testPage((int)num(0, 0)); }
+		else if (c.op == "dbgpress") { if (c.args.empty() || !S->table.debugPanel().testPress(c.args[0])) Log(LOG_INFO) << "[VR] debug panel: no control " << (c.args.empty() ? "" : c.args[0]); }
 		else if (c.op == "shade") { S->board.testShade((int)num(0, 0)); }
 		else if (c.op == "testufo")
 		{
@@ -1737,7 +1746,7 @@ static void runScript()
 			glm::vec3 t = hp.tip(F_INDEX);
 			Log(LOG_INFO) << "[VR] status: " << S->table.status() << " | tip " << t.x << "," << t.y << "," << t.z
 				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch << " | " << S->floatWin.status()
-				<< " | " << S->board.baseStatus() << " | " << S->board.weatherStatus();
+				<< " | " << S->board.baseStatus() << " | " << S->board.weatherStatus() << " | " << S->table.debugPanel().status();
 		}
 		else if (c.op == "shot") { S->pendingShot = c.args.empty() ? "vr_shot.png" : c.args[0]; return; }
 		else if (c.op == "gameshot" && !S->pixels.empty())

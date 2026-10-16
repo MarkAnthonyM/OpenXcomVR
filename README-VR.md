@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.13.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -141,6 +141,23 @@ stand) in an X-COM command center at a holographic war table:
   isn't already on the table. Base defence and alien base missions are
   indoors and keep the plain room light. `vrWeather` (default on) turns the
   weather off; the sun stays.
+- **Sky debug panel (weather branch).** With `vrDebugPanel` on (off by
+  default), turning the inside of your left wrist toward your face during a
+  battle raises a panel along the forearm; press its tabs and buttons with the
+  right index finger. **INFO** shows the mission and the terrain it was read
+  as (and its map sets), indoors or outdoors, the site and the game clock with
+  the local time there, the darkness level and where it came from (the globe
+  or the mission's own rule), the sun or moon the table uses (direction,
+  height, where the direction came from, colour swatches) next to the real
+  sun's height at the site, how each weather roll went ("rain: rolled 0.21,
+  needs < 0.35"), live particle and lightning numbers, the settings and the
+  frame time. **CONTROLS** forces the weather (AUTO gives the mission's own
+  roll back), darkens or lightens the table's map (GAME goes back to the
+  game's level), turns the sun 15° either way (REAL gives the real sun back)
+  and strikes lightning. The controls change the table only: the game's
+  darkness, what your soldiers see and the flat screen stay as they are.
+  Forced weather and a turned sun carry on into the next battles until you
+  press AUTO / REAL.
 - **Shots light up the night.** Lasers, plasma, rockets (their exhaust),
   incendiary rounds and blaster bombs light the ground and figures around them
   in their colour as they fly, stronger weapons brighter and further; their
@@ -322,6 +339,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrFloat.*` | Floating pop-up windows: picks the game's top non-screen state, copies its area of the game frame, the projection and voxel-assembly effects, finger touches and the laser. |
 | `VrBase.*` | The base on the table: voxel relief rebuilt from the base view's sprites, craft models, scaffolding, labels, finger taps / holds / placement. |
 | `VrWeather.*` | The sky over an outdoor battle: the sun's direction at the site and its height and colour from the mission's darkness, the weather roll, rain / snow / dust particles stopping at roofs, mist, cloud drift, lightning and procedural thunder. |
+| `VrDebug.*` | The sky debug panel on the left wrist (weather branch): info and controls pages drawn with the dashboards' canvas, pressed with the right index finger. |
 | `VrDash.*` | The geoscape dashboards on the back-wall monitors, drawn with the game's fonts straight from the saved game. |
 | `VrGL.*`, `VrShaders.h` | Tiny GL helper layer (incl. a shadow map target) and the single scene shader: linear lighting into an sRGB target, up to 12 point lights per frame, shadows from the key light, soft room-corner shading, the table's up-glow, the fog material. |
 
@@ -391,7 +409,7 @@ Key ideas:
 
 Engine hooks: `Game.cpp` (startup, event filter, per-loop `VR::frame`),
 `Screen.cpp` (hand the composed frame to VR), `Options` (`vrMode`, `vrTableScale`,
-`vrSeatOffset`, `vrShadows`, `vrWeather`),
+`vrSeatOffset`, `vrShadows`, `vrWeather`, `vrDebugPanel`),
 `UnitWalkBState` (in VR every visible unit counts as on screen: the engine
 otherwise skips most of the walk animation, and runs at timer interval 0, for
 units outside the flat camera's view, which made them sprint across the table),

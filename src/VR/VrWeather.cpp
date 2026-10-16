@@ -14,10 +14,14 @@
 #include "../Savegame/MissionSite.h"
 #include "../Savegame/AlienBase.h"
 #include "../Mod/MapDataSet.h"
+#include "../Mod/Mod.h"
+#include "../Mod/AlienDeployment.h"
+#include "../Mod/RuleUfo.h"
 #include <SDL_mixer.h>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <sstream>
 
@@ -189,6 +193,7 @@ struct Weather::Impl
 	glm::vec3 mistCol{0.5f};
 	float mistAlpha = 0.f;
 	std::vector<glm::vec4> fade;
+	SkyInfo info;
 
 	void respawnFalling(Drop &d, const WeatherView &v, bool anywhere);
 	void respawnDust(Drop &d, const WeatherView &v);
@@ -219,6 +224,8 @@ Weather::Weather() : _p(new Impl()) {}
 Weather::~Weather() = default;
 
 void Weather::force(const std::string &kind) { forced = kind; }
+std::string Weather::forcedWeather() { return forced; }
+float Weather::forcedSun() { return forcedAz; }
 void Weather::forceSun(float azimuth) { forcedAz = azimuth; }
 
 const SkyLight &Weather::sky() const { return _p->sky; }
@@ -237,10 +244,11 @@ void Weather::end()
 	p.dirty = false;
 }
 
-void Weather::begin(Game *game, SavedBattleGame *battle)
+void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 {
 	end();
 	Impl &p = *_p;
+	p.info = SkyInfo();
 	if (!game || !battle) return;
 	p.active = true;
 	p.mx = battle->getMapSizeX();
@@ -248,7 +256,14 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 	p.openMask.assign((size_t)p.mx * p.my, 0u);
 	p.maskTimer = 0.f;
 	SavedGame *sg = game->getSavedGame();
-	int shade = glm::clamp(battle->getGlobalShade(), 0, 15);
+	int gameShade = glm::clamp(battle->getGlobalShade(), 0, 15);
+	int shade = glm::clamp(gameShade + shadeOffset, 0, 15);
+	SkyInfo &I = p.info;
+	I.active = true;
+	I.mission = battle->getMissionType();
+	I.shadeGame = gameShade;
+	I.shade = shade;
+	I.forced = forced;
 
 	// what the map is made of
 	bool indoor = battle->getMissionType() == "STR_BASE_DEFENSE";
@@ -270,8 +285,29 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 		}
 	p.terrain = p.mars ? "mars" : snowy ? "snowy" : desert ? "desert" : rainy ? "rainy" : "other";
 	p.outdoor = !indoor;
+	I.sets = sets;
+	I.outdoor = !indoor;
+	I.terrain = p.mars ? "Mars" : snowy ? "polar / mountain" : desert ? "desert" : rainy ? "jungle / forest / farm / city" : "other";
+	// where the game's darkness came from: the mission's own rule, or the globe at the site
+	{
+		const AlienDeployment *dep = nullptr;
+		Mod *mod = game->getMod();
+		if (sg)
+		{
+			for (MissionSite *m : *sg->getMissionSites()) if (m->isInBattlescape()) dep = m->getDeployment();
+			for (AlienBase *b : *sg->getAlienBases()) if (!dep && b->isInBattlescape()) dep = b->getDeployment();
+			for (Ufo *u : *sg->getUfos()) if (!dep && u->isInBattlescape()) dep = mod->getDeployment(u->getRules()->getType(), false);
+		}
+		if (!dep) dep = mod->getDeployment(battle->getMissionType(), false);
+		I.shadeFrom = "the globe at the site";
+		if (dep && dep->getShade() != -1) I.shadeFrom = "the mission (always " + std::to_string(dep->getShade()) + ")";
+		else if (dep && dep->getMinShade() != -1 && gameShade == dep->getMinShade()) I.shadeFrom = "the mission (at least " + std::to_string(dep->getMinShade()) + ")";
+		else if (dep && dep->getMaxShade() != -1 && gameShade == dep->getMaxShade()) I.shadeFrom = "the mission (at most " + std::to_string(dep->getMaxShade()) + ")";
+	}
 	if (indoor)
 	{
+		I.indoorWhy = battle->getMissionType() == "STR_BASE_DEFENSE" ? "base defence" : "base map sets";
+		I.sky = "indoor";
 		p.terrain = "indoor";
 		p.skyName = "indoor";
 		Log(LOG_INFO) << "[VR] sky: indoor mission, no sun or weather (" << battle->getMissionType() << ")";
@@ -284,11 +320,21 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 	uint32_t h = 2166136261u;
 	const std::string &mt = battle->getMissionType();
 	h = fnv(h, mt.data(), mt.size());
-	int32_t q[8] = {(int32_t)std::lround(lon * 10000.0), (int32_t)std::lround(lat * 10000.0), shade, p.mx, p.my, 0, 0, 0};
+	int32_t q[8] = {(int32_t)std::lround(lon * 10000.0), (int32_t)std::lround(lat * 10000.0), gameShade, p.mx, p.my, 0, 0, 0};
 	GameTime *gt = sg ? sg->getTime() : nullptr;
 	if (gt) { q[5] = gt->getDay() + 40 * gt->getMonth(); q[6] = gt->getHour(); q[7] = gt->getMinute(); }
 	h = fnv(h, q, sizeof(q));
 	p.rng = Rng(h);
+	I.seed = h;
+	I.site = site;
+	I.lon = lon * 180.0 / 3.14159265358979;
+	if (I.lon > 180.0) I.lon -= 360.0;
+	I.lat = -lat * 180.0 / 3.14159265358979;
+	if (gt)
+	{
+		I.gmtH = gt->getHour(); I.gmtM = gt->getMinute();
+		I.localH = (float)std::fmod(I.gmtH + I.gmtM / 60.0 + I.lon / 15.0 + 48.0, 24.0);
+	}
 	Rng &rng = p.rng;
 
 	// where the sun stands over the site (the table's far edge is north)
@@ -307,6 +353,8 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 			east = glm::normalize(east);
 			north = glm::normalize(north);
 			float e = glm::dot(sun, east), n = glm::dot(sun, north);
+			I.realElev = std::asin(glm::clamp(glm::dot(sun, up), -1.f, 1.f)) * 180.f / PI;
+			I.realKnown = true;
 			if (std::sqrt(e * e + n * n) > 0.05f)
 			{
 				az = std::atan2(e, n) * 180.f / PI;
@@ -316,7 +364,8 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 			}
 		}
 	}
-	if (forcedAz >= 0.f) { az = forcedAz; why = " (set by a test)"; real = false; }
+	if (forcedAz >= 0.f) { az = forcedAz; why = " (set by hand)"; real = false; }
+	I.sunFrom = real ? "the real sun at the site" : p.mars ? "rolled (Mars)" : forcedAz >= 0.f ? "set by hand" : !site ? "rolled (no site)" : "rolled (sun overhead)";
 	float elev;
 	glm::vec3 col, skyCol;
 	bool night = shade >= 12;
@@ -350,24 +399,31 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 	int kind = NONE;
 	float cloud = 0.f;
 	bool mist = false;
-	if (Options::vrWeather)
+	auto roll = [](const char *what, float r, float need) {
+		char b[64]; snprintf(b, sizeof(b), "%s: rolled %.2f, needs < %.2f", what, r, need); return std::string(b); };
+	if (p.mars) { if (r1 < 0.6f) kind = SAND; I.rollKind = roll("sand", r1, 0.6f); }
+	else if (snowy) { if (r1 < 0.5f) kind = SNOW; I.rollKind = roll("snow", r1, 0.5f); }
+	else if (desert) { if (r1 < 0.4f) kind = DUST; I.rollKind = roll("dust", r1, 0.4f); }
+	else if (rainy) { if (r1 < 0.35f) kind = RAIN; I.rollKind = roll("rain", r1, 0.35f); }
+	else I.rollKind = "none for this terrain";
+	if (p.mars) I.rollClouds = "clouds: none on Mars";
+	else if (shade > 7) I.rollClouds = "clouds: too dark (needs <= 7)";
+	else { I.rollClouds = roll("clouds", r2, 0.7f); if (r2 < 0.7f) cloud = 0.30f + 0.15f * r3; }
+	if (p.mars) I.rollMist = "mist: none on Mars";
+	else if (kind == DUST) I.rollMist = "mist: not in a dust storm";
+	else if (!morning) I.rollMist = "mist: not morning";
+	else if (shade < 3 || shade > 10) I.rollMist = "mist: needs darkness 3-10";
+	else { I.rollMist = roll("mist", r4, 0.5f); mist = r4 < 0.5f; }
+	if (!Options::vrWeather) { kind = NONE; cloud = 0.f; mist = false; }
+	if (forced != "auto")
 	{
-		if (p.mars) { if (r1 < 0.6f) kind = SAND; }
-		else if (snowy) { if (r1 < 0.5f) kind = SNOW; }
-		else if (desert) { if (r1 < 0.4f) kind = DUST; }
-		else if (rainy) { if (r1 < 0.35f) kind = RAIN; }
-		if (!p.mars && shade <= 7 && r2 < 0.7f) cloud = 0.30f + 0.15f * r3;
-		if (!p.mars && kind != DUST && morning && shade >= 3 && shade <= 10 && r4 < 0.5f) mist = true;
-		if (forced != "auto")
-		{
-			kind = NONE; mist = false; cloud = 0.f;
-			if (forced == "rain") kind = RAIN;
-			else if (forced == "snow") kind = SNOW;
-			else if (forced == "dust") kind = DUST;
-			else if (forced == "sand") kind = SAND;
-			else if (forced == "mist") mist = true;
-			else if (forced == "clouds") cloud = 0.4f;
-		}
+		kind = NONE; mist = false; cloud = 0.f;
+		if (forced == "rain") kind = RAIN;
+		else if (forced == "snow") kind = SNOW;
+		else if (forced == "dust") kind = DUST;
+		else if (forced == "sand") kind = SAND;
+		else if (forced == "mist") mist = true;
+		else if (forced == "clouds") cloud = 0.4f;
 	}
 	// overcast under rain and snow, hazy in a sandstorm
 	if (kind == RAIN) { col *= 0.55f; skyCol *= 1.25f; cloud = std::max(cloud, 0.5f); }
@@ -385,6 +441,12 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 	float light = shadeLight(shade);
 	p.mistCol = glm::mix(glm::vec3(0.86f, 0.87f, 0.90f), SUN_COL[std::min(shade, 11)], 0.3f) * glm::clamp(light * 2.f, 0.15f, 0.8f);
 	p.mistAlpha = mist ? 0.065f : 0.f;
+	I.sky = p.skyName;
+	I.sunAz = az; I.sunElev = elev;
+	I.sunCol = col; I.skyCol = skyCol;
+	I.weather = kindName(kind);
+	I.cloud = cloud;
+	I.mist = mist;
 	Log(LOG_INFO) << "[VR] sky: " << p.skyName << " shade " << shade << " sun az " << (int)az << " elev " << (int)elev
 		<< (real ? " (the real sun at the site)" : why) << " terrain " << p.terrain
 		<< " weather " << kindName(kind) << (mist ? " +mist" : "") << " clouds " << cloud << " [" << sets << "]";
@@ -651,6 +713,17 @@ void Weather::draw(const Shader &sh, const glm::mat4 &M) const
 	glDepthMask(GL_TRUE);
 	glDisable(GL_BLEND);
 	sh.set("uTint", glm::vec4(1.f));
+}
+
+SkyInfo Weather::info() const
+{
+	const Impl &p = *_p;
+	SkyInfo I = p.info;
+	I.drawn = p.drawn;
+	I.strikes = p.strikes;
+	I.nextStrike = p.kind == RAIN ? p.nextStrike : -1.f;
+	I.forced = forced;
+	return I;
 }
 
 std::string Weather::status() const

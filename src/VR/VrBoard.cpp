@@ -187,6 +187,9 @@ struct Board::Impl
 	float partTop(const MapData *d);
 	void updateStops();
 	std::vector<glm::vec3> handPts;
+	int shadeOffset = 0;            // the debug panel's darkness change (the table only, not the game)
+	int tileShade(const Tile *t) const { return glm::clamp(t->getShade() + shadeOffset, 0, 15); }
+	int globalShade() const { return glm::clamp(battle->getGlobalShade() + shadeOffset, 0, 15); }
 	RoomLayout layout;
 	glm::vec3 viewer{0.f, 1.65f, 0.f};
 	Game *game = nullptr;
@@ -410,7 +413,7 @@ void Board::Impl::bindBattle(SavedBattleGame *save)
 	mx = save->getMapSizeX();
 	my = save->getMapSizeY();
 	mz = save->getMapSizeZ();
-	weather.begin(game, save);
+	weather.begin(game, save, shadeOffset);
 	stopCache.assign((size_t)mx * my, 0.f);
 	openCache.assign((size_t)mx * my, 0);
 	stopTimer = 0.f;
@@ -644,7 +647,7 @@ uint64_t Board::Impl::chunkHash(int cx, int cy, int z)
 				mix(t->isDiscovered((TilePart)part));
 				mix(t->isUfoDoorOpen((TilePart)part));
 			}
-			mix((uint64_t)t->getShade());
+			mix((uint64_t)tileShade(t));
 		}
 	return h;
 }
@@ -744,7 +747,7 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 				if (z == 0 && fogX >= 0)
 				{
 					float u0 = fogX / (float)ATLAS, v0 = fogY / (float)ATLAS, u1 = (fogX + 16) / (float)ATLAS, v1 = (fogY + 16) / (float)ATLAS;
-					float sb = shadeFactor(t->getShade()); // as dark as the night around it
+					float sb = shadeFactor(tileShade(t)); // as dark as the night around it
 					md.addQuad(off + glm::vec3(0, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, 0), off + glm::vec3(0, 0.5f, 0), glm::vec4(sb, sb, sb, 1.f), MAT_BOARD, {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0});
 				}
 				// walls already seen from outside stay standing (the flat map shows them too)
@@ -754,14 +757,14 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 					if (!d || !t->isDiscovered(tp) || t->isUfoDoorOpen(tp)) continue;
 					const Proto &p = proto(d);
 					uint32_t base = (uint32_t)md.verts.size();
-					float b = shadeFactor(t->getShade());
+					float b = shadeFactor(tileShade(t));
 					for (const Vertex &v : p.verts) { Vertex w = v; w.pos += off; w.color = glm::vec4(b, b, b, 1.f); md.verts.push_back(w); }
 					for (uint32_t i : p.idx) md.indices.push_back(base + i);
 				}
 				continue;
 			}
 			// shade 0 (bright) .. 15 (dark), like the flat map
-			float b = shadeFactor(t->getShade());
+			float b = shadeFactor(tileShade(t));
 			glm::vec4 tint(b, b, b, 1.f);
 			for (int part = 0; part < O_MAX; ++part)
 			{
@@ -1125,7 +1128,7 @@ void Board::Impl::updateBattle(float dt)
 		for (const glm::vec3 &h : handPts) v.fade.push_back(glm::vec4(glm::vec3(inv * glm::vec4(h, 1.f)), 0.07f / k));
 		if (cursorSet && battle->getTile(cursorTile))
 			v.fade.push_back(glm::vec4((cursorTile.x + 0.5f) * TILE_W, cursorTile.z * TILE_H + 8.f, (cursorTile.y + 0.5f) * TILE_W, 1.4f * TILE_W));
-		v.light = shadeFactor(battle->getGlobalShade());
+		v.light = shadeFactor(globalShade());
 		v.stop = [this](int x, int y) { return (x < 0 || y < 0 || x >= mx || y >= my) ? 0.f : stopCache[(size_t)y * mx + x]; };
 		v.open = [this](int x, int y) { return x >= 0 && y >= 0 && x < mx && y < my && openCache[(size_t)y * mx + x] != 0; };
 		weather.update(dt, v);
@@ -1227,7 +1230,7 @@ void Board::Impl::drawUnits(const Shader &sh)
 		sh.set("uMode", 3);
 		// lit by its tile, like the flat map draws units (dark at night unless a light is near)
 		float ub = 1.f;
-		if (Tile *ut = u->getTile()) ub = shadeFactor(ut->getShade());
+		if (Tile *ut = u->getTile()) ub = shadeFactor(tileShade(ut));
 		sh.set("uTint", glm::vec4(ub, ub, ub, 1.f));
 		sh.set("uModel", m);
 		card.tex->bind(0);
@@ -2652,8 +2655,36 @@ std::string Board::weatherStatus() const { return _p->hasBattle ? _p->weather.st
 void Board::forceWeather(const std::string &kind)
 {
 	Weather::force(kind);
-	if (_p->hasBattle && _p->battle) _p->weather.begin(_p->game, _p->battle);
+	if (_p->hasBattle && _p->battle) _p->weather.begin(_p->game, _p->battle, _p->shadeOffset);
 }
+
+void Board::rotateSun(float degrees)
+{
+	Impl &p = *_p;
+	float az = Weather::forcedSun() >= 0.f ? Weather::forcedSun() : p.weather.info().sunAz;
+	if (p.weather.info().sky == "night") az = std::fmod(az + 180.f, 360.f); // the moon stands opposite
+	Weather::forceSun(std::fmod(az + degrees + 720.f, 360.f));
+	if (p.hasBattle && p.battle) p.weather.begin(p.game, p.battle, p.shadeOffset);
+}
+
+void Board::realSun()
+{
+	Weather::forceSun(-1.f);
+	if (_p->hasBattle && _p->battle) _p->weather.begin(_p->game, _p->battle, _p->shadeOffset);
+}
+
+void Board::setShadeOffset(int offset)
+{
+	Impl &p = *_p;
+	if (offset == p.shadeOffset) return;
+	p.shadeOffset = offset;
+	// the tiles' colours change: their chunks rebuild by their hash; the sky is worked out again
+	if (p.hasBattle && p.battle) p.weather.begin(p.game, p.battle, p.shadeOffset);
+}
+
+int Board::shadeOffset() const { return _p->shadeOffset; }
+
+SkyInfo Board::skyInfo() const { return _p->hasBattle ? _p->weather.info() : SkyInfo(); }
 
 void Board::testStrike() { _p->weather.strike(); }
 
@@ -2671,7 +2702,7 @@ float Board::nightLevel() const
 	const Impl &p = *_p;
 	if (!p.hasBattle || !p.battle) return 0.f;
 	// the game's darkness runs 0 (day) .. 15; night missions sit around 10 and up
-	return glm::clamp((p.battle->getGlobalShade() - 2) / 8.f, 0.f, 1.f);
+	return glm::clamp((p.globalShade() - 2) / 8.f, 0.f, 1.f);
 }
 
 void Board::draw(const Shader &sh, const glm::mat4 &, const glm::vec3 &eye, double)

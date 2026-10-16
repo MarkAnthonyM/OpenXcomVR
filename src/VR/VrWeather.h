@@ -58,19 +58,50 @@ struct WeatherView
 	std::function<bool(int, int)> open;  // a tile column: explored ground under the open sky (the mist lies there)
 };
 
+/// Everything the left-wrist debug panel shows about the sky (VrDebug).
+struct SkyInfo
+{
+	bool active = false, outdoor = false;
+	std::string mission, terrain, sets, indoorWhy;
+	bool site = false;
+	double lon = 0.0, lat = 0.0;                 // degrees, east and north positive
+	int gmtH = 0, gmtM = 0;                      // the game clock
+	float localH = 0.f;                          // solar time at the site (hours)
+	int shadeGame = 0, shade = 0;                // the game's darkness / what the table shows
+	std::string shadeFrom;                       // where the game's darkness came from
+	std::string sky;                             // day, dawn, dusk, night, indoor
+	float sunAz = 0.f, sunElev = 0.f;            // the table's sun (degrees; azimuth from north, clockwise)
+	float realElev = 0.f;                        // the real sun's height at the site
+	bool realKnown = false;
+	std::string sunFrom;
+	glm::vec3 sunCol{1.f}, skyCol{0.f};
+	std::string weather, forced;
+	std::string rollKind, rollClouds, rollMist;  // how each roll went
+	float cloud = 0.f;
+	bool mist = false;
+	int drawn = 0, strikes = 0;
+	float nextStrike = -1.f;
+	uint32_t seed = 0;
+};
+
 class Weather
 {
 public:
 	Weather();
 	~Weather();
-	/// A new battle: works out the sun and rolls the weather for it.
-	void begin(Game *game, SavedBattleGame *battle);
+	/// A new battle: works out the sun and rolls the weather for it. shadeOffset: the debug panel's
+	/// darkness change (the table only; the rolls keep the game's own darkness).
+	void begin(Game *game, SavedBattleGame *battle, int shadeOffset = 0);
 	void end();
 	void update(float dt, const WeatherView &view);
 	/// Rain, snow, dust and mist (board matrix: map voxels -> world). Mist needs uMapInv set.
 	void draw(const Shader &sh, const glm::mat4 &M) const;
 	const SkyLight &sky() const;
 	std::string status() const;
+	SkyInfo info() const;
+	/// The forced weather ("auto" when none) and sun direction (< 0 when none).
+	static std::string forcedWeather();
+	static float forcedSun();
 	/// Tests: the weather of the next battle (and the current one, re-rolled): "rain", "snow",
 	/// "dust", "sand", "mist", "clear" or "auto" (back to normal).
 	static void force(const std::string &kind);

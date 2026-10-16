@@ -556,6 +556,7 @@ set ( vr_src
   VR/VrFloat.cpp
   VR/VrDash.cpp
   VR/VrWeather.cpp
+  VR/VrDebug.cpp
   VR/VrBase.cpp
   VR/VrRoom.cpp
   VR/VrSystem.cpp

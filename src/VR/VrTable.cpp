@@ -3,6 +3,7 @@
 #include "VrRoom.h"
 #include "VrBoard.h"
 #include "VrDash.h"
+#include "VrDebug.h"
 #include "../Engine/Game.h"
 #include "../Engine/State.h"
 #include "../Engine/Screen.h"
@@ -211,6 +212,7 @@ struct Table::Impl
 	} wrist;
 	void updateWrist(TableContext &ctx, const Hands &hands, float dt);
 	void drawWrist(const Shader &sh) const;
+	WristDebug debug;           // the sky debug panel on the left wrist (vrDebugPanel)
 
 	// spotted-enemy indicators: red buttons right of the bay
 	static const int ALERTS = 10;
@@ -2301,6 +2303,8 @@ void Table::screenGlow(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const
 
 // ------------------------------------------------------------------ per frame
 
+WristDebug &Table::debugPanel() { return _p->debug; }
+
 void Table::update(TableContext &ctx, const Hands &hands, float dt)
 {
 	Impl &p = *_p;
@@ -2316,6 +2320,7 @@ void Table::update(TableContext &ctx, const Hands &hands, float dt)
 	p.updateGlobeTaps(ctx, hands, dt);
 	p.updateWalls(ctx, dt);
 	p.updateWrist(ctx, hands, dt);
+	p.debug.update(ctx.game, ctx.board, hands, ctx.eye, ctx.haptic, dt);
 	p.updateMenu(ctx, hands, dt);
 	p.updateKeyboard(ctx, hands, dt);
 	if (p.warnTimer > 0.f) p.warnTimer -= dt;
@@ -2633,6 +2638,7 @@ void Table::drawWalls(const Shader &sh) const
 	for (const Wall &w : _p->walls)
 		if (w.live && w.tex.valid()) _p->drawWall(sh, w);
 	_p->drawWrist(sh);
+	_p->debug.draw(sh);
 	_p->drawMenu(sh);
 	_p->drawKeyboard(sh);
 	sh.set("uTint", glm::vec4(1.f));

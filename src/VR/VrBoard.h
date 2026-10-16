@@ -6,6 +6,7 @@
  */
 #include "VrGL.h"
 #include "VrHands.h"
+#include "VrWeather.h"
 #include <memory>
 #include <functional>
 #include <string>
@@ -128,6 +129,13 @@ public:
 	void forceWeather(const std::string &kind);
 	void testStrike();
 	void testShade(int shade);
+	/// The left-wrist debug panel: turn the sun (degrees, then it stays set by hand) or give it back
+	/// to the real sun; darken or lighten the table's map (the game's own darkness is unchanged).
+	void rotateSun(float degrees);
+	void realSun();
+	void setShadeOffset(int offset);
+	int shadeOffset() const;
+	SkyInfo skyInfo() const;
 	/// The geoscape dome as a sphere (world centre, radius); false when no globe is shown.
 	bool globeSphere(glm::vec3 &center, float &radius) const;
 	bool canGrab(const glm::vec3 &handWorld) const;
