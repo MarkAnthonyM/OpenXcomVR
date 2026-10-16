@@ -30,7 +30,7 @@ OpenXcom Extended - VR Tabletop prototype $V (Windows, 64-bit)
 
 Based on:  OpenXcom Extended ${OXV:-8.7.1}
 Source:    https://github.com/MarkAnthonyM/OpenXcomVR/tree/proto-$V
-Commit:    $C (branch vr-prototype)
+Commit:    $C (branch $(git -C "$VR_REPO" rev-parse --abbrev-ref HEAD))
 Built:     $(date -u +%Y-%m-%d) with llvm-mingw 20250924 (x86_64-w64-mingw32), libraries linked statically
 
 Licences: LICENSE.txt (GPL-3.0) and THIRD-PARTY-NOTICES.txt.
