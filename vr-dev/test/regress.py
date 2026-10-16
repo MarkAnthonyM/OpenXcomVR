@@ -93,6 +93,8 @@ TESTS = [  # script, save, check, what it covers
     ("bb", "geo_test.asav", has("build at 1,1", "place at 1,1", "sites=1"), "tap an empty spot, pick a laboratory, tap to place it (shots/bb_scaffold.png)"),
     ("bh", "geo_test.asav", has("hold STR_LABORATORY", "float: open N8OpenXcom17ErrorMessageStateE"), "holding a facility asks to dismantle it (here: refused, the game's rule)"),
     ("bd", "geo_test.asav", has("float: scrolled at"), "dragging a finger on a floating list scrolls it (shots/bd_scrolled.png)"),
+    ("wx", "outside.asav", has("weather=rain", "weather=snow", "sky=dusk", "weather=none+mist", "sky=night", "strikes=1"),
+     "sun and weather over the battle (shots/wx_*.png: rain, lightning, snow, dust, sand, clouds, mist, dusk, night)"),
     ("mm", None, check_menu, "the main menu at start doesn't flash a floating window"),
     ("br", None, has("float: open N8OpenXcom13BriefingStateE", "float: touch 160,172"), "the briefing floats; touching OK starts the battle"),
 ]

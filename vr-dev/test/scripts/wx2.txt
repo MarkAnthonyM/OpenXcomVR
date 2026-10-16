@@ -1,0 +1,19 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -42
+weather clear
+waitframes 10
+shot shots/wx2_noon.png
+weather clouds
+wait 600
+shot shots/wx2_clouds.png
+weather clear
+shade 9
+wait 2500
+status
+shot shots/wx2_low.png
+weather mist
+shade 6
+wait 2500
+shot shots/wx2_mist.png
+weather auto
+quit

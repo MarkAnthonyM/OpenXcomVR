@@ -11,6 +11,7 @@
 #include "VrShaders.h"
 #include "VrRoom.h"
 #include "VrBoard.h"
+#include "VrWeather.h"
 #include "VrHands.h"
 #include "VrTable.h"
 #include "VrFloat.h"
@@ -119,12 +120,14 @@ struct State
 	RenderTarget eyeTarget[2];
 	RenderTarget previewTarget;
 	ShadowMap shadow;
+	BoardSky sky;           // the sun over an outdoor battle (lights the table instead of the overhead light)
 	bool shadowFailed = false, shadowOn = false;
 	glm::mat4 shadowVP{1.f};
 	// lights for this frame (0 = overhead key light with shadows)
 	int lightCount = 0;
 	glm::vec3 lightPos[12], lightCol[12];
 	glm::vec3 gameGlow{0.f};
+	glm::vec3 roomTint{1.f};  // the room takes on a little of the sun's colour during an outdoor battle
 	float alertLevel = 0.f, night = 0.f;
 	RoomLayout layout;
 	Board board;
@@ -669,6 +672,12 @@ static void updateHandsAndTable(float dt, bool simulated)
 	fc.haptic = ctx.haptic;
 	S->floatWin.update(fc, S->handsVis, dt);
 	S->board.baseFingers(S->handsVis, ctx.handBusy, ctx.haptic, dt);
+	{
+		std::vector<glm::vec3> pts;
+		for (int h = 0; h < 2; ++h)
+			if (S->handsVis.pose[h].valid) { pts.push_back(S->handsVis.pose[h].pos[0]); pts.push_back(S->handsVis.pose[h].tip(F_INDEX)); }
+		S->board.setHandPoints(pts);
+	}
 	S->colliders.clear();
 	S->table.colliders(S->colliders);
 }
@@ -989,6 +998,16 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uTableRect", glm::vec4(T.x - hx, T.z - hz, T.x + hx, T.z + hz));
 	sh.set("uTableY", S->table.surfaceY());
 	sh.set("uTableGlow", glm::vec3(0.12f, 0.55f, 0.65f) * (1.f + 0.8f * S->night) * (1.f - 0.7f * S->board.curtain()));
+	// the sun over an outdoor battle: lights the map (and hands over it) instead of the overhead light
+	const BoardSky &sky = S->sky;
+	sh.set("uSunKey", glm::vec4(sky.dir, sky.on ? 1.f : 0.f));
+	sh.set("uSunKeyCol", sky.col);
+	sh.set("uSunKeySky", sky.sky);
+	sh.set("uFlash", sky.flash);
+	sh.set("uCloud", sky.cloud);
+	sh.set("uMapInv", sky.mapInv);
+	sh.set("uSunArea", sky.area);
+	sh.set("uFadeCount", 0);
 	sh.set("uShadowPass", 0);
 	bool useShadow = S->shadowOn && !shadowPass;
 	sh.set("uShadowOn", useShadow ? 1 : 0);
@@ -1025,13 +1044,25 @@ static void computeLights(float dt)
 	int n = 0;
 	auto add = [&](const glm::vec3 &p, const glm::vec3 &c) { if (n < 12) { S->lightPos[n] = p; S->lightCol[n] = c; ++n; } };
 	float dim = 1.f - 0.6f * S->night;
+	// an outdoor battle: the sun (or moon) lights the map; the room takes on a little of its colour
+	S->board.sky(S->sky);
+	glm::vec3 tint(1.f);
+	if (S->sky.on)
+	{
+		glm::vec3 c = S->sky.col / std::max(0.01f, std::max(S->sky.col.r, std::max(S->sky.col.g, S->sky.col.b)));
+		tint = glm::mix(glm::vec3(1.f), c, 0.35f);
+	}
+	S->roomTint += (tint - S->roomTint) * (1.f - std::exp(-dt * 1.5f));
 	// 0: over the table, a little behind and to the left so shadows fall toward the player
+	// (with the sun out it lights only the room around the table)
 	float cover = S->board.curtain();
-	add({T.x - 0.5f, T.y + 1.3f, T.z - 0.45f}, glm::vec3(1.6f, 1.65f, 1.8f) * dim * (1.f - 0.6f * cover));
+	add({T.x - 0.5f, T.y + 1.3f, T.z - 0.45f}, glm::vec3(1.6f, 1.65f, 1.8f) * S->roomTint * dim * (1.f - 0.6f * cover));
 	float fill = 0.5f * (1.f - 0.8f * S->night) * (1.f - 0.4f * S->alertLevel);
-	add(L.lightPos[1], L.lightCol[1] * fill);  // (1-3: room fills)
-	add(L.lightPos[2], L.lightCol[2] * fill);
-	add(L.lightPos[3], L.lightCol[3] * fill);
+	add(L.lightPos[1], L.lightCol[1] * S->roomTint * fill);  // (1-3: room fills)
+	add(L.lightPos[2], L.lightCol[2] * S->roomTint * fill);
+	add(L.lightPos[3], L.lightCol[3] * S->roomTint * fill);
+	// lightning over the battle: a flash fills the room
+	if (S->sky.flash > 0.01f) add({T.x + 0.3f, T.y + 1.5f, T.z - 0.5f}, glm::vec3(0.75f, 0.82f, 1.0f) * 6.f * S->sky.flash);
 	add(S->panel.pos + glm::vec3(0.f, 0.f, 0.6f), S->gameGlow * 0.9f);          // the game screen's light
 	std::vector<std::pair<glm::vec3, glm::vec3>> extra;
 	S->table.screenGlow(extra);
@@ -1065,10 +1096,22 @@ static void renderShadows()
 	}
 	const RoomLayout &L = S->layout;
 	glm::vec3 T = L.tableCenter, lp = S->lightPos[0];
-	float hx = L.tableSize.x * 0.5f + 0.5f, hz = L.tableSize.y * 0.5f + 0.6f;
-	glm::mat4 view = glm::lookAt(lp, T, glm::vec3(0.f, 0.f, -1.f));
-	glm::mat4 proj = glm::ortho(-hx, hx, -hz, hz, 0.2f, 3.0f);
-	S->shadowVP = proj * view;
+	if (S->sky.on)
+	{
+		// the sun: parallel light from its direction, over the whole table
+		T.y = S->table.surfaceY();
+		lp = T + S->sky.dir * 2.0f;
+		float r = std::sqrt(L.tableSize.x * L.tableSize.x + L.tableSize.y * L.tableSize.y) * 0.5f + 0.15f;
+		glm::mat4 view = glm::lookAt(lp, T, std::fabs(S->sky.dir.y) > 0.97f ? glm::vec3(0.f, 0.f, -1.f) : glm::vec3(0.f, 1.f, 0.f));
+		S->shadowVP = glm::ortho(-r, r, -r, r, 0.8f, 3.2f) * view;
+	}
+	else
+	{
+		float hx = L.tableSize.x * 0.5f + 0.5f, hz = L.tableSize.y * 0.5f + 0.6f;
+		glm::mat4 view = glm::lookAt(lp, T, glm::vec3(0.f, 0.f, -1.f));
+		glm::mat4 proj = glm::ortho(-hx, hx, -hz, hz, 0.2f, 3.0f);
+		S->shadowVP = proj * view;
+	}
 	S->shadow.bind();
 	glDisable(GL_FRAMEBUFFER_SRGB);
 	glEnable(GL_DEPTH_TEST);
@@ -1446,6 +1489,10 @@ static void runScript()
 					}
 			}
 		}
+		else if (c.op == "weather") { S->board.forceWeather(c.args.empty() ? "auto" : c.args[0]); }
+		else if (c.op == "strike") { S->board.testStrike(); }
+		else if (c.op == "sunaz") { Weather::forceSun((float)num(0, -1)); }
+		else if (c.op == "shade") { S->board.testShade((int)num(0, 0)); }
 		else if (c.op == "testufo")
 		{
 			// test helper: a detected UFO hovering next to the first base, and the base's armed craft
@@ -1690,7 +1737,7 @@ static void runScript()
 			glm::vec3 t = hp.tip(F_INDEX);
 			Log(LOG_INFO) << "[VR] status: " << S->table.status() << " | tip " << t.x << "," << t.y << "," << t.z
 				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch << " | " << S->floatWin.status()
-				<< " | " << S->board.baseStatus();
+				<< " | " << S->board.baseStatus() << " | " << S->board.weatherStatus();
 		}
 		else if (c.op == "shot") { S->pendingShot = c.args.empty() ? "vr_shot.png" : c.args[0]; return; }
 		else if (c.op == "gameshot" && !S->pixels.empty())

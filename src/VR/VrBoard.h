@@ -9,6 +9,7 @@
 #include <memory>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace OpenXcom
 {
@@ -22,6 +23,19 @@ namespace VR
 
 struct RoomLayout;
 class Shader;
+
+/// The sky over an outdoor battle on the table (world space).
+struct BoardSky
+{
+	bool on = false;
+	glm::vec3 dir{0.f, 1.f, 0.f};   // towards the sun or moon
+	glm::vec3 col{1.f};             // its light
+	glm::vec3 sky{0.f};             // the sky's light
+	glm::vec4 cloud{0.f};           // cloud shadows: strength, scale (per map voxel), drift (map voxels)
+	glm::mat4 mapInv{1.f};          // world -> map voxels
+	glm::vec4 area{0.f};            // the map on the table (world xz rect)
+	float flash = 0.f;              // lightning
+};
 
 struct BoardHit
 {
@@ -104,6 +118,16 @@ public:
 	void lights(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const;
 	bool alert() const;
 	float nightLevel() const;
+	/// The sun or moon, sky, clouds and lightning of an outdoor battle (VrWeather); false indoors or off the battle.
+	bool sky(BoardSky &out) const;
+	/// Hands over the table (world): rain, snow, dust and mist thin out around them.
+	void setHandPoints(const std::vector<glm::vec3> &pts);
+	std::string weatherStatus() const;
+	/// Tests: force the weather ("rain", "snow", "dust", "sand", "mist", "clouds", "clear", "auto"), a lightning
+	/// strike, the mission's darkness (the game's global shade, relit).
+	void forceWeather(const std::string &kind);
+	void testStrike();
+	void testShade(int shade);
 	/// The geoscape dome as a sphere (world centre, radius); false when no globe is shown.
 	bool globeSphere(glm::vec3 &center, float &radius) const;
 	bool canGrab(const glm::vec3 &handWorld) const;

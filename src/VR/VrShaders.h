@@ -84,6 +84,15 @@ uniform vec4 uHoles[40];
 uniform vec2 uHoleY;         // ...but only between these heights
 uniform vec3 uSun;           // globe mode: world-space direction towards the sun
 uniform vec4 uClip;          // world-space xz clip rectangle (xmin, zmin, xmax, zmax); disabled when xmin > xmax
+uniform vec4 uSunKey;        // outdoor battle: xyz world direction towards the sun or moon, w 1 = on. It lights the
+uniform vec3 uSunKeyCol;     // map (and what is over it) instead of light 0, and casts the shadows
+uniform vec4 uSunArea;       // the map on the table (world xz rect): where the sun shines
+uniform vec3 uSunKeySky;     // the sky's light over the map
+uniform float uFlash;        // lightning (0..1): lights the map's surfaces from their own colour, however dark the night
+uniform vec4 uCloud;         // cloud shadows: strength, scale per map voxel, drift (map voxels)
+uniform mat4 uMapInv;        // world -> battle map voxels
+uniform int uFadeCount;      // mode 6 (mist): it parts around these (world xyz, radius)
+uniform vec4 uFade[3];
 out vec4 fragColor;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -121,9 +130,21 @@ float shadowFactor(vec3 n)
 	return mix(0.25, 1.0, lit / 9.0);
 }
 
+bool gNoSun = false;         // the holo glass around the map keeps the room's light (no sun glare on it)
+
+/// How much of a point is under the battle's sun: over the map, up to about head height above it.
+float sunMask()
+{
+	if (uSunKey.w < 0.5 || gNoSun) return 0.0;
+	vec2 q = max(max(uSunArea.xy - vWorld.xz, vWorld.xz - uSunArea.zw), vec2(0.0));
+	float h = vWorld.y - uTableY;
+	return (1.0 - smoothstep(0.0, 0.03, length(q))) * smoothstep(-0.12, -0.08, h) * (1.0 - smoothstep(0.6, 0.8, h));
+}
+
 vec3 lighting(vec3 base, vec3 n, float spec, float rough)
 {
 	vec3 v = normalize(uEye - vWorld);
+	float sunK = sunMask();
 	// cool ambient from above, warm-ish bounce from below
 	float hemi = n.y * 0.5 + 0.5;
 	vec3 col = base * mix(vec3(0.020, 0.022, 0.028), vec3(0.060, 0.070, 0.085), hemi) * uAmbient;
@@ -137,8 +158,25 @@ vec3 lighting(vec3 base, vec3 n, float spec, float rough)
 		vec3 h = normalize(L + v);
 		float s = pow(max(dot(n, h), 0.0), mix(80.0, 8.0, rough)) * spec;
 		vec3 c = (base * ndl + s) * uLightCol[i] / d2;
-		if (i == 0) c *= shadowFactor(n);
+		if (i == 0) c *= (uSunKey.w > 0.5) ? (1.0 - sunK) : shadowFactor(n);
 		col += c;
+	}
+	if (sunK > 0.0)
+	{
+		// the sun or moon (parallel light), drifting cloud shadows, and the sky
+		vec3 L = normalize(uSunKey.xyz);
+		float ndl = max(dot(n, L), 0.0);
+		vec3 hv = normalize(L + v);
+		float s = pow(max(dot(n, hv), 0.0), mix(80.0, 8.0, rough)) * spec;
+		float cl = 1.0;
+		if (uCloud.x > 0.0)
+		{
+			vec2 mp = (uMapInv * vec4(vWorld, 1.0)).xz;
+			cl = 1.0 - uCloud.x * smoothstep(0.42, 0.62, fbm((mp - uCloud.zw) * uCloud.y));
+		}
+		// shadows from the sun are deeper than the room light's
+		float sh = mix(0.08, 1.0, (shadowFactor(n) - 0.25) / 0.75);
+		col += sunK * ((base * ndl + s) * uSunKeyCol * sh * cl + base * uSunKeySky * (0.6 + 0.4 * n.y));
 	}
 	// the holo table lights from below: undersides of hands and figures, fading with height
 	float h = vWorld.y - uTableY;
@@ -243,6 +281,21 @@ void main()
 		fragColor = vec4(vColor.rgb * uTint.rgb, vColor.a * uTint.a);
 		return;
 	}
+	if (uMode == 6)
+	{
+		// low mist: soft wisps drifting over open ground (uTex: where the sky is open, per map tile)
+		vec3 mp = (uMapInv * vec4(vWorld, 1.0)).xyz;
+		float w = fbm(mp.xz * 0.028 + vec2(uTime * 0.05, uTime * 0.02) + vec2(mp.y * 0.11));
+		float a = smoothstep(0.38, 0.8, w) * texture(uTex, vUV).r * uTint.a;
+		for (int i = 0; i < 3; ++i)
+		{
+			if (i >= uFadeCount) break;
+			a *= smoothstep(uFade[i].w * 0.35, uFade[i].w, length(vWorld - uFade[i].xyz));
+		}
+		if (a < 0.004) discard;
+		fragColor = vec4(uTint.rgb, a);
+		return;
+	}
 	if (uMode == 3 || uMode == 4)
 	{
 		vec4 t = texture(uTex, vUV);
@@ -263,6 +316,8 @@ void main()
 			float f = 1.0 - d / r;
 			glow += uGlowCol[i] * f * f * (0.35 + 0.65 * max(dot(n, L / max(d, 1e-4)), 0.0));
 		}
+		// lightning: a flash shows the map in its own colours for a moment (only what is on the table already)
+		if (uFlash > 0.0) glow += vec3(0.75, 0.82, 1.0) * uFlash * 0.55 * (0.55 + 0.45 * max(n.y, 0.0)) * sunMask();
 		fragColor = vec4(lighting(base, n, 0.1 * k, 0.8) + base * 0.22 + t.rgb * glow, 1.0);
 		return;
 	}
@@ -296,6 +351,7 @@ void main()
 		emissive = vec3(0.02, 0.22, 0.26) * (g * 0.5 + g2 * 1.1) * pulse;
 		base = vec3(0.010, 0.016, 0.022);
 		spec = 1.0; rough = 0.1;
+		gNoSun = true;
 	}
 	else if (vMat == 4) // light strips (red alert while aliens are in sight)
 	{

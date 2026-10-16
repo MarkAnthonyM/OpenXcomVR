@@ -19,6 +19,7 @@
 #include "VrBoard.h"
 #include "VrBase.h"
 #include "VrRoom.h"
+#include "VrWeather.h"
 #include "../Engine/Game.h"
 #include "../Engine/State.h"
 #include "../Engine/Surface.h"
@@ -54,6 +55,7 @@
 #include "../Battlescape/Position.h"
 #include "../Battlescape/Pathfinding.h"
 #include "../Battlescape/BattlescapeGame.h"
+#include "../Battlescape/TileEngine.h"
 #include "../Interface/Text.h"
 #include "../Engine/Font.h"
 #include "../Engine/Language.h"
@@ -174,6 +176,17 @@ struct Board::Impl
 {
 	BaseDiorama baseView;       // the base screen: the base on the table
 	bool hasBase = false;
+	// ---- the sky over an outdoor battle: sun, rain, snow, dust, mist (VrWeather)
+	Weather weather;
+	std::vector<float> stopCache;  // per tile column: where rain and snow stop (map voxels)
+	std::vector<uint8_t> openCache; // per tile column: explored ground under the open sky
+	float stopTimer = 0.f;
+	int stopLevel = -1;
+	float stopMax = 0.f;           // the highest roof or treetop in view
+	std::map<const MapData*, float> partTops;
+	float partTop(const MapData *d);
+	void updateStops();
+	std::vector<glm::vec3> handPts;
 	RoomLayout layout;
 	glm::vec3 viewer{0.f, 1.65f, 0.f};
 	Game *game = nullptr;
@@ -366,6 +379,10 @@ struct Board::Impl
 
 void Board::Impl::resetBattle()
 {
+	weather.end();
+	partTops.clear();
+	stopCache.clear();
+	openCache.clear();
 	protos.clear();
 	chunks.clear();
 	fogChunks.clear();
@@ -393,6 +410,11 @@ void Board::Impl::bindBattle(SavedBattleGame *save)
 	mx = save->getMapSizeX();
 	my = save->getMapSizeY();
 	mz = save->getMapSizeZ();
+	weather.begin(game, save);
+	stopCache.assign((size_t)mx * my, 0.f);
+	openCache.assign((size_t)mx * my, 0);
+	stopTimer = 0.f;
+	stopLevel = -1;
 	cxN = (mx + CHUNK - 1) / CHUNK;
 	cyN = (my + CHUNK - 1) / CHUNK;
 	chunks.resize((size_t)cxN * cyN * mz);
@@ -1087,6 +1109,27 @@ void Board::Impl::updateBattle(float dt)
 					}
 	}
 	updateEffects(dt);
+	// the weather over the part of the map the table shows
+	{
+		stopTimer -= dt;
+		if (stopTimer <= 0.f || stopLevel != viewLevel) { updateStops(); stopTimer = 0.4f; stopLevel = viewLevel; }
+		float k = tileSize / TILE_W;
+		glm::mat4 inv = glm::inverse(boardMatrix());
+		WeatherView v;
+		v.mx = mx; v.my = my;
+		v.top = (std::min(viewLevel, mz - 1) + 1) * (float)TILE_H;
+		v.ceiling = std::min(v.top + 16.f, stopMax + 30.f);
+		v.center = glm::vec2(focus.x, focus.z);
+		v.radius = std::max(mapRect.z - mapRect.x, mapRect.w - mapRect.y) * 0.5f / k * 1.15f;
+		v.viewer = glm::vec3(inv * glm::vec4(viewer, 1.f));
+		for (const glm::vec3 &h : handPts) v.fade.push_back(glm::vec4(glm::vec3(inv * glm::vec4(h, 1.f)), 0.07f / k));
+		if (cursorSet && battle->getTile(cursorTile))
+			v.fade.push_back(glm::vec4((cursorTile.x + 0.5f) * TILE_W, cursorTile.z * TILE_H + 8.f, (cursorTile.y + 0.5f) * TILE_W, 1.4f * TILE_W));
+		v.light = shadeFactor(battle->getGlobalShade());
+		v.stop = [this](int x, int y) { return (x < 0 || y < 0 || x >= mx || y >= my) ? 0.f : stopCache[(size_t)y * mx + x]; };
+		v.open = [this](int x, int y) { return x >= 0 && y >= 0 && x < mx && y < my && openCache[(size_t)y * mx + x] != 0; };
+		weather.update(dt, v);
+	}
 	++unitFrame;
 	for (BattleUnit *u : *battle->getUnits())
 	{
@@ -1354,6 +1397,7 @@ void Board::Impl::drawBattle(const Shader &sh)
 		if (fc.mesh && !fc.empty) fc.mesh->draw();
 	glDisable(GL_BLEND);
 
+	weather.draw(sh, M);
 	drawEffects(sh, M);
 
 	drawHud(sh, M);
@@ -2537,6 +2581,89 @@ bool Board::alert() const
 	for (BattleUnit *u : *p.battle->getUnits())
 		if (u->getFaction() == FACTION_HOSTILE && !u->isOut() && u->getVisible()) return true;
 	return false;
+}
+
+/// How high a tile part reaches (map voxels from its tile's floor): rain lands on it.
+float Board::Impl::partTop(const MapData *d)
+{
+	auto it = partTops.find(d);
+	if (it != partTops.end()) return it->second;
+	float top = 0.f;
+	for (const Vertex &v : proto(d).verts) top = std::max(top, v.pos.y);
+	partTops[d] = top;
+	return top;
+}
+
+/// Where rain and snow stop in each column: the highest floor (a roof is the floor of the level above)
+/// or object there, the top of the fog of war over unexplored ground. Walls don't stop it.
+void Board::Impl::updateStops()
+{
+	if (!battle || stopCache.size() != (size_t)mx * my) return;
+	for (int y = 0; y < my; ++y)
+		for (int x = 0; x < mx; ++x)
+		{
+			size_t i = (size_t)y * mx + x;
+			int nf = fogTop(x, y);
+			if (nf) { stopCache[i] = (nf - 1) * (float)TILE_H + 13.f; openCache[i] = 0; continue; }
+			float h = 0.f;
+			bool roof = false;
+			for (int z = mz - 1; z >= 0; --z)
+			{
+				Tile *t = battle->getTile(Position(x, y, z));
+				if (!t) continue;
+				const MapData *fl = t->getMapData(O_FLOOR), *ob = t->getMapData(O_OBJECT);
+				if (!fl && !ob) continue;
+				float base = z * (float)TILE_H;
+				h = base + std::max(fl ? std::max(partTop(fl), 0.5f) : 0.f, ob ? partTop(ob) : 0.f);
+				roof = z > 0;
+				break;
+			}
+			stopCache[i] = h;
+			openCache[i] = roof ? 0 : 1;
+		}
+	float top = (std::min(viewLevel, mz - 1) + 1) * (float)TILE_H;
+	stopMax = 0.f;
+	for (float h : stopCache) if (h < top) stopMax = std::max(stopMax, h);
+}
+
+bool Board::sky(BoardSky &out) const
+{
+	const Impl &p = *_p;
+	out = BoardSky();
+	if (!p.hasBattle || p.hasBase || !p.battle) return false;
+	const SkyLight &s = p.weather.sky();
+	if (!s.on) return false;
+	glm::mat4 M = p.boardMatrix();
+	out.on = true;
+	out.dir = glm::normalize(glm::vec3(M * glm::vec4(s.dir, 0.f)));
+	out.col = s.col;
+	out.sky = s.sky;
+	out.cloud = glm::vec4(s.cloud, 1.f / 150.f, s.cloudOffset.x, s.cloudOffset.y);
+	out.mapInv = glm::inverse(M);
+	out.area = p.clipRect();
+	out.flash = s.flash;
+	return true;
+}
+
+void Board::setHandPoints(const std::vector<glm::vec3> &pts) { _p->handPts = pts; }
+
+std::string Board::weatherStatus() const { return _p->hasBattle ? _p->weather.status() : "sky=-"; }
+
+void Board::forceWeather(const std::string &kind)
+{
+	Weather::force(kind);
+	if (_p->hasBattle && _p->battle) _p->weather.begin(_p->game, _p->battle);
+}
+
+void Board::testStrike() { _p->weather.strike(); }
+
+void Board::testShade(int shade)
+{
+	Impl &p = *_p;
+	if (!p.hasBattle || !p.battle) return;
+	p.battle->setGlobalShade(shade);
+	p.battle->getTileEngine()->calculateLighting(LL_AMBIENT);
+	p.firstTile = nullptr; // rebuild the board (tile colours) and roll the sky again
 }
 
 float Board::nightLevel() const

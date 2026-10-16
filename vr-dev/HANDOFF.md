@@ -110,6 +110,7 @@ Script commands (one per line; numbers are optional with defaults):
 | `boardpan dx dz`, `boardrotate r`, `boardzoom f`, `minimaptap u v`, `gamecam x y z` | move the table view / the game camera |
 | `hand ...`, `handmove ...`, `handcurl ...`, `handoff` | a scripted right hand (grip pose and finger curls) |
 | `testburst dx dy big` | an explosion effect next to the selected soldier |
+| `weather kind`, `strike`, `shade n`, `sunaz deg` | the battle's weather (`rain`, `snow`, `dust`, `sand`, `mist`, `clouds`, `clear`, `auto`), a lightning strike now, the mission's darkness (global shade, relit and rebuilt), the sun's direction for the following re-rolls (`-1` normal); `weather`/`shade` re-roll the sky, so set `sunaz` first |
 | `boardinfo`, `status` | log the table view (focus, where the soldier sits, level) / the table state |
 | `log text`, `quit` | |
 
@@ -266,15 +267,31 @@ Room and rendering
   wall; wrist minimap shown when the right wrist turns toward the face.
 - Up to 12 room lights (key light with shadows, fills, screen spill, red
   alert beacon, battle flashes), voxel fog of war, voxel effects.
+- Outdoor battles (0.13.0): the sun's direction is the real sun at the site
+  (rolled when it is overhead, on Mars or with no site); its height and colour
+  come only from the game's global shade (0-3 high white, 4-8 gold, 9-11
+  orange, 12-15 blue moonlight from the other side) so it never contradicts
+  the darkness. The map's tiles stay exactly as dark as the game's shade. The
+  sun lights only the map area (not the holo glass) and replaces the key
+  light there; the shadow map follows it.
+- Weather is cosmetic and rolled per mission from a hash of the mission
+  (type, site, time, shade, map size): snow polar/mountain 50%, rain
+  jungle/forest/farm/city 35% (always with lightning), dust desert 40%, red
+  sand Mars 60%, clouds on 70% of missions with shade <= 7, mist on 50% of
+  dawn missions (shade 3-10, sun in the east). Indoors (base defence, UBASE /
+  XBASE datasets): no sun, no weather. Rain and snow stop at the highest
+  floor or object in a column (the fog top over unexplored ground), never
+  fall under a roof that the view level hides, and thin out near hands and
+  the cursor. Lightning lights only what is drawn on the table.
+  `vrWeather` off removes the weather, not the sun.
 
 ## Known gaps
 
 - Quest 3 and Steam Frame layouts have never been run on those headsets.
 - Items lying on the floor aren't shown on the table map; ground items taller
   than three cells are only in the screen's inventory.
-- The base view is still only on the screen (part 2 of the geoscape round:
-  voxel base on the table, facility screens as floating windows).
-- Picking a base site / destination on the globe has no floating Cancel.
+- Weather and the sun have only been judged in the desktop preview (no
+  headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).
 
 ## Where things are
@@ -285,4 +302,5 @@ test script runner), `VrBoard.cpp` (everything on the table: diorama, view
 rules, HUD, fog, effects, minimap), `VrTable.cpp` (console buttons, action
 keys, alert buttons, inventory tray, wrist pad, wall screens), `VrHands.cpp`
 (hands and pinch), `VrXr.cpp` (OpenXR, controller profiles), `VrRoom.cpp`
-(room layout), `VrShaders.h`, `VrVersion.h`.
+(room layout), `VrWeather.cpp` (sun, weather, lightning over outdoor
+battles), `VrShaders.h`, `VrVersion.h`.

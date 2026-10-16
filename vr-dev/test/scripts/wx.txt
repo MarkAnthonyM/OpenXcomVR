@@ -1,0 +1,42 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -42
+waitframes 10
+status
+shot shots/wx_day.png
+weather rain
+wait 1500
+status
+shot shots/wx_rain.png
+strike
+waitframes 2
+shot shots/wx_flash.png
+weather snow
+wait 2500
+status
+shot shots/wx_snow.png
+weather dust
+wait 2000
+shot shots/wx_dust.png
+weather sand
+wait 2000
+shot shots/wx_sand.png
+weather clouds
+wait 800
+shot shots/wx_clouds.png
+weather mist
+shade 7
+wait 2500
+status
+shot shots/wx_dusk_mist.png
+weather clear
+shade 10
+wait 2500
+status
+shot shots/wx_late.png
+weather rain
+shade 15
+wait 2500
+status
+shot shots/wx_night_rain.png
+weather auto
+quit

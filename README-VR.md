@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.12.2)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -120,6 +120,27 @@ stand) in an X-COM command center at a holographic war table:
   game's palette shading (measured from the palette, applied in linear light),
   so lit areas, flares and fires stand out and unlit ground is near black; the
   fog over unexplored ground darkens with the night too.
+- **The sun over the mission.** On an outdoor mission the table is lit by the
+  sun standing where it really stands over the landing site at that hour (the
+  far edge of the table is north), while the game's own darkness level for
+  the mission sets how high it is and its colour: a high white sun with short
+  shadows by day, a low gold or deep orange one with long shadows at dawn and
+  dusk, faint blue moonlight at night. The tiles stay exactly as dark as the
+  game makes them; the room picks up a little of the light's colour.
+- **Weather.** Each outdoor mission rolls its own weather (the same mission
+  always gets the same, so a reload keeps it): snow on polar and mountain
+  maps (about half the time), rain on jungle, forest, farmland and city maps
+  (about a third) with lightning flashes now and then that light the room and
+  show the map in its own colours for a moment (plus thunder a moment later),
+  blowing dust in the desert and red sand on Mars, slow cloud shadows
+  drifting over most daytime missions and a low mist on some dawn missions.
+  Roofs keep rain and snow out (they land on roofs and treetops, never inside
+  a building or a landed UFO), and it all thins out around your hands and the
+  cursor. It is purely for show: the game's rules, what your soldiers see and
+  the flat screen are unchanged, and lightning never shows anything that
+  isn't already on the table. Base defence and alien base missions are
+  indoors and keep the plain room light. `vrWeather` (default on) turns the
+  weather off; the sun stays.
 - **Shots light up the night.** Lasers, plasma, rockets (their exhaust),
   incendiary rounds and blaster bombs light the ground and figures around them
   in their colour as they fly, stronger weapons brighter and further; their
@@ -300,6 +321,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrTable.*` | The table's control panel: hatches and spring buttons (battlescape and geoscape keys), spotted-alien buttons, the pop-up action board, the keyboard, the inventory tray with voxel item models, head/tile taps, the wrist minimap and the live wall screens. |
 | `VrFloat.*` | Floating pop-up windows: picks the game's top non-screen state, copies its area of the game frame, the projection and voxel-assembly effects, finger touches and the laser. |
 | `VrBase.*` | The base on the table: voxel relief rebuilt from the base view's sprites, craft models, scaffolding, labels, finger taps / holds / placement. |
+| `VrWeather.*` | The sky over an outdoor battle: the sun's direction at the site and its height and colour from the mission's darkness, the weather roll, rain / snow / dust particles stopping at roofs, mist, cloud drift, lightning and procedural thunder. |
 | `VrDash.*` | The geoscape dashboards on the back-wall monitors, drawn with the game's fonts straight from the saved game. |
 | `VrGL.*`, `VrShaders.h` | Tiny GL helper layer (incl. a shadow map target) and the single scene shader: linear lighting into an sRGB target, up to 12 point lights per frame, shadows from the key light, soft room-corner shading, the table's up-glow, the fog material. |
 
@@ -354,13 +376,22 @@ Key ideas:
   trigger + thumb on A is the pinch (instant and reliable); the virtual index and
   thumb are bent toward each other with a small IK solver (FABRIK) and eased over
   a few frames, and the pinch point is where their pads meet.
+- **The sky is worked out once per mission.** The darkness level the game
+  picked at landing (`SavedBattleGame::getGlobalShade`) sets the sun's height
+  and colour; its direction comes from the geoscape clock and the site
+  (the UFO, mission site, alien base or craft that `isInBattlescape`), using
+  the same sun as the table's globe. The terrain comes from the map's dataset
+  names (POLAR, MOUNT, DESERT, JUNGLE, FOREST, CULTIVAT, BARN, URBAN, MARS;
+  UBASE / XBASE mean indoors), and the weather is rolled from a hash of the
+  mission, so a reload brings the same sky. In the shader the sun replaces the
+  room's key light over the map (a parallel light with its own shadow map).
 - **The flat camera and the table stay in sync.** The table follows the game's
   camera center and view level, and sliding the map on the table moves the
   game's camera.
 
 Engine hooks: `Game.cpp` (startup, event filter, per-loop `VR::frame`),
 `Screen.cpp` (hand the composed frame to VR), `Options` (`vrMode`, `vrTableScale`,
-`vrSeatOffset`, `vrShadows`),
+`vrSeatOffset`, `vrShadows`, `vrWeather`),
 `UnitWalkBState` (in VR every visible unit counts as on screen: the engine
 otherwise skips most of the walk animation, and runs at timer interval 0, for
 units outside the flat camera's view, which made them sprint across the table),
