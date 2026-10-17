@@ -1007,7 +1007,6 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uFlash", sky.flash);
 	sh.set("uMapShade", sky.on ? sky.mapShade : 0.f);
 	sh.set("uMoonFloor", sky.on ? sky.moonFloor : 0.f);
-	sh.set("uRim", glm::vec4(0.f));
 	// the game's own light (soldiers, flares, fires): a warm lamp, as bright as the room light used to make it
 	sh.set("uLampCol", glm::vec3(1.0f, 0.93f, 0.82f) * (1.f - 0.45f * S->night));
 	sh.set("uCloud", sky.cloud);
@@ -1523,7 +1522,7 @@ static void runScript()
 			S->table.debugPanel().testPin(num(0, 1) > 0.5, S->head.pos + fwd * (float)num(1, 0.3), -fwd);
 		}
 		else if (c.op == "skyshift") { Weather::shiftClock(num(0, 0), c.args.empty()); S->board.skyChanged(); }
-		else if (c.op == "skyclock") { Weather::forceClock((int)num(0, -1), (int)num(1, 0), (int)num(2, 0)); }
+		else if (c.op == "skyclock") { Weather::forceClock((int)num(0, -1), (int)num(1, 0), (int)num(2, 0)); S->board.skyChanged(); }
 		else if (c.op == "dbgpage") { S->table.debugPanel().testPage((int)num(0, 0)); }
 		else if (c.op == "dbgpress") { if (c.args.empty() || !S->table.debugPanel().testPress(c.args[0])) Log(LOG_INFO) << "[VR] debug panel: no control " << (c.args.empty() ? "" : c.args[0]); }
 		else if (c.op == "shade") { S->board.testShade((int)num(0, 0)); }

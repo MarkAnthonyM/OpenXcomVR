@@ -187,6 +187,10 @@ struct Board::Impl
 	float partTop(const MapData *d);
 	void updateStops();
 	std::vector<glm::vec3> handPts;
+	// the debug panel's sky marker: where the sun, the moon and the table's light are
+	Mesh skyMarkMesh;
+	std::string skyMarkText; // what it showed last (tests)
+	void drawSkyMarker(const Shader &sh);
 	int shadeOffset = 0;            // the debug panel's darkness change (the table only, not the game)
 	int tileShade(const Tile *t) const { return glm::clamp(t->getShade() + shadeOffset, 0, 15); }
 	int globalShade() const { return glm::clamp(battle->getGlobalShade() + shadeOffset, 0, 15); }
@@ -1131,10 +1135,6 @@ void Board::Impl::updateBattle(float dt)
 		v.light = shadeFactor(globalShade());
 		v.stop = [this](int x, int y) { return (x < 0 || y < 0 || x >= mx || y >= my) ? 0.f : stopCache[(size_t)y * mx + x]; };
 		v.open = [this](int x, int y) { return x >= 0 && y >= 0 && x < mx && y < my && openCache[(size_t)y * mx + x] != 0; };
-		v.board = boardMatrix();
-		v.head = viewer;
-		v.mapRect = mapRect;
-		v.tableY = surfaceY();
 		weather.update(dt, v);
 	}
 	++unitFrame;
@@ -1237,32 +1237,9 @@ void Board::Impl::drawUnits(const Shader &sh)
 		if (Tile *ut = u->getTile()) ub = shadeFactor(tileShade(ut));
 		sh.set("uTint", glm::vec4(ub, ub, ub, 1.f));
 		sh.set("uModel", m);
-		// the sun or moon behind a figure (as you see it) lights a thin edge round it
-		glm::vec4 rim(0.f);
-		const SkyLight &sk = weather.sky();
-		if (sk.on && !shadowPass)
-		{
-			glm::vec2 ld(sk.dir.x, sk.dir.z), vd(p.x - viewerVox.x, p.z - viewerVox.z);
-			if (glm::length(ld) > 1e-3f && glm::length(vd) > 1e-3f)
-			{
-				float back = glm::dot(glm::normalize(ld), glm::normalize(vd));
-				float low = 1.f - glm::smoothstep(0.45f, 0.8f, sk.dir.y);
-				// a faint edge in the light's colour (not its strength: it must stay a hint, not an outline)
-				float m = std::max(sk.col.r, std::max(sk.col.g, sk.col.b));
-				if (m > 1e-3f)
-				{
-					float k = (globalShade() >= 12 ? 0.07f : 0.12f) * glm::smoothstep(0.1f, 0.8f, back) * low * glm::clamp(m * 3.f, 0.f, 1.f);
-					glm::vec3 c = sk.col / m * k;
-					if (k > 0.004f) rim = glm::vec4(c, 1.f);
-				}
-			}
-		}
-		sh.set("uRim", rim);
-		sh.set("uTexSize", glm::vec2((float)card.tex->width(), (float)card.tex->height()));
 		card.tex->bind(0);
 		quad.draw();
 	}
-	sh.set("uRim", glm::vec4(0.f));
 	sh.set("uTint", glm::vec4(1.f));
 }
 
@@ -1889,6 +1866,7 @@ void Board::Impl::drawEffects(const Shader &sh, const glm::mat4 &M)
 		float k = glm::clamp(beamFade / (0.12f + 0.1f * projPower), 0.f, 1.f);
 		boxAlong(beamA, beamB, (0.35f + 0.7f * projPower) * k, glm::vec4(beamColor * 1.2f, k));
 	}
+	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
 	glDisable(GL_BLEND);
 	sh.set("uTint", glm::vec4(1.f));
@@ -1912,7 +1890,7 @@ const Board::Impl::Label &Board::Impl::label(const std::string &text, Uint8 colo
 	Mod *mod = game->getMod();
 	Font *big = mod->getFont("FONT_BIG", false), *small = mod->getFont("FONT_SMALL", false);
 	if (!big || !small) return l;
-	const int W = 128, H = 20;
+	const int W = 256, H = 20;
 	Text t(W, H, 0, 0);
 	SDL_Color sp[256];
 	for (int i = 0; i < 256; ++i) sp[i] = pal[i];
@@ -2678,7 +2656,11 @@ bool Board::sky(BoardSky &out) const
 
 void Board::setHandPoints(const std::vector<glm::vec3> &pts) { _p->handPts = pts; }
 
-std::string Board::weatherStatus() const { return _p->hasBattle ? _p->weather.status() : "sky=-"; }
+std::string Board::weatherStatus() const
+{
+	if (!_p->hasBattle) return "sky=-";
+	return _p->weather.status() + (_p->skyMarkText.empty() ? "" : " mark=" + _p->skyMarkText);
+}
 
 void Board::forceWeather(const std::string &kind)
 {
@@ -2751,8 +2733,153 @@ void Board::drawWeather(const Shader &sh) const
 	// after the room's solid parts (the back wall screens too): see-through things last
 	sh.set("uClip", p.clipRect());
 	p.weather.draw(sh, p.boardMatrix());
-	p.weather.drawSky(sh);
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
+	if (Options::vrDebugPanel) const_cast<Impl&>(p).drawSkyMarker(sh);
+}
+
+namespace
+{
+/// A thin bar from a to b (world), for the sky marker.
+void bar(MeshData &md, const glm::vec3 &a, const glm::vec3 &b, float t, const glm::vec4 &col)
+{
+	glm::vec3 ax = b - a;
+	float len = glm::length(ax);
+	if (len < 1e-5f) return;
+	ax /= len;
+	glm::vec3 p = std::fabs(ax.y) < 0.9f ? glm::normalize(glm::cross(ax, glm::vec3(0, 1, 0))) : glm::vec3(1, 0, 0);
+	glm::vec3 q = glm::cross(ax, p);
+	p *= t * 0.5f; q *= t * 0.5f;
+	glm::vec3 c[8] = {a - p - q, a + p - q, a + p + q, a - p + q, b - p - q, b + p - q, b + p + q, b - p + q};
+	static const int f[6][4] = {{0, 1, 2, 3}, {4, 7, 6, 5}, {0, 4, 5, 1}, {1, 5, 6, 2}, {2, 6, 7, 3}, {3, 7, 4, 0}};
+	for (auto &k : f) md.addQuad(c[k[0]], c[k[1]], c[k[2]], c[k[3]], col, 0.f);
+}
+
+/// A flat disc of little squares facing the eye: the sun (full) or the moon (lit part by its phase).
+void disc(MeshData &md, const glm::vec3 &at, const glm::vec3 &eye, float r, bool moon, float lit, bool waxing, const glm::vec4 &on, const glm::vec4 &off)
+{
+	glm::vec3 n = eye - at;
+	if (glm::length(n) < 1e-4f) return;
+	n = glm::normalize(n);
+	glm::vec3 right = glm::cross(glm::vec3(0, 1, 0), n);
+	right = glm::length(right) > 1e-3f ? glm::normalize(right) : glm::vec3(1, 0, 0);
+	glm::vec3 up = glm::cross(n, right);
+	const int N = 9;
+	float cell = 2.f * r / N;
+	for (int iy = 0; iy < N; ++iy)
+		for (int ix = 0; ix < N; ++ix)
+		{
+			float x = (ix + 0.5f) / N * 2.f - 1.f, y = (iy + 0.5f) / N * 2.f - 1.f;
+			if (x * x + y * y > 1.f) continue;
+			bool isOn = true;
+			if (moon)
+			{
+				float xt = (1.f - 2.f * lit) * std::sqrt(std::max(0.f, 1.f - y * y));
+				isOn = waxing ? x > xt : x < -xt;
+			}
+			glm::vec3 c = at + right * (x * r) + up * (y * r);
+			glm::vec3 h1 = right * (cell * 0.45f), h2 = up * (cell * 0.45f);
+			md.addQuad(c - h1 - h2, c + h1 - h2, c + h1 + h2, c - h1 + h2, isOn ? on : off, 0.f);
+		}
+}
+}
+
+/// Debug panel on: a compass ring on the table round the map, the sun and the moon where they really
+/// stand over the site (or under the horizon, shown on the ring with how far below), and the direction
+/// the table's light comes from. Lets the panel's sky clock and sun keys be seen to do something.
+void Board::Impl::drawSkyMarker(const Shader &sh)
+{
+	skyMarkText.clear();
+	SkyInfo I = weather.info();
+	if (!I.active || !I.outdoor) return;
+	glm::mat4 M = boardMatrix();
+	float k = tileSize / TILE_W;
+	glm::mat4 inv = glm::inverse(M);
+	// on the map's ground level, drawn over the terrain so it never hides behind walls
+	glm::vec3 C((mapRect.x + mapRect.z) * 0.5f, glm::vec3(M * glm::vec4(0.f, 2.f, 0.f, 1.f)).y, (mapRect.y + mapRect.w) * 0.5f);
+	float R = std::min(0.4f, std::min(mapRect.z - mapRect.x, mapRect.w - mapRect.y) * 0.45f);
+	// map directions (x east, z south) turned with the map
+	auto world = [&](const glm::vec3 &mapDir) { glm::vec3 w = glm::vec3(M * glm::vec4(mapDir, 0.f)); return glm::length(w) > 1e-6f ? glm::normalize(w) : w; };
+	auto skyDir = [&](float azDeg, float elDeg)
+	{
+		float a = glm::radians(azDeg), e = glm::radians(elDeg);
+		return world(glm::vec3(std::sin(a) * std::cos(e), std::sin(e), -std::cos(a) * std::cos(e)));
+	};
+	MeshData md;
+	const glm::vec4 ringCol(1.0f, 0.62f, 0.2f, 0.75f);
+	// horizon ring
+	const int SEG = 72;
+	for (int i = 0; i < SEG; ++i)
+	{
+		float a0 = i * 6.2831853f / SEG, a1 = (i + 1) * 6.2831853f / SEG;
+		bar(md, C + glm::vec3(std::cos(a0) * R, 0, std::sin(a0) * R), C + glm::vec3(std::cos(a1) * R, 0, std::sin(a1) * R), 0.0025f, ringCol);
+	}
+	struct Txt { glm::vec3 at; std::string s; Uint8 col; };
+	std::vector<Txt> texts;
+	const Uint8 yellow = (Uint8)(Palette::blockOffset(Pathfinding::yellow - 1) - 1), white = (Uint8)(Palette::blockOffset(0) + 1),
+		green = (Uint8)(Palette::blockOffset(Pathfinding::green - 1) - 1);
+	const char *cn[4] = {"N", "E", "S", "W"};
+	for (int i = 0; i < 4; ++i)
+	{
+		glm::vec3 d = skyDir(i * 90.f, 0.f);
+		bar(md, C + d * (R - 0.012f), C + d * (R + 0.012f), 0.004f, ringCol);
+		texts.push_back({C + d * (R - 0.035f), cn[i], i == 0 ? yellow : white});
+	}
+	auto body = [&](float az, float el, bool moon, const std::string &name)
+	{
+		// up: on its line from the middle, as high as it really is; below the horizon: dimmed, just
+		// outside the ring where it is (it rises or sets there), without the line
+		bool below = el < 0.f;
+		glm::vec3 P = below ? C + skyDir(az, 0.f) * (R + 0.03f) + glm::vec3(0, 0.02f, 0) : C + skyDir(az, el) * R;
+		glm::vec4 on = moon ? glm::vec4(0.9f, 0.93f, 1.f, below ? 0.45f : 1.f) : glm::vec4(1.6f, 1.25f, 0.4f, below ? 0.45f : 1.f);
+		glm::vec4 off = moon ? glm::vec4(0.12f, 0.13f, 0.18f, below ? 0.35f : 0.8f) : on;
+		if (!below) bar(md, C, P, 0.0018f, glm::vec4(glm::vec3(on), 0.55f));
+		disc(md, P, viewer, 0.018f, moon, I.moonIllum, I.moonWaxing, on, off);
+		char b[96];
+		int a = ((int)std::lround(az) % 360 + 360) % 360;
+		if (moon) snprintf(b, sizeof(b), "%s %d%% %s  %d %s  dir %d", name.c_str(), (int)(I.moonIllum * 100.f + 0.5f), I.moonWaxing ? "waxing" : "waning", (int)std::lround(std::fabs(el)), below ? "BELOW" : "up", a);
+		else snprintf(b, sizeof(b), "%s  %d %s  dir %d", name.c_str(), (int)std::lround(std::fabs(el)), below ? "BELOW" : "up", a);
+		texts.push_back({P + glm::vec3(0, 0.03f, 0), b, moon ? white : yellow});
+		skyMarkText += (skyMarkText.empty() ? "" : ",") + std::string(moon ? "moon" : "sun") + (below ? "-" : "+") + std::to_string((int)std::lround(std::fabs(el)));
+	};
+	if (I.realKnown) body(I.realAz, I.realElev, false, "SUN");
+	if (I.moonKnown) body(I.moonAz, I.moonAlt, true, "MOON");
+	// the table's own light: where the key light (sun or moon) shines from, at the height the darkness gives it
+	if (!I.starlit)
+	{
+		glm::vec3 L = skyDir(I.sunAz, I.sunElev);
+		glm::vec3 c = I.sunCol / std::max(0.01f, std::max(I.sunCol.r, std::max(I.sunCol.g, I.sunCol.b)));
+		bar(md, C, C + L * (R * 1.15f), 0.004f, glm::vec4(c * 1.4f, 0.9f));
+		char b[96];
+		snprintf(b, sizeof(b), "TABLE LIGHT  %d up  dir %d  (darkness %d)", (int)std::lround(I.sunElev), ((int)std::lround(I.sunAz) % 360 + 360) % 360, I.shade);
+		texts.push_back({C + L * (R * 1.15f) + glm::vec3(0, 0.02f, 0), b, green});
+	}
+	else texts.push_back({C + glm::vec3(0, 0.03f, 0), "STARLIGHT ONLY  (darkness " + std::to_string(I.shade) + ")", green});
+	// the clock the sun and moon are worked out for
+	{
+		int lh = (int)I.localH, lm = (int)((I.localH - lh) * 60.f);
+		char b[96];
+		snprintf(b, sizeof(b), "%s  /  %02d:%02d LOCAL", I.skyClock.c_str(), lh, lm);
+		texts.push_back({C + skyDir(180.f, 0.f) * (R + 0.07f), b, I.skyShift != 0.0 ? yellow : white});
+	}
+	skyMarkMesh.upload(md, true);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDepthMask(GL_FALSE);
+	glDisable(GL_DEPTH_TEST);
+	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
+	sh.set("uModel", glm::mat4(1.f));
+	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uMode", 2);
+	skyMarkMesh.draw();
+	glm::vec3 viewerVox = glm::vec3(inv * glm::vec4(viewer, 1.f));
+	for (const Txt &t : texts)
+	{
+		const Label &l = label(t.s, t.col);
+		drawLabel(sh, M, glm::vec3(inv * glm::vec4(t.at, 1.f)), viewerVox, l, 0.0026f / k);
+	}
+	glDepthMask(GL_TRUE);
+	glDisable(GL_BLEND);
+	sh.set("uTint", glm::vec4(1.f));
 }
 
 void Board::draw(const Shader &sh, const glm::mat4 &, const glm::vec3 &eye, double)

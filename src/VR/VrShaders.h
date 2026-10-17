@@ -90,9 +90,7 @@ uniform vec4 uSunArea;       // the map on the table (world xz rect): where the 
 uniform vec3 uSunKeySky;     // the sky's light over the map
 uniform float uMapShade;     // outdoor battle: how bright the map's darkness leaves an unlit tile (the game's shade
 uniform vec3 uLampCol;       // as a factor); tiles brighter than that carry the game's own light, lit in this colour
-uniform int uShape;          // mode 7: 0 a round glow, 1 a light shaft
 uniform float uMoonFloor;    // moonlit night: the unlit ground shows at least this bright under the moon
-uniform vec4 uRim;           // mode 3 standees: rgb an edge of light round the figure (backlit by the sun or moon), a on
 uniform float uFlash;        // lightning (0..1): lights the map's surfaces from their own colour, however dark the night
 uniform vec4 uCloud;         // cloud shadows: strength, scale per map voxel, drift (map voxels)
 uniform mat4 uMapInv;        // world -> battle map voxels
@@ -291,16 +289,6 @@ void main()
 		fragColor = vec4(vColor.rgb * uTint.rgb, vColor.a * uTint.a);
 		return;
 	}
-	if (uMode == 7)
-	{
-		// soft sprites: a round glow (halo, stars) or a light shaft (soft sides, fading at both ends)
-		vec2 q = vUV * 2.0 - 1.0;
-		float a = uShape == 0 ? pow(max(0.0, 1.0 - length(q)), 2.2)
-			: (1.0 - smoothstep(0.15, 1.0, abs(q.x))) * smoothstep(-1.0, -0.75, q.y) * (1.0 - smoothstep(-0.1, 1.0, q.y));
-		if (a * vColor.a * uTint.a < 0.002) discard;
-		fragColor = vec4(vColor.rgb * uTint.rgb, a * vColor.a * uTint.a);
-		return;
-	}
 	if (uMode == 6)
 	{
 		// low mist: soft wisps drifting over open ground (uTex: where the sky is open, per map tile)
@@ -323,15 +311,6 @@ void main()
 		if (t.a < 0.02) discard;
 		vec3 base = t.rgb * vColor.rgb * uTint.rgb;
 		if (uMode == 4) { fragColor = vec4(base, t.a * uTint.a); return; }
-		vec3 rim = vec3(0.0);
-		if (uRim.a > 0.5)
-		{
-			// the figure's silhouette: opaque texels next to transparent ones
-			vec2 tx = 1.0 / max(uTexSize, vec2(1.0));
-			float e = (1.0 - texture(uTex, vUV + vec2(tx.x, 0.0)).a) + (1.0 - texture(uTex, vUV - vec2(tx.x, 0.0)).a)
-				+ (1.0 - texture(uTex, vUV + vec2(0.0, tx.y)).a) + (1.0 - texture(uTex, vUV - vec2(0.0, tx.y)).a);
-			rim = uRim.rgb * clamp(e, 0.0, 1.0);
-		}
 		// the highlight follows the surface's own brightness, so a tile darkened by the night stays dark
 		float k = dot(vColor.rgb * uTint.rgb, vec3(1.0 / 3.0));
 		// glowing shots and blasts light the surface from its unlit colour, so they show at night too
@@ -360,10 +339,10 @@ void main()
 			float amb = max(min(b, uMapShade), uMoonFloor * (uMoonFloor > 0.0 ? cloudAt() : 1.0)), loc = max(b - uMapShade, 0.0);
 			vec3 bAmb = albedo * amb;
 			vec3 c = lighting(bAmb, n, 0.1 * k, 0.8) + bAmb * 0.22 + albedo * loc * uLampCol * (0.8 + 0.2 * max(n.y, 0.0));
-			fragColor = vec4(c + t.rgb * glow + rim, 1.0);
+			fragColor = vec4(c + t.rgb * glow, 1.0);
 			return;
 		}
-		fragColor = vec4(lighting(base, n, 0.1 * k, 0.8) + base * 0.22 + t.rgb * glow + rim, 1.0);
+		fragColor = vec4(lighting(base, n, 0.1 * k, 0.8) + base * 0.22 + t.rgb * glow, 1.0);
 		return;
 	}
 

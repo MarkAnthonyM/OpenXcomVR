@@ -245,7 +245,6 @@ struct Weather::Impl
 	SkyInfo info;
 
 	glm::vec3 baseCol{0.f};             // the sun's or moon's light
-	void updateSky(float dt, const WeatherView &v);
 
 	void respawnFalling(Drop &d, const WeatherView &v, bool anywhere);
 	void respawnDust(Drop &d, const WeatherView &v);
@@ -433,6 +432,7 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 			north = glm::normalize(north);
 			float e = glm::dot(sun, east), n = glm::dot(sun, north);
 			I.realElev = std::asin(glm::clamp(glm::dot(sun, up), -1.f, 1.f)) * 180.f / PI;
+			I.realAz = std::fmod(std::atan2(e, n) * 180.f / PI + 360.f, 360.f);
 			I.realKnown = true;
 			if (std::sqrt(e * e + n * n) > 0.05f)
 			{
@@ -444,6 +444,12 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 		}
 	}
 	I.sunFrom = real ? "the real sun at the site" : p.mars ? "rolled (Mars)" : !site ? "rolled (no site)" : "rolled (sun overhead)";
+	// the moon over the site, day or night (the debug panel's sky marker shows it either way)
+	if (site && gt && !p.mars)
+	{
+		moonAt(daysJ2000(cYear, cMonth, cDay, cHours), I.lat, I.lon, I.moonAlt, I.moonAz, I.moonIllum, I.moonWaxing);
+		I.moonKnown = true;
+	}
 	float elev;
 	glm::vec3 col, skyCol;
 	bool night = shade >= 12;
@@ -465,10 +471,9 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 		// down, only the starlit sky lights the map
 		float malt = 40.f, maz = std::fmod(az + 180.f, 360.f), illum = 0.6f;
 		bool waxing = true;
-		if (site && gt && !p.mars)
+		if (I.moonKnown)
 		{
-			moonAt(daysJ2000(cYear, cMonth, cDay, cHours), I.lat, I.lon, malt, maz, illum, waxing);
-			I.moonKnown = true;
+			malt = I.moonAlt; maz = I.moonAz; illum = I.moonIllum; waxing = I.moonWaxing;
 			I.sunFrom = "the real moon at the site";
 		}
 		else I.sunFrom = p.mars ? "rolled (Mars)" : "rolled (no site)";
@@ -608,18 +613,6 @@ void Weather::Impl::respawnDust(Drop &d, const WeatherView &v)
 	d.life = 0.f;
 }
 
-void Weather::Impl::updateSky(float, const WeatherView &)
-{
-	// the sun and moon show only through their light (the table's key light, figures' edges, the room's
-	// glow on their side) and through the cloud shadows drifting over the map: no objects in the air
-	sky.col = baseCol;
-	info.cover = 0.f;
-}
-
-void Weather::drawSky(const Shader &) const
-{
-}
-
 void Weather::update(float dt, const WeatherView &v)
 {
 	Impl &p = *_p;
@@ -630,7 +623,6 @@ void Weather::update(float dt, const WeatherView &v)
 
 	// clouds drift with the wind
 	if (p.sky.cloud > 0.f) p.sky.cloudOffset += p.wind * (p.kind == RAIN ? 9.f : 5.f) * dt;
-	p.updateSky(dt, v);
 
 	// lightning: a few quick pulses, thunder a moment later
 	p.sky.flash = 0.f;
@@ -864,7 +856,7 @@ std::string Weather::status() const
 	o << " sun=" << (int)p.sunAz << "," << (int)p.sunElev << " weather=" << kindName(p.kind) << (p.mist ? "+mist" : "")
 		<< " clouds=" << (int)(p.sky.cloud * 100) << " drawn=" << p.drawn << " strikes=" << p.strikes
 		<< " moon=" << (int)(p.info.moonIllum * 100) << "%," << (int)p.info.moonAlt << (p.info.starlit ? ",starlit" : "")
-		<< " cover=0";
+;
 	return o.str();
 }
 

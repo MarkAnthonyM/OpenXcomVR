@@ -300,14 +300,23 @@ Room and rendering
   than the key stay off map surfaces (gMap). The owner turned down a visible
   sun or moon (a voxel disc with puffy clouds, stars, light shafts looked
   cartoony and took the menace away; weather.3): they show only through
-  light. A thin rim of the light's colour on backlit standees (mode 3, uRim:
-  silhouette texels of the card), a coloured room light low on the light's
+  light. A coloured room light low on the light's
   side, cloud shadows at night too (moonlit nights roll clouds 60%), and on a
   moonlit night the unlit ground's brightness is at least uMoonFloor (up to
   0.05 for a full, high moon) times the cloud shadow. Weather and the (now
   empty) sky are drawn after the room's solid parts (Board::drawWeather): the
   back-wall screens drawn later would cover them. `vrVanillaSky` = the
   pre-0.13 table (Weather treats it like indoors).
+- 0.13.0-weather.4: the rim light on backlit standees was removed (the owner
+  found it didn't help), with the dead sky-object code (Weather::drawSky,
+  shader mode 7). The moon is worked out for every outdoor mission (not only
+  at night) so the panel and marker can show it. With `vrDebugPanel` on,
+  Board::Impl::drawSkyMarker draws over the map (no depth test, after the
+  weather): a compass ring, the real sun and moon (SkyInfo realAz/realElev,
+  moonAz/moonAlt, phase disc) with labels, the table's key light (sunAz/
+  sunElev, colour, darkness) and the sky clock; the status line gets
+  `mark=sun+90,moon-69` (test `mark`, script skymark). Board labels can be
+  256 px wide now. The `skyclock` script op re-runs the sky at once.
 - The wrist debug panel's darkness buttons are a table-only offset
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.

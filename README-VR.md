@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.3)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.4)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -132,8 +132,7 @@ stand) in an X-COM command center at a holographic war table:
   thin one, and the unlit ground shows faintly under a bright moon; when the
   moon is below the horizon only a dim starlit sky lights the map, as black as
   the game makes it. The sun and moon are never shown as objects: you see them
-  in their light. Figures with the light behind them (as you look at them) get
-  a faint edge of its colour, the room glows faintly in its colour on the side
+  in their light. The room glows faintly in its colour on the side
   it comes from at dawn, dusk and on moonlit nights, and cloud shadows drift
   across the map by day and on moonlit nights, where a passing cloud swallows
   the moonlight on part of the battlefield for a while. The game's own
@@ -177,8 +176,18 @@ stand) in an X-COM command center at a holographic war table:
   and night (New Battle always lands at noon, when a full moon is down), -MOON
   / +MOON to step four days (about an eighth of the moon's cycle) and GAME to
   go back to the game's clock. The info
-  page also shows the moon's phase and height (or "starlit") and how much of
-  the sun or moon its clouds hide. The controls change the table only: the game's
+  page also shows the moon's phase and height (or "starlit"). While the panel
+  setting is on, a **sky marker** stands over the battle map: an orange
+  compass ring (N is the map's top edge and turns with the map), the real sun
+  and the real moon (drawn with its phase) on lines from the middle at their
+  true height and direction, each labelled with its height and direction
+  ("BELOW" and dimmed at the ring's edge, where it will rise or has set, when
+  under the horizon), the table's own light as a thick line in its colour
+  with its height, direction and the darkness level ("STARLIGHT ONLY" when
+  there is none), and the sky clock (GMT and local) under the ring, in yellow
+  while it is shifted. It shows the sky clock buttons at work: the sun and
+  moon move, while the table's light keeps the height the game's darkness
+  gives it. The controls change the table only: the game's
   darkness, what your soldiers see and the flat screen stay as they are.
   Forced weather and a turned sun carry on into the next battles until you
   press AUTO / REAL.

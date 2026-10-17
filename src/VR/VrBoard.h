@@ -72,7 +72,8 @@ public:
 	/// Rebuilds geometry when the game state changed. Needs the GL context.
 	void update(Game *game, float dt);
 	void draw(const Shader &sh, const glm::mat4 &viewProj, const glm::vec3 &eye, double time);
-	/// Rain, snow, mist and the sky over an outdoor battle: see-through, drawn after the room's solid parts.
+	/// Rain, snow and mist over an outdoor battle (and the debug panel's sky marker): see-through, drawn after
+	/// the room's solid parts.
 	void drawWeather(const Shader &sh) const;
 	bool raycast(const glm::vec3 &o, const glm::vec3 &d, BoardHit &hit) const;
 	/// Table area (world xz rect: xmin, zmin, xmax, zmax) the battle map is shown in.
