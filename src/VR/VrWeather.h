@@ -87,7 +87,10 @@ struct SkyInfo
 	bool moonKnown = false;                      // worked out from the date, time and site
 	float moonIllum = 0.f, moonAlt = 0.f, moonAz = 0.f;
 	bool moonWaxing = false;
-	bool starlit = false;                        // a night without the moon: only the sky lights the map
+	bool starlit = false;                        // (no longer used: a moon under the horizon is mirrored above it)
+	bool moonMirrored = false;                   // night: the moon is down, the table uses it mirrored above the horizon
+	float tableMoonAlt = 0.f;                    // night: how high the table's moon stands
+	float moonLight = 0.f;                       // night: its light (the phase, never below 0.4)
 	std::string skyClock;                        // the date and time the sun and moon are worked out for
 	double skyShift = 0.0;                       // the debug panel's shift of that clock from the game's (days)
 };

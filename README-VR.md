@@ -123,23 +123,31 @@ stand) in an X-COM command center at a holographic war table:
 - **The sun and moon over the mission.** On an outdoor mission the table is
   lit by the sun standing where it really stands over the landing site at
   that hour (the far edge of the table is north), while the game's own
-  darkness level for the mission sets how high it is and its colour: a high
-  white sun with short shadows by day, a low gold or deep orange one with long
-  shadows at dawn and dusk, fading into the night sky at darkness 10-11. At
+  darkness level for the mission sets how high it is and its colour: a high,
+  warm white sun with short shadows by day, a low gold one with long shadows
+  turning deep orange and finally red-orange at dusk (paler and pinker at
+  dawn), fading into the night sky at darkness 10-11. The shadows take the
+  sky's cool blue-violet at dawn and dusk, so the sunlit faces glow against
+  them. At
   night (darkness 12-15) the real moon takes over: its position and phase are
   worked out from the game's date and time and the site (the game itself has
   no moon), so a full moon gives brighter light and clearer shadows than a
-  thin one, and the unlit ground shows faintly under a bright moon; when the
-  moon is below the horizon only a dim starlit sky lights the map, as black as
-  the game makes it. The sun and moon are never shown as objects: you see them
+  thin one (though never less than 40% of a full moon's light), and the
+  unlit ground shows faintly under a bright moon. When the real moon is below
+  the horizon it is mirrored above it (the same direction, as high as it is
+  low), so every night has moonlight. The sun and moon are never shown as objects: you see them
   in their light. The room glows faintly in its colour on the side
   it comes from at dawn, dusk and on moonlit nights, and cloud shadows drift
-  across the map by day and on moonlit nights, where a passing cloud swallows
-  the moonlight on part of the battlefield for a while. The game's own
-  light (soldiers' light, flares, fires: wherever a tile is lighter than the
-  map's darkness) is a warm lamp of its own, so the pools around soldiers look
-  the same wherever you turn the map, and the room's lights no longer reach
-  the map. The tiles stay exactly as dark as the game makes them. Everything
+  across the map by day and on moonlit nights (about a tile a second): separate
+  clouds a few tiles across with crisp edges and sunlit gaps between them,
+  their shade cool and blue against the warm sunlight, and at night a passing
+  cloud swallows the moonlight on part of the battlefield for a while. The game's own
+  light (wherever a tile is lighter than the map's darkness) has a colour of
+  its own: the pools around soldiers take the colour of the sun or moon
+  (sunset orange at dusk, pink at dawn, silver-blue moonlight at night),
+  while fires, flares and other lit items stay a warm lamp. Both look the
+  same wherever you turn the map, and the room's lights no longer reach the
+  map. The tiles stay exactly as dark as the game makes them. Everything
   here is for show only: the game's darkness and what soldiers see are
   unchanged. `vrVanillaSky` (default off) brings back the table as it was
   before all this: the room's light over the table, no sun, moon or weather.
@@ -176,7 +184,8 @@ stand) in an X-COM command center at a holographic war table:
   and night (New Battle always lands at noon, when a full moon is down), -MOON
   / +MOON to step four days (about an eighth of the moon's cycle) and GAME to
   go back to the game's clock. The info
-  page also shows the moon's phase and height (or "starlit"). While the panel
+  page also shows the moon's phase and height (or that it is mirrored) and
+  how strong its light is. While the panel
   setting is on, a **sky marker** stands over the battle map: an orange
   compass ring (N is the map's top edge and turns with the map), the real sun
   and the real moon (drawn with its phase) on lines from the middle at their

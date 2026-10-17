@@ -1,0 +1,16 @@
+wait 9000
+cam 0.0 1.45 0.0 0 -45
+waitframes 2
+weather clouds
+wait 2500
+status
+shot shots/clouds_day_a.png
+wait 3000
+shot shots/clouds_day_b.png
+shade 6
+weather clouds
+wait 2500
+status
+shot shots/clouds_dusk.png
+weather auto
+quit

@@ -1,0 +1,29 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -42
+waitframes 2
+weather clear
+skyclock 2 0 0
+wait 2500
+status
+shot shots/pools_fullmoon.png
+skyclock 2 12 0
+wait 2500
+status
+shot shots/pools_mirrored.png
+skyclock 1 18 0
+shade 9
+wait 2500
+status
+shot shots/pools_dusk.png
+skyclock 1 6 0
+shade 9
+wait 2500
+status
+shot shots/pools_dawn.png
+shade 4
+wait 2500
+status
+shot shots/pools_dawn4.png
+skyclock -1
+weather auto
+quit

@@ -187,15 +187,15 @@ void WristDebug::Impl::render()
 		if (I.outdoor)
 		{
 			bool isNight = I.sky.compare(0, 5, "night") == 0;
-			if (I.starlit) line("No moon in the sky: starlight only");
-			else line(std::string(isNight ? "Moon" : "Sun") + " from " + compass(I.sunAz) + fmt(" (%.0f), %.0f high", I.sunAz, I.sunElev));
+			line(std::string(isNight ? "Moon" : "Sun") + " from " + compass(I.sunAz) + fmt(" (%.0f), %.0f high", I.sunAz, I.sunElev));
 			line(I.realKnown ? fmt("Real sun at the site: %.0f high", I.realElev) + (I.realElev < 0.f ? " (below)" : "") : std::string("Real sun: not known"), DIM);
 			line("Direction: " + I.sunFrom, I.sunFrom == "set by hand" ? AMBER : DIM);
 			if (I.sky.compare(0, 5, "night") == 0)
 			{
 				std::string ph = fmt("%.0f%% ", I.moonIllum * 100.f) + (I.moonWaxing ? "waxing" : "waning");
-				if (I.starlit) line("Moon " + ph + ", below the horizon: starlit", AMBER);
+				if (I.moonMirrored) line("Moon " + ph + fmt(", %.0f below: mirrored up", -I.moonAlt), AMBER);
 				else line("Moon " + ph + fmt(", %.0f high", I.moonAlt) + (I.moonKnown ? "" : " (rolled)"));
+				line(fmt("Moonlight %.0f%% of a full moon's", I.moonLight * 100.f) + (I.moonLight > I.moonIllum + 0.005f ? " (the floor)" : ""), DIM);
 			}
 			cv.text(6, y, 40, "Sun", TEXT); cv.rect(34, y, 30, 8, toPx(I.sunCol)); cv.frame(34, y, 30, 8, LINE);
 			cv.text(80, y, 40, "Sky", TEXT); cv.rect(104, y, 30, 8, toPx(I.skyCol)); cv.frame(104, y, 30, 8, LINE);
@@ -228,7 +228,7 @@ void WristDebug::Impl::render()
 	{
 		cv.text(4, 28, W - 8, "WEATHER  (now: " + (I.forced == "auto" ? std::string("the mission's roll") : I.forced) + ")", GOLD);
 		cv.text(4, 104, W - 8, fmt("DARKNESS  table %.0f, game %.0f", I.shade, I.shadeGame), GOLD);
-		cv.text(4, 156, W - 8, std::string(I.sky.compare(0, 5, "night") == 0 ? (I.starlit ? "MOON (down)" : "MOON") : "SUN") + "  from " + compass(I.sunAz) + fmt(" (%.0f)", I.sunAz) + " - " + I.sunFrom, GOLD);
+		cv.text(4, 156, W - 8, std::string(I.sky.compare(0, 5, "night") == 0 ? (I.moonMirrored ? "MOON (mirrored)" : "MOON") : "SUN") + "  from " + compass(I.sunAz) + fmt(" (%.0f)", I.sunAz) + " - " + I.sunFrom, GOLD);
 		{
 			double sh = I.skyShift;
 			int d = (int)(sh >= 0 ? std::floor(sh) : -std::floor(-sh)), h = (int)std::lround((sh - d) * 24.0);

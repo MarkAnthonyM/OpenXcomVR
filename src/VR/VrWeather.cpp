@@ -131,10 +131,20 @@ bool missionSite(SavedGame *sg, double &lon, double &lat)
 
 /// The sun by the game's darkness (0..11): how high (degrees) and what colour.
 const float SUN_ELEV[12] = {62, 57, 51, 46, 40, 35, 30, 25, 20, 17, 14, 12};
+// the evening sun: a warm late-morning white, a rich gold, then deep orange going red-orange at the end
 const glm::vec3 SUN_COL[12] = {
-	{1.00f, 0.97f, 0.92f}, {1.00f, 0.96f, 0.89f}, {1.00f, 0.94f, 0.85f}, {1.00f, 0.91f, 0.78f}, // high white
-	{1.00f, 0.86f, 0.66f}, {1.00f, 0.80f, 0.56f}, {1.00f, 0.74f, 0.48f}, {1.00f, 0.68f, 0.42f}, {1.00f, 0.62f, 0.36f}, // low gold
-	{1.00f, 0.55f, 0.30f}, {1.00f, 0.49f, 0.26f}, {0.96f, 0.43f, 0.23f}}; // deep orange
+	{1.00f, 0.95f, 0.86f}, {1.00f, 0.93f, 0.82f}, {1.00f, 0.91f, 0.77f}, {1.00f, 0.87f, 0.70f}, // warm day
+	{1.00f, 0.81f, 0.56f}, {1.00f, 0.75f, 0.47f}, {1.00f, 0.69f, 0.39f}, {1.00f, 0.62f, 0.31f}, {1.00f, 0.55f, 0.25f}, // gold
+	{1.00f, 0.46f, 0.19f}, {1.00f, 0.38f, 0.15f}, {1.00f, 0.30f, 0.12f}}; // orange to red-orange
+// the morning sun from darkness 4 on: paler and pinker than the evening's
+const glm::vec3 DAWN_COL[12] = {
+	{1.00f, 0.95f, 0.86f}, {1.00f, 0.93f, 0.82f}, {1.00f, 0.91f, 0.77f}, {1.00f, 0.87f, 0.72f},
+	{1.00f, 0.84f, 0.68f}, {1.00f, 0.79f, 0.64f}, {1.00f, 0.74f, 0.61f}, {1.00f, 0.69f, 0.59f}, {1.00f, 0.64f, 0.58f},
+	{1.00f, 0.59f, 0.57f}, {1.00f, 0.54f, 0.56f}, {0.98f, 0.49f, 0.55f}};
+// the sky's fill light (what lights the shadows): a clear blue day, a cool blue-violet dusk and a
+// lighter lavender dawn, so the warm sunlit faces stand out against cool shadows
+const glm::vec3 DAY_FILL(0.16f, 0.19f, 0.24f), DUSK_FILL(0.085f, 0.085f, 0.175f), DAWN_FILL(0.11f, 0.10f, 0.18f);
+glm::vec3 sunColour(int shade, bool morning) { shade = glm::clamp(shade, 0, 11); return morning ? DAWN_COL[shade] : SUN_COL[shade]; }
 
 /// How much the game's darkness dims a tile (as the board's shadeFactor).
 float shadeLight(int shade)
@@ -457,9 +467,9 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 	if (!night)
 	{
 		elev = SUN_ELEV[shade];
-		col = SUN_COL[shade] * (0.72f / std::max(std::sin(elev * PI / 180.f), 0.42f));
+		col = sunColour(shade, morning) * (0.72f / std::max(std::sin(elev * PI / 180.f), 0.42f));
 		float k = shade / 11.f;
-		skyCol = glm::mix(glm::vec3(0.16f, 0.19f, 0.24f), glm::vec3(0.12f, 0.08f, 0.09f), k);
+		skyCol = glm::mix(DAY_FILL, morning ? DAWN_FILL : DUSK_FILL, k);
 		// twilight: the last of the sun fades as the night sky takes over
 		if (shade == 10) { col *= 0.75f; skyCol = glm::mix(skyCol, NIGHT_SKY, 0.35f); }
 		if (shade == 11) { col *= 0.5f; skyCol = glm::mix(skyCol, NIGHT_SKY, 0.65f); }
@@ -467,8 +477,7 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 	}
 	else
 	{
-		// the moon: where it really is over the site at that hour and how full it is; when it is
-		// down, only the starlit sky lights the map
+		// the moon: where it really is over the site at that hour and how full it is
 		float malt = 40.f, maz = std::fmod(az + 180.f, 360.f), illum = 0.6f;
 		bool waxing = true;
 		if (I.moonKnown)
@@ -479,20 +488,17 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 		else I.sunFrom = p.mars ? "rolled (Mars)" : "rolled (no site)";
 		I.moonIllum = illum; I.moonAlt = malt; I.moonAz = maz; I.moonWaxing = waxing;
 		az = maz;
-		elev = std::max(malt, 12.f);
+		// a moon under the horizon is mirrored above it (same direction, as high as it is low), so every
+		// night has a moon; its light follows the phase but never drops below 40% of a full moon's
+		I.moonMirrored = malt < 0.f;
+		if (I.moonMirrored && I.moonKnown) I.sunFrom = "the real moon, mirrored above the horizon";
+		I.tableMoonAlt = std::fabs(malt);
+		I.moonLight = std::max(illum, 0.4f);
+		elev = std::max(I.tableMoonAlt, 12.f);
 		skyCol = NIGHT_SKY;
-		if (malt > 0.f)
-		{
-			col = glm::vec3(0.50f, 0.62f, 1.00f) * (0.08f + 0.52f * illum) * (0.55f / std::max(std::sin(elev * PI / 180.f), 0.5f));
-			skyCol += glm::vec3(0.01f, 0.012f, 0.02f) * illum;
-			p.skyName = "night";
-		}
-		else
-		{
-			col = glm::vec3(0.f);
-			I.starlit = true;
-			p.skyName = "night (starlit)";
-		}
+		col = glm::vec3(0.50f, 0.62f, 1.00f) * (0.08f + 0.52f * I.moonLight) * (0.55f / std::max(std::sin(elev * PI / 180.f), 0.5f));
+		skyCol += glm::vec3(0.01f, 0.012f, 0.02f) * I.moonLight;
+		p.skyName = I.moonMirrored ? "night (moon mirrored)" : "night";
 	}
 	if (forcedAz >= 0.f) { az = forcedAz; real = false; I.sunFrom = "set by hand"; }
 	p.night = night;
@@ -520,11 +526,10 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 	else if (shade >= 12)
 	{
 		// at night their shadows make the moonlight come and go in patches
-		if (I.starlit) I.rollClouds = "clouds: no moon to hide";
-		else { I.rollClouds = roll("night clouds", r2, 0.6f); if (r2 < 0.6f) cloud = 0.5f + 0.25f * r3; }
+		I.rollClouds = roll("night clouds", r2, 0.6f); if (r2 < 0.6f) cloud = 0.65f + 0.2f * r3;
 	}
 	else if (shade > 7) I.rollClouds = "clouds: too dark (needs <= 7 or a moonlit night)";
-	else { I.rollClouds = roll("clouds", r2, 0.7f); if (r2 < 0.7f) cloud = 0.30f + 0.15f * r3; }
+	else { I.rollClouds = roll("clouds", r2, 0.7f); if (r2 < 0.7f) cloud = 0.60f + 0.15f * r3; }
 	if (p.mars) I.rollMist = "mist: none on Mars";
 	else if (kind == DUST) I.rollMist = "mist: not in a dust storm";
 	else if (!morning) I.rollMist = "mist: not morning";
@@ -539,7 +544,7 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 		else if (forced == "dust") kind = DUST;
 		else if (forced == "sand") kind = SAND;
 		else if (forced == "mist") mist = true;
-		else if (forced == "clouds") cloud = night ? 0.65f : 0.4f;
+		else if (forced == "clouds") cloud = night ? 0.75f : 0.68f;
 	}
 	// overcast under rain and snow, hazy in a sandstorm
 	if (kind == RAIN) { col *= 0.55f; skyCol *= 1.25f; cloud = std::max(cloud, 0.5f); }
@@ -551,14 +556,14 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 	p.baseCol = col;
 	// a moonlit night: the map's unlit ground shows faintly in the moonlight (a full, high moon the most),
 	// so the moon and its cloud shadows can be seen; a moonless night stays as black as the game's
-	p.sky.moonFloor = (night && !I.starlit) ? 0.05f * I.moonIllum * glm::smoothstep(0.f, 25.f, I.moonAlt) : 0.f;
+	p.sky.moonFloor = night ? 0.05f * I.moonLight * glm::smoothstep(0.f, 25.f, I.tableMoonAlt) : 0.f;
 	p.sky.sky = skyCol;
 	p.sky.cloud = cloud;
 	p.windSpeed = kind == DUST || kind == SAND ? rng.r(35.f, 55.f) : rng.r(10.f, 28.f);
 	p.nextStrike = rng.r(4.f, 9.f);
 	// mist takes the colour of the low sun, as bright as the morning allows
 	float light = shadeLight(shade);
-	p.mistCol = glm::mix(glm::vec3(0.86f, 0.87f, 0.90f), SUN_COL[std::min(shade, 11)], 0.3f) * glm::clamp(light * 2.f, 0.15f, 0.8f);
+	p.mistCol = glm::mix(glm::vec3(0.86f, 0.87f, 0.90f), sunColour(shade, morning), 0.3f) * glm::clamp(light * 2.f, 0.15f, 0.8f);
 	p.mistAlpha = mist ? 0.065f : 0.f;
 	I.sky = p.skyName;
 	I.sunAz = az; I.sunElev = elev;
@@ -622,7 +627,7 @@ void Weather::update(float dt, const WeatherView &v)
 	p.fade = v.fade;
 
 	// clouds drift with the wind
-	if (p.sky.cloud > 0.f) p.sky.cloudOffset += p.wind * (p.kind == RAIN ? 9.f : 5.f) * dt;
+	if (p.sky.cloud > 0.f) p.sky.cloudOffset += p.wind * (p.kind == RAIN ? 22.f : 16.f) * dt; // about a tile a second
 
 	// lightning: a few quick pulses, thunder a moment later
 	p.sky.flash = 0.f;
@@ -855,7 +860,7 @@ std::string Weather::status() const
 	if (!p.outdoor) return o.str();
 	o << " sun=" << (int)p.sunAz << "," << (int)p.sunElev << " weather=" << kindName(p.kind) << (p.mist ? "+mist" : "")
 		<< " clouds=" << (int)(p.sky.cloud * 100) << " drawn=" << p.drawn << " strikes=" << p.strikes
-		<< " moon=" << (int)(p.info.moonIllum * 100) << "%," << (int)p.info.moonAlt << (p.info.starlit ? ",starlit" : "")
+		<< " moon=" << (int)(p.info.moonIllum * 100) << "%," << (int)p.info.moonAlt << (p.info.moonMirrored ? ",mirrored" : "")
 ;
 	return o.str();
 }

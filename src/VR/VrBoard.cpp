@@ -193,6 +193,14 @@ struct Board::Impl
 	void drawSkyMarker(const Shader &sh);
 	int shadeOffset = 0;            // the debug panel's darkness change (the table only, not the game)
 	int tileShade(const Tile *t) const { return glm::clamp(t->getShade() + shadeOffset, 0, 15); }
+	/// How much of a tile's own light is warm (fires, flares, lit items: 1) rather than the soldiers' (0),
+	/// which takes the sky light's colour under the sun or moon.
+	static float poolWarm(const Tile *t)
+	{
+		int u = t->getLight(LL_UNITS), o = std::max(t->getLight(LL_FIRE), t->getLight(LL_ITEMS));
+		if (o <= 0 && u <= 0) return 1.f;
+		return o > u ? 1.f : o == u ? 0.5f : 0.f;
+	}
 	int globalShade() const { return glm::clamp(battle->getGlobalShade() + shadeOffset, 0, 15); }
 	RoomLayout layout;
 	glm::vec3 viewer{0.f, 1.65f, 0.f};
@@ -652,6 +660,7 @@ uint64_t Board::Impl::chunkHash(int cx, int cy, int z)
 				mix(t->isUfoDoorOpen((TilePart)part));
 			}
 			mix((uint64_t)tileShade(t));
+			mix((uint64_t)(poolWarm(t) * 2.f));
 		}
 	return h;
 }
@@ -769,7 +778,7 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 			}
 			// shade 0 (bright) .. 15 (dark), like the flat map
 			float b = shadeFactor(tileShade(t));
-			glm::vec4 tint(b, b, b, 1.f);
+			glm::vec4 tint(b, b, b, poolWarm(t)); // alpha: the share of warm light in its own light (shader mode 3)
 			for (int part = 0; part < O_MAX; ++part)
 			{
 				TilePart tp = (TilePart)part;
@@ -1234,13 +1243,16 @@ void Board::Impl::drawUnits(const Shader &sh)
 		sh.set("uMode", 3);
 		// lit by its tile, like the flat map draws units (dark at night unless a light is near)
 		float ub = 1.f;
-		if (Tile *ut = u->getTile()) ub = shadeFactor(tileShade(ut));
+		float uw = 1.f;
+		if (Tile *ut = u->getTile()) { ub = shadeFactor(tileShade(ut)); uw = poolWarm(ut); }
 		sh.set("uTint", glm::vec4(ub, ub, ub, 1.f));
+		sh.set("uPoolWarm", uw);
 		sh.set("uModel", m);
 		card.tex->bind(0);
 		quad.draw();
 	}
 	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uPoolWarm", 1.f);
 }
 
 void Board::Impl::buildHiddenText()
@@ -2645,7 +2657,7 @@ bool Board::sky(BoardSky &out) const
 	out.dir = glm::normalize(glm::vec3(M * glm::vec4(s.dir, 0.f)));
 	out.col = s.col;
 	out.sky = s.sky;
-	out.cloud = glm::vec4(s.cloud, 1.f / 150.f, s.cloudOffset.x, s.cloudOffset.y);
+	out.cloud = glm::vec4(s.cloud, 1.f / 70.f, s.cloudOffset.x, s.cloudOffset.y); // clouds 3-6 tiles across
 	out.mapInv = glm::inverse(M);
 	out.area = p.clipRect();
 	out.flash = s.flash;
@@ -2850,7 +2862,8 @@ void Board::Impl::drawSkyMarker(const Shader &sh)
 		glm::vec3 c = I.sunCol / std::max(0.01f, std::max(I.sunCol.r, std::max(I.sunCol.g, I.sunCol.b)));
 		bar(md, C, C + L * (R * 1.15f), 0.004f, glm::vec4(c * 1.4f, 0.9f));
 		char b[96];
-		snprintf(b, sizeof(b), "TABLE LIGHT  %d up  dir %d  (darkness %d)", (int)std::lround(I.sunElev), ((int)std::lround(I.sunAz) % 360 + 360) % 360, I.shade);
+		snprintf(b, sizeof(b), "TABLE LIGHT  %d up  dir %d  (darkness %d)%s", (int)std::lround(I.sunElev), ((int)std::lround(I.sunAz) % 360 + 360) % 360, I.shade,
+			I.moonMirrored && I.sky.compare(0, 5, "night") == 0 ? "  MIRRORED MOON" : "");
 		texts.push_back({C + L * (R * 1.15f) + glm::vec3(0, 0.02f, 0), b, green});
 	}
 	else texts.push_back({C + glm::vec3(0, 0.03f, 0), "STARLIGHT ONLY  (darkness " + std::to_string(I.shade) + ")", green});

@@ -317,6 +317,23 @@ Room and rendering
   sunElev, colour, darkness) and the sky clock; the status line gets
   `mark=sun+90,moon-69` (test `mark`, script skymark). Board labels can be
   256 px wide now. The `skyclock` script op re-runs the sky at once.
+- 0.13.0-weather.5: a moon under the horizon is mirrored above it (same
+  azimuth, |altitude|; SkyInfo moonMirrored/tableMoonAlt), its light the phase
+  but at least 0.4 (moonLight); no starlit nights any more. Warmer SUN_COL
+  ending red-orange at darkness 11, a pinker DAWN_COL for mornings, and the
+  sky fill going from DAY_FILL to a blue-violet DUSK_FILL / lavender
+  DAWN_FILL. Soldiers' light pools take the sky light's hue (uPoolSkyCol:
+  sky.col scaled to the lamp's luminance, no channel above 1.4); fires and
+  lit items keep uLampCol. Per tile, Board::Impl::poolWarm (LL_FIRE/LL_ITEMS
+  vs LL_UNITS) goes in the chunk vertex alpha (and the chunk hash), units get
+  it as uPoolWarm; mode 3 mixes the two colours by vColor.a * uPoolWarm.
+  Cloud shadows (shader cloudCover): 3-octave value noise at 1/70 per map
+  voxel, a narrow threshold (0.545-0.585) for crisp edges and ~35% cover;
+  under a cloud the sun is cut by uCloud.x (day 0.60-0.75, night 0.65-0.85,
+  forced 0.68/0.75), the sky fill by 30% of that and mode 3's base term dims
+  toward a cool blue; drift 16 map voxels/s (22 in rain).
+  test/run.sh copies the test options.cfg before every run (the game saved
+  -vrDebugPanel true into it, so later tests ran with the panel on).
 - The wrist debug panel's darkness buttons are a table-only offset
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.

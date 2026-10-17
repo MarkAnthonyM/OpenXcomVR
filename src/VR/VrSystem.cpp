@@ -1008,7 +1008,22 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uMapShade", sky.on ? sky.mapShade : 0.f);
 	sh.set("uMoonFloor", sky.on ? sky.moonFloor : 0.f);
 	// the game's own light (soldiers, flares, fires): a warm lamp, as bright as the room light used to make it
-	sh.set("uLampCol", glm::vec3(1.0f, 0.93f, 0.82f) * (1.f - 0.45f * S->night));
+	const glm::vec3 lamp(1.0f, 0.93f, 0.82f);
+	sh.set("uLampCol", lamp * (1.f - 0.45f * S->night));
+	// soldiers' own light takes the colour of the sun or moon instead (fires and flares keep the lamp):
+	// the sky light's hue, about as bright as the lamp (no channel above 1.4)
+	{
+		auto lum = [](const glm::vec3 &c) { return glm::dot(c, glm::vec3(0.2126f, 0.7152f, 0.0722f)); };
+		glm::vec3 pool = lamp;
+		if (sky.on && lum(sky.col) > 1e-4f)
+		{
+			pool = sky.col * (lum(lamp) / lum(sky.col));
+			float mx = std::max(pool.r, std::max(pool.g, pool.b));
+			if (mx > 1.4f) pool *= 1.4f / mx;
+		}
+		sh.set("uPoolSkyCol", pool * (1.f - 0.45f * S->night));
+	}
+	sh.set("uPoolWarm", 1.f);
 	sh.set("uCloud", sky.cloud);
 	sh.set("uMapInv", sky.mapInv);
 	sh.set("uSunArea", sky.area);
