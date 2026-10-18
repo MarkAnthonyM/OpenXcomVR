@@ -172,7 +172,7 @@ stand) in an X-COM command center at a holographic war table:
   (about a third) with lightning flashes now and then that light the room and
   show the map in its own colours for a moment (plus thunder a moment later),
   blowing dust in the desert and red sand on Mars, slow cloud shadows
-  drifting over most daytime missions and a low mist on some dawn missions.
+  drifting over about 40% of daytime missions and a low mist on some dawn missions.
   Roofs keep rain and snow out (they land on roofs and treetops, never inside
   a building or a landed UFO), and it all thins out around your hands and the
   cursor. It is purely for show: the game's rules, what your soldiers see and

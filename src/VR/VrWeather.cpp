@@ -534,7 +534,7 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 		I.rollClouds = roll("night clouds", r2, 0.6f); if (r2 < 0.6f) cloud = 0.65f + 0.2f * r3;
 	}
 	else if (shade > 7) I.rollClouds = "clouds: too dark (needs <= 7 or a moonlit night)";
-	else { I.rollClouds = roll("clouds", r2, 0.7f); if (r2 < 0.7f) cloud = 0.60f + 0.15f * r3; }
+	else { I.rollClouds = roll("clouds", r2, 0.4f); if (r2 < 0.4f) cloud = 0.60f + 0.15f * r3; }
 	if (p.mars) I.rollMist = "mist: none on Mars";
 	else if (kind == DUST) I.rollMist = "mist: not in a dust storm";
 	else if (!morning) I.rollMist = "mist: not morning";

@@ -284,7 +284,7 @@ Room and rendering
 - Weather is cosmetic and rolled per mission from a hash of the mission
   (type, site, time, shade, map size): snow polar/mountain 50%, rain
   jungle/forest/farm/city 35% (always with lightning), dust desert 40%, red
-  sand Mars 60%, clouds on 70% of missions with shade <= 7, mist on 50% of
+  sand Mars 60%, clouds on 40% (70% before weather.8) of missions with shade <= 7, mist on 50% of
   dawn missions (shade 3-10, sun in the east). Indoors (base defence, UBASE /
   XBASE datasets): no sun, no weather. Rain and snow stop at the highest
   floor or object in a column (the fog top over unexplored ground), never
