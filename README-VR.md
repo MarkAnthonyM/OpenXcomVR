@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.4)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.6)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -123,10 +123,15 @@ stand) in an X-COM command center at a holographic war table:
 - **The sun and moon over the mission.** On an outdoor mission the table is
   lit by the sun standing where it really stands over the landing site at
   that hour (the far edge of the table is north), while the game's own
-  darkness level for the mission sets how high it is and its colour: a high,
-  warm white sun with short shadows by day, a low gold one with long shadows
-  turning deep orange and finally red-orange at dusk (paler and pinker at
-  dawn), fading into the night sky at darkness 10-11. The shadows take the
+  darkness level for the mission sets how high it is and its colour: a warm
+  white sun by day, a low, glowing deep-gold one in the evening's golden hour
+  turning deep orange and finally red-orange at sunset (paler and pinker on a
+  morning mission), fading into the night sky at darkness 10-11. The sun is
+  never higher than 50°, lower than you look down onto the table from your
+  seat, so shadows reach out past what casts them wherever you sit; at
+  sunset it is down to 8° and shadows stretch across the map. The ground is
+  matte (grass, dirt and stone don't mirror the sun) except in the rain,
+  when it glistens a little. The shadows take the
   sky's cool blue-violet at dawn and dusk, so the sunlit faces glow against
   them. At
   night (darkness 12-15) the real moon takes over: its position and phase are
@@ -138,8 +143,10 @@ stand) in an X-COM command center at a holographic war table:
   low), so every night has moonlight. The sun and moon are never shown as objects: you see them
   in their light. The room glows faintly in its colour on the side
   it comes from at dawn, dusk and on moonlit nights, and cloud shadows drift
-  across the map by day and on moonlit nights (about a tile a second): separate
-  clouds a few tiles across with crisp edges and sunlit gaps between them,
+  across the map by day and on moonlit nights (about a tile a second): voxel
+  clouds of quarter-tile blocks, lumpy and clustered with sunlit gaps between
+  them and stretched along the wind, their shadows cast along the sun's
+  direction (so they fall on walls and roofs where a real cloud's would) and
   their shade cool and blue against the warm sunlight, and at night a passing
   cloud swallows the moonlight on part of the battlefield for a while. The game's own
   light (wherever a tile is lighter than the map's darkness) has a colour of

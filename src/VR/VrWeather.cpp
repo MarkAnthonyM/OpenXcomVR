@@ -130,11 +130,13 @@ bool missionSite(SavedGame *sg, double &lon, double &lat)
 }
 
 /// The sun by the game's darkness (0..11): how high (degrees) and what colour.
-const float SUN_ELEV[12] = {62, 57, 51, 46, 40, 35, 30, 25, 20, 17, 14, 12};
+// how high the table's sun stands: kept below a seated player's line of sight (about 25-35 degrees down
+// onto the table) for most of the day, so shadows reach out past what casts them from any seat
+const float SUN_ELEV[12] = {50, 47, 44, 40, 35, 31, 27, 23, 20, 16, 12, 8};
 // the evening sun: a warm late-morning white, a rich gold, then deep orange going red-orange at the end
 const glm::vec3 SUN_COL[12] = {
 	{1.00f, 0.95f, 0.86f}, {1.00f, 0.93f, 0.82f}, {1.00f, 0.91f, 0.77f}, {1.00f, 0.87f, 0.70f}, // warm day
-	{1.00f, 0.81f, 0.56f}, {1.00f, 0.75f, 0.47f}, {1.00f, 0.69f, 0.39f}, {1.00f, 0.62f, 0.31f}, {1.00f, 0.55f, 0.25f}, // gold
+	{1.00f, 0.80f, 0.42f}, {1.00f, 0.75f, 0.33f}, {1.00f, 0.70f, 0.26f}, {1.00f, 0.64f, 0.20f}, {1.00f, 0.57f, 0.15f}, // deep gold
 	{1.00f, 0.46f, 0.19f}, {1.00f, 0.38f, 0.15f}, {1.00f, 0.30f, 0.12f}}; // orange to red-orange
 // the morning sun from darkness 4 on: paler and pinker than the evening's
 const glm::vec3 DAWN_COL[12] = {
@@ -468,6 +470,8 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 	{
 		elev = SUN_ELEV[shade];
 		col = sunColour(shade, morning) * (0.72f / std::max(std::sin(elev * PI / 180.f), 0.42f));
+		// the evening's golden hour glows: a deep gold reads as brown on ground the game has darkened
+		if (!morning && shade >= 4 && shade <= 8) col *= 1.25f;
 		float k = shade / 11.f;
 		skyCol = glm::mix(DAY_FILL, morning ? DAWN_FILL : DUSK_FILL, k);
 		// twilight: the last of the sun fades as the night sky takes over
@@ -559,6 +563,8 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 	p.sky.moonFloor = night ? 0.05f * I.moonLight * glm::smoothstep(0.f, 25.f, I.tableMoonAlt) : 0.f;
 	p.sky.sky = skyCol;
 	p.sky.cloud = cloud;
+	p.sky.wind = p.wind;
+	p.sky.wet = kind == RAIN ? 1.f : 0.f;
 	p.windSpeed = kind == DUST || kind == SAND ? rng.r(35.f, 55.f) : rng.r(10.f, 28.f);
 	p.nextStrike = rng.r(4.f, 9.f);
 	// mist takes the colour of the low sun, as bright as the morning allows

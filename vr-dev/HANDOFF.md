@@ -334,6 +334,18 @@ Room and rendering
   toward a cool blue; drift 16 map voxels/s (22 in rain).
   test/run.sh copies the test options.cfg before every run (the game saved
   -vrDebugPanel true into it, so later tests ran with the panel on).
+- 0.13.0-weather.6: SUN_ELEV lowered (50..40 day, 35..20 golden hour,
+  16/12/8 at 9-11) so shadows show from any seat (the owner saw them only
+  with the sun across the table: with the light behind you, short shadows
+  hide behind what casts them). The evening's golden hour (darkness 4-8, not
+  mornings) is a deeper gold and 25% stronger. In mode 3 the base term is
+  dimmed to 60% where the sun is blocked (gSunVis: shadow x cloud). Terrain
+  (uTerrain, set around the chunk draws) has no sun/moon highlight unless
+  raining (uWet: a small, sharper sheen); figures keep theirs. Clouds:
+  cloudCover() projects the fragment along the sun to a layer 200 map voxels
+  up, snaps to a 4-voxel grid moving with the drift (uCloud2.z), turns into
+  the wind's frame stretched 1.5 : 1 (uCloud2.xy, .w), domain-warped 4-octave
+  noise with a clumping threshold (0.50 +- 0.07): about a fifth of the sky.
 - The wrist debug panel's darkness buttons are a table-only offset
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.

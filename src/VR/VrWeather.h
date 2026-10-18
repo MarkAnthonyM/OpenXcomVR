@@ -40,6 +40,8 @@ struct SkyLight
 	glm::vec3 sky{0.f};              // light from the whole sky
 	float cloud = 0.f;               // cloud shadows: how dark (0 clear sky)
 	glm::vec2 cloudOffset{0.f};      // their drift (map voxels)
+	glm::vec2 wind{1.f, 0.f};        // the way they drift (map xz, unit)
+	float wet = 0.f;                 // rain: the ground glistens
 	float flash = 0.f;               // lightning right now (0..1)
 	float moonFloor = 0.f;           // moonlit night: how bright the unlit ground shows (a tile brightness factor)
 };

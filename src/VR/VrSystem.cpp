@@ -1025,6 +1025,9 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	}
 	sh.set("uPoolWarm", 1.f);
 	sh.set("uCloud", sky.cloud);
+	sh.set("uCloud2", sky.cloud2);
+	sh.set("uWet", sky.on ? sky.wet : 0.f);
+	sh.set("uTerrain", 0);
 	sh.set("uMapInv", sky.mapInv);
 	sh.set("uSunArea", sky.area);
 	sh.set("uFadeCount", 0);

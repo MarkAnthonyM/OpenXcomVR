@@ -1393,6 +1393,7 @@ void Board::Impl::drawBattle(const Shader &sh)
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uModel", M);
 	atlas.tex.bind(0);
+	sh.set("uTerrain", 1);
 	for (int z = 0; z <= std::min(viewLevel, mz - 1); ++z)
 		for (int cy = 0; cy < cyN; ++cy)
 			for (int cx = 0; cx < cxN; ++cx)
@@ -1400,6 +1401,7 @@ void Board::Impl::drawBattle(const Shader &sh)
 				const Chunk &ch = chunks[((size_t)z * cyN + cy) * cxN + cx];
 				if (ch.mesh && !ch.empty) ch.mesh->draw();
 			}
+	sh.set("uTerrain", 0);
 
 	drawUnits(sh);
 	sh.set("uGlowCount", 0);
@@ -2658,11 +2660,13 @@ bool Board::sky(BoardSky &out) const
 	out.col = s.col;
 	out.sky = s.sky;
 	out.cloud = glm::vec4(s.cloud, 1.f / 70.f, s.cloudOffset.x, s.cloudOffset.y); // clouds 3-6 tiles across
+	out.cloud2 = glm::vec4(s.wind.x, s.wind.y, 4.f, 1.5f); // quarter-tile voxels, stretched 1.5 : 1 along the wind
 	out.mapInv = glm::inverse(M);
 	out.area = p.clipRect();
 	out.flash = s.flash;
 	out.mapShade = shadeFactor(p.globalShade());
 	out.moonFloor = s.moonFloor;
+	out.wet = s.wet;
 	return true;
 }
 

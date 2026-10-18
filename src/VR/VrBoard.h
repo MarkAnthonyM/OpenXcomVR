@@ -33,11 +33,13 @@ struct BoardSky
 	glm::vec3 col{1.f};             // its light
 	glm::vec3 sky{0.f};             // the sky's light
 	glm::vec4 cloud{0.f};           // cloud shadows: strength, scale (per map voxel), drift (map voxels)
+	glm::vec4 cloud2{1.f, 0.f, 4.f, 1.5f}; // their wind direction (map xz), voxel size (map voxels), stretch along the wind
 	glm::mat4 mapInv{1.f};          // world -> map voxels
 	glm::vec4 area{0.f};            // the map on the table (world xz rect)
 	float flash = 0.f;              // lightning
 	float mapShade = 0.f;           // the map's darkness as a brightness factor (tiles brighter carry the game's own light)
 	float moonFloor = 0.f;          // moonlit night: the unlit ground shows at least this bright under the moon
+	float wet = 0.f;                // rain: the ground glistens
 };
 
 struct BoardHit
