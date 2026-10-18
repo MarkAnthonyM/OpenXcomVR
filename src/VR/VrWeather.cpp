@@ -223,6 +223,7 @@ struct Weather::Impl
 	SkyLight sky;
 	glm::vec2 wind{1.f, 0.f};           // xz direction (map), unit
 	float windSpeed = 20.f;             // voxels/s
+	float cloudSpeed = 16.f;            // cloud shadows' drift (map voxels/s), before gusts
 	Rng rng;
 	double time = 0.0;
 
@@ -572,6 +573,13 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 		p.sky.boost = lift > 0 ? shadeLight(shade - lift) / std::max(shadeLight(shade), 1e-3f) : 1.f;
 	}
 	p.windSpeed = kind == DUST || kind == SAND ? rng.r(35.f, 55.f) : rng.r(10.f, 28.f);
+	{
+		// the clouds ride the same wind: 40-100% of a tile a second, storms (rain, dust, sand) 70-100% of
+		// about 1.4 tiles a second
+		bool storm = kind == RAIN || kind == DUST || kind == SAND;
+		float t = kind == DUST || kind == SAND ? (p.windSpeed - 35.f) / 20.f : (p.windSpeed - 10.f) / 18.f;
+		p.cloudSpeed = storm ? 22.f * (0.7f + 0.3f * t) : 16.f * (0.4f + 0.6f * t);
+	}
 	p.nextStrike = rng.r(4.f, 9.f);
 	// mist takes the colour of the low sun, as bright as the morning allows
 	float light = shadeLight(shade);
@@ -639,7 +647,12 @@ void Weather::update(float dt, const WeatherView &v)
 	p.fade = v.fade;
 
 	// clouds drift with the wind
-	if (p.sky.cloud > 0.f) p.sky.cloudOffset += p.wind * (p.kind == RAIN ? 22.f : 16.f) * dt; // about a tile a second
+	if (p.sky.cloud > 0.f)
+	{
+		// gusts: the drift wanders about 15% either way
+		float gust = 1.f + 0.1f * (float)std::sin(p.time * 0.21) + 0.05f * (float)std::sin(p.time * 0.53 + 1.3);
+		p.sky.cloudOffset += p.wind * p.cloudSpeed * gust * dt;
+	}
 
 	// lightning: a few quick pulses, thunder a moment later
 	p.sky.flash = 0.f;
@@ -873,6 +886,7 @@ std::string Weather::status() const
 	o << " sun=" << (int)p.sunAz << "," << (int)p.sunElev << " weather=" << kindName(p.kind) << (p.mist ? "+mist" : "")
 		<< " clouds=" << (int)(p.sky.cloud * 100) << " drawn=" << p.drawn << " strikes=" << p.strikes
 		<< " moon=" << (int)(p.info.moonIllum * 100) << "%," << (int)p.info.moonAlt << (p.info.moonMirrored ? ",mirrored" : "") << " glow=" << std::lround(p.sky.boost * 100.f) << "%"
+		<< " cloudspeed=" << std::lround(p.cloudSpeed)
 ;
 	return o.str();
 }

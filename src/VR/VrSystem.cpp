@@ -1022,7 +1022,15 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 			if (mx > 1.4f) pool *= 1.4f / mx;
 		}
 		sh.set("uPoolSkyCol", pool * (1.f - 0.45f * S->night));
+		// out in the open the soldiers' light is the sky's own: on the tiles the game counts as lit the sun
+		// or moon shines (from its direction, with its shadows) as brightly as that light was, plus a
+		// little of the sky's fill so the shade there isn't black
+		glm::vec3 fill = pool;
+		if (sky.on && lum(sky.sky) > 1e-4f) fill = sky.sky * (lum(lamp) / lum(sky.sky));
+		sh.set("uPoolFillCol", fill * 0.2f * (1.f - 0.45f * S->night));
+		sh.set("uPoolSunY", sky.on ? std::max(sky.dir.y, 0.2f) : 1.f);
 	}
+	sh.set("uPoolRoofed", 0);
 	sh.set("uPoolWarm", 1.f);
 	sh.set("uCloud", sky.cloud);
 	sh.set("uCloud2", sky.cloud2);

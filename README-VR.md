@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.7)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.8)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -148,18 +148,21 @@ stand) in an X-COM command center at a holographic war table:
   low), so every night has moonlight. The sun and moon are never shown as objects: you see them
   in their light. The room glows faintly in its colour on the side
   it comes from at dawn, dusk and on moonlit nights, and cloud shadows drift
-  across the map by day and on moonlit nights (about a tile a second): voxel
+  across the map by day and on moonlit nights, each mission at its own speed
+  (up to about a tile a second, storms up to 1.4, with gusts): voxel
   clouds of quarter-tile blocks, lumpy and clustered with sunlit gaps between
   them and stretched along the wind, their shadows cast along the sun's
   direction (so they fall on walls and roofs where a real cloud's would) and
   their shade cool and blue against the warm sunlight, and at night a passing
   cloud swallows the moonlight on part of the battlefield for a while. The game's own
-  light (wherever a tile is lighter than the map's darkness) has a colour of
-  its own: the pools around soldiers take the colour of the sun or moon
-  (sunset orange at dusk, pink at dawn, silver-blue moonlight at night),
-  while fires, flares and other lit items stay a warm lamp. Both look the
-  same wherever you turn the map, and the room's lights no longer reach the
-  map. The tiles stay exactly as dark as the game makes them. Everything
+  light (wherever a tile is lighter than the map's darkness) works like this:
+  out in the open, the tiles your soldiers' light makes lit are lit by the
+  sun or moon itself, from its direction and with its shadows, as brightly as
+  the game makes them (sunset orange at dusk, pink at dawn, silver-blue
+  moonlight at night), so figures and walls cast shadows across them; under a
+  roof, where the sky can't reach, it stays a soft light in the same colour.
+  Fires, flares and other lit items stay a warm lamp. It all looks the same
+  wherever you turn the map, and the room's lights no longer reach the map. The tiles stay exactly as dark as the game makes them. Everything
   here is for show only: the game's darkness and what soldiers see are
   unchanged. `vrVanillaSky` (default off) brings back the table as it was
   before all this: the room's light over the table, no sun, moon or weather.

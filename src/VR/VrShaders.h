@@ -93,7 +93,10 @@ uniform vec3 uLampCol;       // as a factor); tiles brighter than that carry the
 uniform float uMoonFloor;    // moonlit night: the unlit ground shows at least this bright under the moon
 uniform float uFlash;        // lightning (0..1): lights the map's surfaces from their own colour, however dark the night
 uniform vec3 uPoolSkyCol;     // soldiers' own light under the sun or moon: the sky light's colour
-uniform float uPoolWarm;      // this draw's share of warm light (fires, flares) in the game's own light (x vertex alpha)
+uniform float uPoolWarm;
+uniform int uPoolRoofed;      // this draw (a figure) stands under a roof: the sky can't light its tile
+uniform vec3 uPoolFillCol;    // ...and the sky's fill there
+uniform float uPoolSunY;      // how high the sun or moon stands (sine, at least 0.2): flat ground gets the full light      // this draw's share of warm light (fires, flares) in the game's own light (x vertex alpha)
 uniform vec4 uCloud;
 uniform vec4 uCloud2;
 uniform int uTerrain;        // the map's terrain is being drawn: matte under the sun and moon (no shine)...
@@ -384,13 +387,32 @@ void main()
 			// a moonlit night shows the unlit ground faintly; a cloud passing over the moon swallows it
 			// (the moonlit floor is shaded by roofs, walls and clouds like the moonlight itself)
 			float amb = max(min(b, uMapShade), uMoonFloor > 0.0 ? uMoonFloor * sunShadow(n) * cloudAt() : 0.0), loc = max(b - uMapShade, 0.0);
+			// the game's own light on this tile: fires, flares and lit items (warm, a lamp of their own), the
+			// rest is the soldiers' light. In the open that is the sky's light itself, as strong as the game
+			// makes the tile (so it has the sun's or moon's shadows); under a roof it stays a soft light
+			float va = vColor.a;
+			bool roofed = va > 1.5 || uPoolRoofed == 1;
+			float warm = clamp((va > 1.5 ? va - 2.0 : va) * uPoolWarm, 0.0, 1.0);
+			float locSky = loc * (1.0 - warm), locWarm = loc * warm;
+			vec3 skyLit = vec3(0.0);
+			if (!roofed)
+			{
+				// the sun or moon itself, with its shadows: flat ground in full light, faces turned to it a
+				// little more; figures (flat cards for round bodies) catch it from most sides
+				vec3 L = normalize(uSunKey.xyz);
+				float d = dot(n, L);
+				float dirK = uTerrain == 1 ? min(max(d, 0.0) / uPoolSunY, 1.6) : 0.55 + 0.45 * clamp(d * 2.0, 0.0, 1.0);
+				float shK = mix(0.08, 1.0, sunShadow(n)) * cloudAt();
+				skyLit = albedo * locSky * (uPoolSkyCol * dirK * shK * 0.85 + uPoolFillCol * mix(0.45, 1.0, sunOpen(n)));
+				locSky = 0.0;
+			}
 			vec3 bAmb = albedo * amb;
 			// the sunlit part glows brighter than the game's darkness (golden hour, sunset); the shade keeps it
 			gBoost = uSunBoost;
 			// terrain is matte (grass, dirt, stone don't mirror the sun) except wet in the rain; figures keep their sheen
 			vec3 lit = uTerrain == 1 ? lighting(bAmb, n, 0.12 * k * uWet, 0.35) : lighting(bAmb, n, 0.1 * k, 0.8);
 			// in any shade the base light is dimmer and cooler, so shadows read deep on busy ground
-			vec3 c = lit + bAmb * 0.22 * mix(vec3(0.42, 0.46, 0.56), vec3(1.0), sunOpen(n)) + albedo * loc * mix(uPoolSkyCol, uLampCol, clamp(vColor.a * uPoolWarm, 0.0, 1.0)) * (0.8 + 0.2 * max(n.y, 0.0));
+			vec3 c = lit + bAmb * 0.22 * mix(vec3(0.42, 0.46, 0.56), vec3(1.0), sunOpen(n)) + albedo * (locSky * uPoolSkyCol + locWarm * uLampCol) * (0.8 + 0.2 * max(n.y, 0.0)) + skyLit;
 			fragColor = vec4(c + t.rgb * glow, 1.0);
 			return;
 		}

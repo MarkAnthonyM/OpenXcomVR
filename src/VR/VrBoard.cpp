@@ -201,6 +201,14 @@ struct Board::Impl
 		if (o <= 0 && u <= 0) return 1.f;
 		return o > u ? 1.f : o == u ? 0.5f : 0.f;
 	}
+	/// Is there a floor above a tile (a roof, an upper storey)? The sky can't light it then.
+	bool roofed(const Position &p) const
+	{
+		for (int z = p.z + 1; z < battle->getMapSizeZ(); ++z)
+			if (Tile *t = battle->getTile(Position(p.x, p.y, z)))
+				if (t->getMapData(O_FLOOR)) return true;
+		return false;
+	}
 	int globalShade() const { return glm::clamp(battle->getGlobalShade() + shadeOffset, 0, 15); }
 	RoomLayout layout;
 	glm::vec3 viewer{0.f, 1.65f, 0.f};
@@ -661,6 +669,7 @@ uint64_t Board::Impl::chunkHash(int cx, int cy, int z)
 			}
 			mix((uint64_t)tileShade(t));
 			mix((uint64_t)(poolWarm(t) * 2.f));
+			mix((uint64_t)roofed(Position(x, y, z)));
 		}
 	return h;
 }
@@ -778,7 +787,8 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 			}
 			// shade 0 (bright) .. 15 (dark), like the flat map
 			float b = shadeFactor(tileShade(t));
-			glm::vec4 tint(b, b, b, poolWarm(t)); // alpha: the share of warm light in its own light (shader mode 3)
+			// alpha: the share of warm light (fires, flares) in its own light, + 2 under a roof (shader mode 3)
+			glm::vec4 tint(b, b, b, poolWarm(t) + (roofed(Position(x, y, z)) ? 2.f : 0.f));
 			for (int part = 0; part < O_MAX; ++part)
 			{
 				TilePart tp = (TilePart)part;
@@ -1244,15 +1254,18 @@ void Board::Impl::drawUnits(const Shader &sh)
 		// lit by its tile, like the flat map draws units (dark at night unless a light is near)
 		float ub = 1.f;
 		float uw = 1.f;
-		if (Tile *ut = u->getTile()) { ub = shadeFactor(tileShade(ut)); uw = poolWarm(ut); }
+		bool under = false;
+		if (Tile *ut = u->getTile()) { ub = shadeFactor(tileShade(ut)); uw = poolWarm(ut); under = roofed(ut->getPosition()); }
 		sh.set("uTint", glm::vec4(ub, ub, ub, 1.f));
 		sh.set("uPoolWarm", uw);
+		sh.set("uPoolRoofed", under ? 1 : 0);
 		sh.set("uModel", m);
 		card.tex->bind(0);
 		quad.draw();
 	}
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uPoolWarm", 1.f);
+	sh.set("uPoolRoofed", 0);
 }
 
 void Board::Impl::buildHiddenText()

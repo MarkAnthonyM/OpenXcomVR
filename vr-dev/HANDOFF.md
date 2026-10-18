@@ -356,6 +356,16 @@ Room and rendering
   darkness. The shadow pass draws every level (and units above the view
   level), so roofs the view cuts away still shade the rooms below. (Standees
   already face the light in the shadow pass: setShadowPass swaps the viewer.)
+- 0.13.0-weather.8: soldiers' light (LL_UNITS share of a tile's own light,
+  poolWarm) on tiles open to the sky is drawn as the sun/moon itself (mode 3
+  skyLit: uPoolSkyCol x direction factor x shadow x cloud x 0.85, plus
+  uPoolFillCol x shade); terrain gets ndl / max(sun.y, 0.2) (flat ground full,
+  capped 1.6), figures a wrapped 0.55-1.0. Under a roof (Board::Impl::roofed:
+  a floor on any level above; chunk vertex alpha + 2, uPoolRoofed for figures)
+  it stays the flat uPoolSkyCol light. Fires and lit items keep uLampCol.
+  Cloud drift per mission from the wind roll (Weather cloudSpeed): normal
+  16 x 0.4-1.0, storms (rain, dust, sand) 22 x 0.7-1.0 map voxels/s, gusting
+  +-15%; status cloudspeed=.
 - The wrist debug panel's darkness buttons are a table-only offset
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.
