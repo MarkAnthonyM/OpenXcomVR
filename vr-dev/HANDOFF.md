@@ -346,6 +346,16 @@ Room and rendering
   up, snaps to a 4-voxel grid moving with the drift (uCloud2.z), turns into
   the wind's frame stretched 1.5 : 1 (uCloud2.xy, .w), domain-warped 4-octave
   noise with a clumping threshold (0.50 +- 0.07): about a fifth of the sky.
+- 0.13.0-weather.7: one shade model (shader sunShadow/sunOpen): sunShadow
+  is the shadow map (0 blocked .. 1 lit), sunOpen adds clouds but only where
+  the sun reaches (no cloud pattern indoors); in any shade the sky fill drops
+  to 70% and mode 3's base term to a cool ~45%; the moonlit floor is shaded
+  the same way. uSunBoost (SkyLight.boost, status glow=): the direct sun on
+  the battle map is multiplied by shadeLight(shade - lift) / shadeLight(shade),
+  lift 3 at darkness 4-8, 2 at 9-10, 1 at 11; the shade keeps the game's
+  darkness. The shadow pass draws every level (and units above the view
+  level), so roofs the view cuts away still shade the rooms below. (Standees
+  already face the light in the shadow pass: setShadowPass swaps the viewer.)
 - The wrist debug panel's darkness buttons are a table-only offset
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.

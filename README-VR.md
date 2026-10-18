@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.6)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.7)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -129,7 +129,12 @@ stand) in an X-COM command center at a holographic war table:
   morning mission), fading into the night sky at darkness 10-11. The sun is
   never higher than 50°, lower than you look down onto the table from your
   seat, so shadows reach out past what casts them wherever you sit; at
-  sunset it is down to 8° and shadows stretch across the map. The ground is
+  sunset it is down to 8° and shadows stretch across the map. From golden
+  hour to sunset the sunlit ground glows as if the map were a few darkness
+  steps lighter (3 at darkness 4-8, 2 at 9-10, 1 at 11) while the shade keeps
+  the game's own darkness, and every shade (a wall's, a figure's, a roof's or
+  a cloud's) is equally deep and cool. Roofs keep the sun and clouds out of
+  the rooms below even when the view level cuts them away. The ground is
   matte (grass, dirt and stone don't mirror the sun) except in the rain,
   when it glistens a little. The shadows take the
   sky's cool blue-violet at dawn and dusk, so the sunlit faces glow against

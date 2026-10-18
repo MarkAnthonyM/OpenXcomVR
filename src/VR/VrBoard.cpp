@@ -1217,7 +1217,7 @@ void Board::Impl::drawUnits(const Shader &sh)
 		if (it == cards.end() || !it->second.tex) continue;
 		if (u->isOut()) continue;
 		if (!(u->getFaction() == FACTION_PLAYER || u->getVisible() || battle->getDebugMode())) continue;
-		if (u->getPosition().z > viewLevel) continue;
+		if (u->getPosition().z > viewLevel && !shadowPass) continue;
 		const UnitCard &card = it->second;
 		glm::vec3 p = card.visInit ? card.vis : unitVoxelPos(u);
 		int size = u->getArmor()->getSize();
@@ -1394,7 +1394,8 @@ void Board::Impl::drawBattle(const Shader &sh)
 	sh.set("uModel", M);
 	atlas.tex.bind(0);
 	sh.set("uTerrain", 1);
-	for (int z = 0; z <= std::min(viewLevel, mz - 1); ++z)
+	// levels the view cuts away still cast shadows: roofs keep the sun (and clouds) out of the rooms below
+	for (int z = 0; z <= (shadowPass ? mz - 1 : std::min(viewLevel, mz - 1)); ++z)
 		for (int cy = 0; cy < cyN; ++cy)
 			for (int cx = 0; cx < cxN; ++cx)
 			{
@@ -2667,6 +2668,7 @@ bool Board::sky(BoardSky &out) const
 	out.mapShade = shadeFactor(p.globalShade());
 	out.moonFloor = s.moonFloor;
 	out.wet = s.wet;
+	out.boost = s.boost;
 	return true;
 }
 

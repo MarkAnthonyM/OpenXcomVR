@@ -565,6 +565,12 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 	p.sky.cloud = cloud;
 	p.sky.wind = p.wind;
 	p.sky.wet = kind == RAIN ? 1.f : 0.f;
+	// golden hour and sunset: the sunlit ground glows as if the map were a few darkness steps lighter;
+	// the shade keeps the game's darkness, so shadows stand out against it
+	{
+		int lift = shade >= 4 && shade <= 8 ? 3 : shade == 9 || shade == 10 ? 2 : shade == 11 ? 1 : 0;
+		p.sky.boost = lift > 0 ? shadeLight(shade - lift) / std::max(shadeLight(shade), 1e-3f) : 1.f;
+	}
 	p.windSpeed = kind == DUST || kind == SAND ? rng.r(35.f, 55.f) : rng.r(10.f, 28.f);
 	p.nextStrike = rng.r(4.f, 9.f);
 	// mist takes the colour of the low sun, as bright as the morning allows
@@ -866,7 +872,7 @@ std::string Weather::status() const
 	if (!p.outdoor) return o.str();
 	o << " sun=" << (int)p.sunAz << "," << (int)p.sunElev << " weather=" << kindName(p.kind) << (p.mist ? "+mist" : "")
 		<< " clouds=" << (int)(p.sky.cloud * 100) << " drawn=" << p.drawn << " strikes=" << p.strikes
-		<< " moon=" << (int)(p.info.moonIllum * 100) << "%," << (int)p.info.moonAlt << (p.info.moonMirrored ? ",mirrored" : "")
+		<< " moon=" << (int)(p.info.moonIllum * 100) << "%," << (int)p.info.moonAlt << (p.info.moonMirrored ? ",mirrored" : "") << " glow=" << std::lround(p.sky.boost * 100.f) << "%"
 ;
 	return o.str();
 }

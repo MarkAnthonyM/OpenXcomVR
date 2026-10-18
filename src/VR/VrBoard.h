@@ -40,6 +40,7 @@ struct BoardSky
 	float mapShade = 0.f;           // the map's darkness as a brightness factor (tiles brighter carry the game's own light)
 	float moonFloor = 0.f;          // moonlit night: the unlit ground shows at least this bright under the moon
 	float wet = 0.f;                // rain: the ground glistens
+	float boost = 1.f;              // the map's sunlit part: how much brighter than the game's darkness
 };
 
 struct BoardHit
