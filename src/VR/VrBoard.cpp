@@ -201,13 +201,14 @@ struct Board::Impl
 		if (o <= 0 && u <= 0) return 1.f;
 		return o > u ? 1.f : o == u ? 0.5f : 0.f;
 	}
-	/// Is there a floor above a tile (a roof, an upper storey)? The sky can't light it then.
+	/// Is there a ceiling over a tile (a floor on the level right above)? The sky can't light it then.
+	/// Only the next level counts: something higher (a craft's wing, an overhang) leaves the ground under
+	/// it open to a low sun, which the shadow map already handles.
 	bool roofed(const Position &p) const
 	{
-		for (int z = p.z + 1; z < battle->getMapSizeZ(); ++z)
-			if (Tile *t = battle->getTile(Position(p.x, p.y, z)))
-				if (t->getMapData(O_FLOOR)) return true;
-		return false;
+		if (p.z + 1 >= battle->getMapSizeZ()) return false;
+		Tile *t = battle->getTile(Position(p.x, p.y, p.z + 1));
+		return t && t->getMapData(O_FLOOR);
 	}
 	int globalShade() const { return glm::clamp(battle->getGlobalShade() + shadeOffset, 0, 15); }
 	RoomLayout layout;

@@ -132,7 +132,7 @@ bool missionSite(SavedGame *sg, double &lon, double &lat)
 /// The sun by the game's darkness (0..11): how high (degrees) and what colour.
 // how high the table's sun stands: kept below a seated player's line of sight (about 25-35 degrees down
 // onto the table) for most of the day, so shadows reach out past what casts them from any seat
-const float SUN_ELEV[12] = {50, 47, 44, 40, 35, 31, 27, 23, 20, 16, 12, 8};
+const float SUN_ELEV[12] = {50, 47, 44, 40, 35, 32, 29, 26, 23, 20, 17, 15};
 // the evening sun: a warm late-morning white, a rich gold, then deep orange going red-orange at the end
 const glm::vec3 SUN_COL[12] = {
 	{1.00f, 0.95f, 0.86f}, {1.00f, 0.93f, 0.82f}, {1.00f, 0.91f, 0.77f}, {1.00f, 0.87f, 0.70f}, // warm day
@@ -499,7 +499,7 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 		if (I.moonMirrored && I.moonKnown) I.sunFrom = "the real moon, mirrored above the horizon";
 		I.tableMoonAlt = std::fabs(malt);
 		I.moonLight = std::max(illum, 0.4f);
-		elev = std::max(I.tableMoonAlt, 12.f);
+		elev = std::max(I.tableMoonAlt, 20.f); // a low moon's shadows stop at about 2.7 times what casts them
 		skyCol = NIGHT_SKY;
 		col = glm::vec3(0.50f, 0.62f, 1.00f) * (0.08f + 0.52f * I.moonLight) * (0.55f / std::max(std::sin(elev * PI / 180.f), 0.5f));
 		skyCol += glm::vec3(0.01f, 0.012f, 0.02f) * I.moonLight;

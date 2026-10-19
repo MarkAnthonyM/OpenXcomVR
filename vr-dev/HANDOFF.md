@@ -366,6 +366,11 @@ Room and rendering
   Cloud drift per mission from the wind roll (Weather cloudSpeed): normal
   16 x 0.4-1.0, storms (rain, dust, sand) 22 x 0.7-1.0 map voxels/s, gusting
   +-15%; status cloudspeed=.
+- 0.13.0-weather.9: roofed() counts only a floor on the level right above
+  (a Skyranger's wings two levels up had made the ground under them
+  "indoors", so the soft light filled the soldiers' shadows there). SUN_ELEV
+  sunset end raised (... 26, 23, 20, 17, 15 at darkness 7-11; was 23, 20,
+  16, 12, 8); the moon's table height is at least 20 degrees (was 12).
 - The wrist debug panel's darkness buttons are a table-only offset
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.
