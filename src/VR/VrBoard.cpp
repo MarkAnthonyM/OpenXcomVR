@@ -212,6 +212,59 @@ struct Board::Impl
 		Tile *t = battle->getTile(Position(p.x, p.y, p.z + 1));
 		return t && t->getMapData(O_FLOOR);
 	}
+	/// Does the sun (or moon) reach the floor of a tile through the terrain (figures left out)? Four
+	/// points of the floor are traced toward it through the game's own collision voxels; at least two
+	/// must get out. A low sun reaches under a roof from the side (a craft's open cabin, an overhang).
+	bool sunReachesFloor(const Position &p) const
+	{
+		const SkyLight &s = weather.sky();
+		if (!s.on || s.dir.y <= 0.02f) return false;
+		TileEngine *te = battle->getTileEngine();
+		if (!te) return false;
+		// map voxels: x east, y up, z south -> the engine's x east, y south, z up
+		glm::vec3 d(s.dir.x, s.dir.z, s.dir.y);
+		d /= std::max(std::max(std::fabs(d.x), std::fabs(d.y)), std::fabs(d.z)); // about a voxel a step
+		const float topZ = (float)(battle->getMapSizeZ() * 24);
+		int out = 0;
+		static const float off[4][2] = {{4.f, 4.f}, {12.f, 4.f}, {4.f, 12.f}, {12.f, 12.f}};
+		for (auto &o : off)
+		{
+			glm::vec3 q(p.x * 16.f + o[0], p.y * 16.f + o[1], p.z * 24.f + 3.f);
+			bool blocked = false;
+			for (int i = 0; i < 2000; ++i)
+			{
+				q += d;
+				if (q.z >= topZ) break;
+				VoxelType v = te->voxelCheck(Position((int)q.x, (int)q.y, (int)q.z), nullptr, true);
+				if (v == V_OUTOFBOUNDS) break;
+				if (v != V_EMPTY) { blocked = true; break; }
+			}
+			if (!blocked) ++out;
+		}
+		te->voxelCheckFlush();
+		return out >= 2;
+	}
+	/// Under a roof the sky can't reach: the soldiers' light stays a soft light of its own there. The
+	/// traces are kept until the sun moves or a chunk is rebuilt (terrain may have changed).
+	mutable std::unordered_map<int, bool> reachCache;
+	mutable glm::vec3 reachSun{0.f};
+	bool indoors(const Position &p) const
+	{
+		if (!roofed(p)) return false;
+		glm::vec3 sd = weather.sky().dir;
+		if (sd != reachSun) { reachCache.clear(); reachSun = sd; }
+		int key = (p.z * battle->getMapSizeY() + p.y) * battle->getMapSizeX() + p.x;
+		auto it = reachCache.find(key);
+		if (it != reachCache.end()) return it->second;
+		bool in = !sunReachesFloor(p);
+		reachCache[key] = in;
+		return in;
+	}
+	uint64_t sunKey() const
+	{
+		glm::vec3 d = weather.sky().dir;
+		return (uint64_t)(int)(d.x * 1000.f) * 1000003ull + (uint64_t)(int)(d.y * 1000.f) * 1009ull + (uint64_t)(int)(d.z * 1000.f);
+	}
 	int globalShade() const { return glm::clamp(battle->getGlobalShade() + shadeOffset, 0, 15); }
 	RoomLayout layout;
 	glm::vec3 viewer{0.f, 1.65f, 0.f};
@@ -672,7 +725,7 @@ uint64_t Board::Impl::chunkHash(int cx, int cy, int z)
 			}
 			mix((uint64_t)tileShade(t));
 			mix((uint64_t)(poolWarm(t) * 2.f));
-			mix((uint64_t)roofed(Position(x, y, z)));
+			mix(roofed(Position(x, y, z)) ? sunKey() : 0ull); // under a roof it depends on where the sun is
 		}
 	return h;
 }
@@ -791,7 +844,7 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 			// shade 0 (bright) .. 15 (dark), like the flat map
 			float b = shadeFactor(tileShade(t));
 			// alpha: the share of warm light (fires, flares) in its own light, + 2 under a roof (shader mode 3)
-			glm::vec4 tint(b, b, b, poolWarm(t) + (roofed(Position(x, y, z)) ? 2.f : 0.f));
+			glm::vec4 tint(b, b, b, poolWarm(t) + (indoors(Position(x, y, z)) ? 2.f : 0.f));
 			for (int part = 0; part < O_MAX; ++part)
 			{
 				TilePart tp = (TilePart)part;
@@ -1088,6 +1141,7 @@ void Board::Impl::updateBattle(float dt)
 				if (h == ch.hash) continue;
 				if (ch.mesh && budget-- <= 0) continue;
 				if (hidden && ch.mesh) continue;
+				reachCache.clear(); // the terrain may have changed
 				buildChunk(cx, cy, z, ch);
 				ch.hash = h;
 			}
@@ -1259,7 +1313,7 @@ void Board::Impl::drawUnits(const Shader &sh)
 		float ub = 1.f;
 		float uw = 1.f;
 		bool under = false;
-		if (Tile *ut = u->getTile()) { ub = shadeFactor(tileShade(ut)); uw = poolWarm(ut); under = roofed(ut->getPosition()); }
+		if (Tile *ut = u->getTile()) { ub = shadeFactor(tileShade(ut)); uw = poolWarm(ut); under = indoors(ut->getPosition()); }
 		sh.set("uTint", glm::vec4(ub, ub, ub, 1.f));
 		sh.set("uPoolWarm", uw);
 		sh.set("uPoolRoofed", under ? 1 : 0);

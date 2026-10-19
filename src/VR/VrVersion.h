@@ -3,4 +3,4 @@
  * VR tabletop prototype version: 0.<round>.<fix>. A round of changes bumps the middle number, a small
  * follow-up fix the last one. Builds of the vr-prototype-weather branch add -weather.<n>. Published releases are tagged proto-<version>; the rebuild uses v<x.y.z>.
  */
-#define OXCE_VR_PROTOTYPE_VERSION "0.13.0-weather.10"
+#define OXCE_VR_PROTOTYPE_VERSION "0.13.0-weather.11"

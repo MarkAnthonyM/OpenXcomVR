@@ -388,6 +388,13 @@ Room and rendering
   (none / far only every 15-35 s / every 4-10 s, half near): near = full
   flash, thunder after 0.15-0.7 s at full volume; far = 0.28-0.45 flash,
   2-5 s, 30-45% volume. Status strength=, panel "Strength:" line, test storms.
+- 0.13.0-weather.11: a roofed tile only counts as indoors (soft soldier
+  light) when the sun can't reach its floor: Board::Impl::sunReachesFloor
+  traces four floor points toward the sun through TileEngine::voxelCheck
+  (terrain only); at least two must get out. Cached per tile (reachCache),
+  cleared when the sun moves or a chunk is rebuilt; chunks under a roof hash
+  the sun direction. Under the Skyranger's cabin the low sun got in from the
+  side, but the soft light filled the soldiers' shadows there.
 - The wrist debug panel's darkness buttons are a table-only offset
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.

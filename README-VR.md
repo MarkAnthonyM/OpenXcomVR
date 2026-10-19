@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.10)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.11)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -161,7 +161,8 @@ stand) in an X-COM command center at a holographic war table:
   sun or moon itself, from its direction and with its shadows, as brightly as
   the game makes them (sunset orange at dusk, pink at dawn, silver-blue
   moonlight at night), so figures and walls cast shadows across them; under a
-  roof, where the sky can't reach, it stays a soft light in the same colour.
+  roof, where the sun or moon can't get in (a low sun does reach under an
+  overhang or into an open cabin), it stays a soft light in the same colour.
   Fires, flares and other lit items stay a warm lamp. It all looks the same
   wherever you turn the map, and the room's lights no longer reach the map. The tiles stay exactly as dark as the game makes them. Everything
   here is for show only: the game's darkness and what soldiers see are
