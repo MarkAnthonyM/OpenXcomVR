@@ -211,6 +211,7 @@ void WristDebug::Impl::render()
 			if (I.cloud > 0.f) now += fmt(", clouds %.0f%%", I.cloud * 100.f);
 			line("Now: " + now + (I.forced != "auto" ? "  (FORCED " + I.forced + ")" : ""), I.forced != "auto" ? AMBER : TEXT);
 			line(I.rollKind, DIM);
+			if (!I.rollStrength.empty()) line("Strength: " + I.rollStrength, DIM);
 			line(I.rollClouds, DIM);
 			line(I.rollMist, DIM);
 			line(fmt("Drawn %.0f   strikes %.0f", I.drawn, I.strikes) + (I.nextStrike >= 0.f ? fmt("   next %.0f s", I.nextStrike) : std::string()));

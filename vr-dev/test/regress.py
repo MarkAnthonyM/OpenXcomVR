@@ -109,6 +109,8 @@ TESTS = [  # script, save, check, what it covers
      "soldiers' light in the sky light's colour: full moon, mirrored moon, dusk, pink dawn (shots/pools_*.png)"),
     ("clouds", "outside.asav", has("sky=day sun=137,50 weather=none clouds=68", "sky=dusk"),
      "cloud shadows: separate clouds with crisp, cool edges, by day and at dusk (shots/clouds_*.png)"),
+    ("storms", "outside.asav", has("weather=rain clouds=30", "strength=0", "clouds=75", "strikes=1", "weather=snow clouds=70", "strength=2"),
+     "rain and snow strengths: drizzle, thunderstorm with a strike, flurries, blizzard (shots/storms_*.png)"),
     ("mm", None, check_menu, "the main menu at start doesn't flash a floating window"),
     ("br", None, has("float: open N8OpenXcom13BriefingStateE", "float: touch 160,172"), "the briefing floats; touching OK starts the battle"),
 ]

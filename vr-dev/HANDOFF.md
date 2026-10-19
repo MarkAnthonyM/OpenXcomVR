@@ -284,7 +284,7 @@ Room and rendering
 - Weather is cosmetic and rolled per mission from a hash of the mission
   (type, site, time, shade, map size): snow polar/mountain 50%, rain
   jungle/forest/farm/city 35% (always with lightning), dust desert 40%, red
-  sand Mars 60%, clouds on 40% (70% before weather.8) of missions with shade <= 7, mist on 50% of
+  sand Mars 60%, clouds on 40% (70% before weather.8) of missions with shade <= 7, mist on 30% (was 50%) of
   dawn missions (shade 3-10, sun in the east). Indoors (base defence, UBASE /
   XBASE datasets): no sun, no weather. Rain and snow stop at the highest
   floor or object in a column (the fog top over unexplored ground), never
@@ -371,6 +371,23 @@ Room and rendering
   "indoors", so the soft light filled the soldiers' shadows there). SUN_ELEV
   sunset end raised (... 26, 23, 20, 17, 15 at darkness 7-11; was 23, 20,
   16, 12, 8); the moon's table height is at least 20 degrees (was 12).
+- 0.13.0-weather.10: standee self-shadow fix (the owner saw half a figure
+  shaded when the sun came from the side: the visible card, turned to the
+  viewer, was tested against its own light-facing copy in the shadow map).
+  In the main pass each standee passes uFigShadow/uFigAxis/RV/RL/NL/Up and
+  sunShadow() samples shadowAt() at the matching point of the light-facing
+  copy (same height, same offset from the middle; Board::Impl::shadowLight
+  is where setShadowPass turned them), so a card never shades itself while
+  walls, roofs and other figures still shade the parts they cover. Mist 30%.
+  Rain/snow strength (Impl::strength, rolled r5: 40/40/20; forced "rain" is
+  steady, forcing it again steps 0-1-2, "rain:2" picks): sun dimming, cloud
+  floor, wind (drizzle x0.5, storm x1.6; flurries x0.6, blizzard x2.4),
+  particle count (x0.35 / 1 / 1.8) and drop speed; blizzard haze uses the
+  mist sheets (Impl::haze, whitish, alpha 0.09). Gusts: Impl::gust() 1 +-0.4
+  over ~55 s on steady/heavy, scaling count and wind. Lightning by strength
+  (none / far only every 15-35 s / every 4-10 s, half near): near = full
+  flash, thunder after 0.15-0.7 s at full volume; far = 0.28-0.45 flash,
+  2-5 s, 30-45% volume. Status strength=, panel "Strength:" line, test storms.
 - The wrist debug panel's darkness buttons are a table-only offset
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.

@@ -94,7 +94,9 @@ uniform float uMoonFloor;    // moonlit night: the unlit ground shows at least t
 uniform float uFlash;        // lightning (0..1): lights the map's surfaces from their own colour, however dark the night
 uniform vec3 uPoolSkyCol;     // soldiers' own light under the sun or moon: the sky light's colour
 uniform float uPoolWarm;
-uniform int uPoolRoofed;      // this draw (a figure) stands under a roof: the sky can't light its tile
+uniform int uPoolRoofed;
+uniform int uFigShadow;        // a standee is drawn: its sun shadow comes from its light-facing copy...
+uniform vec3 uFigAxis, uFigRV, uFigRL, uFigNL, uFigUp; // ...(card middle, your card's across, the copy's across and facing, up)      // this draw (a figure) stands under a roof: the sky can't light its tile
 uniform vec3 uPoolFillCol;    // ...and the sky's fill there
 uniform float uPoolSunY;      // how high the sun or moon stands (sine, at least 0.2): flat ground gets the full light      // this draw's share of warm light (fires, flares) in the game's own light (x vertex alpha)
 uniform vec4 uCloud;
@@ -126,10 +128,10 @@ float gridLine(float x, float period, float width)
 	return 1.0 - smoothstep(0.0, width, d);
 }
 
-float shadowFactor(vec3 n)
+float shadowAt(vec3 pos, vec3 n)
 {
 	if (uShadowOn == 0) return 1.0;
-	vec4 p = uShadowVP * vec4(vWorld + n * 0.006, 1.0);
+	vec4 p = uShadowVP * vec4(pos + n * 0.006, 1.0);
 	vec3 q = p.xyz / p.w * 0.5 + 0.5;
 	if (q.x <= 0.0 || q.x >= 1.0 || q.y <= 0.0 || q.y >= 1.0 || q.z >= 1.0) return 1.0;
 	float lit = 0.0;
@@ -159,7 +161,8 @@ float sunMask()
 // clustered, stretched along the wind, their shadow cast along the sun onto the ground, walls and roofs.
 // 0 in the open, uCloud.x right under a cloud.
 float gCov = -1.0;   // this fragment's cover, worked out once
-float gShN = -1.0;   // this fragment's sun shadow (0 blocked .. 1 in the sun), worked out once
+float gShN = -1.0;
+float shadowFactor(vec3 n) { return shadowAt(vWorld, n); }   // this fragment's sun shadow (0 blocked .. 1 in the sun), worked out once
 float gBoost = 1.0;  // the battle map's sunlit part: how much brighter than the game's darkness (glow)
 float cloudCover()
 {
@@ -193,7 +196,18 @@ float cloudCover()
 float cloudAt() { return 1.0 - cloudCover(); }
 float sunShadow(vec3 n)
 {
-	if (gShN < 0.0) gShN = clamp((shadowFactor(n) - 0.25) / 0.75, 0.0, 1.0);
+	if (gShN < 0.0)
+	{
+		float f;
+		if (uFigShadow == 1)
+		{
+			// a standee: ask from the matching point of its light-facing copy in the shadow map
+			vec3 d = vWorld - uFigAxis;
+			f = shadowAt(uFigAxis + uFigRL * dot(d, uFigRV) + uFigUp * dot(d, uFigUp), uFigNL);
+		}
+		else f = shadowFactor(n);
+		gShN = clamp((f - 0.25) / 0.75, 0.0, 1.0);
+	}
 	return gShN;
 }
 /// How open to the sun a point is: 0 in the shade of a wall, a figure or a roof, about 0.1 under a

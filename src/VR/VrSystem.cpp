@@ -1031,6 +1031,7 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 		sh.set("uPoolSunY", sky.on ? std::max(sky.dir.y, 0.2f) : 1.f);
 	}
 	sh.set("uPoolRoofed", 0);
+	sh.set("uFigShadow", 0);
 	sh.set("uPoolWarm", 1.f);
 	sh.set("uCloud", sky.cloud);
 	sh.set("uCloud2", sky.cloud2);

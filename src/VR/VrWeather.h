@@ -81,6 +81,7 @@ struct SkyInfo
 	glm::vec3 sunCol{1.f}, skyCol{0.f};
 	std::string weather, forced;
 	std::string rollKind, rollClouds, rollMist;  // how each roll went
+	std::string rollStrength;                    // rain/snow: how strong (drizzle .. thunderstorm, flurries .. blizzard)
 	float cloud = 0.f;
 	bool mist = false;
 	int drawn = 0, strikes = 0;
@@ -115,9 +116,11 @@ public:
 	SkyInfo info() const;
 	/// The forced weather ("auto" when none) and sun direction (< 0 when none).
 	static std::string forcedWeather();
+	static int forcedWeatherStrength();          // rain/snow strength when forced (-1 rolled)
 	static float forcedSun();
 	/// Tests: the weather of the next battle (and the current one, re-rolled): "rain", "snow",
-	/// "dust", "sand", "mist", "clear" or "auto" (back to normal).
+	/// "dust", "sand", "mist", "clear" or "auto" (back to normal). Rain and snow come steady; forcing the
+	/// same again steps through light / steady / heavy; "rain:2" picks one.
 	static void force(const std::string &kind);
 	/// Tests: the sun's direction (degrees from north, clockwise) for the next battles; < 0 back to normal.
 	static void forceSun(float azimuth);

@@ -190,6 +190,8 @@ struct Board::Impl
 	// the debug panel's sky marker: where the sun, the moon and the table's light are
 	Mesh skyMarkMesh;
 	std::string skyMarkText; // what it showed last (tests)
+	glm::vec3 shadowLight{0.f};  // where the shadow pass turned the standees toward (world)
+	bool hasShadowLight = false;
 	void drawSkyMarker(const Shader &sh);
 	int shadeOffset = 0;            // the debug panel's darkness change (the table only, not the game)
 	int tileShade(const Tile *t) const { return glm::clamp(t->getShade() + shadeOffset, 0, 15); }
@@ -1222,6 +1224,7 @@ void Board::Impl::drawUnits(const Shader &sh)
 	glm::mat4 M = boardMatrix();
 	glm::mat4 inv = glm::inverse(M);
 	glm::vec3 viewerVox = glm::vec3(inv * glm::vec4(viewer, 1.f));
+	glm::vec3 lightVox = glm::vec3(inv * glm::vec4(shadowLight, 1.f)); // where the shadow pass turned the standees
 	for (BattleUnit *u : *battle->getUnits())
 	{
 		auto it = cards.find(u);
@@ -1260,6 +1263,30 @@ void Board::Impl::drawUnits(const Shader &sh)
 		sh.set("uTint", glm::vec4(ub, ub, ub, 1.f));
 		sh.set("uPoolWarm", uw);
 		sh.set("uPoolRoofed", under ? 1 : 0);
+		if (!shadowPass && hasShadowLight)
+		{
+			// the shadow map holds this card turned to the light: each point of the card you see takes its
+			// sun shadow from the matching point of that copy (same height, same distance from the middle),
+			// so the card never shades itself while walls and other figures still shade the parts they cover
+			glm::vec2 tl(lightVox.x - p.x, lightVox.z - p.z);
+			float faceL = std::atan2(tl.x, tl.y);
+			glm::mat4 mL = M * glm::translate(glm::mat4(1.f), p + glm::vec3(0, lift, 0))
+				* glm::rotate(glm::mat4(1.f), faceL, {0, 1, 0})
+				* glm::translate(glm::mat4(1.f), {0.f, card.anchorY - h * 0.5f, 0.f})
+				* glm::scale(glm::mat4(1.f), {w, h, 1.f});
+			glm::vec3 axis(m * glm::vec4(0.f, 0.f, 0.f, 1.f));
+			glm::vec3 rv = glm::normalize(glm::vec3(m * glm::vec4(1.f, 0.f, 0.f, 0.f)));
+			glm::vec3 rl = glm::normalize(glm::vec3(mL * glm::vec4(1.f, 0.f, 0.f, 0.f)));
+			glm::vec3 nl = glm::normalize(glm::vec3(mL * glm::vec4(0.f, 0.f, 1.f, 0.f)));
+			glm::vec3 up = glm::normalize(glm::vec3(m * glm::vec4(0.f, 1.f, 0.f, 0.f)));
+			if (glm::dot(nl, shadowLight - axis) < 0.f) nl = -nl;
+			sh.set("uFigShadow", 1);
+			sh.set("uFigAxis", axis);
+			sh.set("uFigRV", rv);
+			sh.set("uFigRL", rl);
+			sh.set("uFigNL", nl);
+			sh.set("uFigUp", up);
+		}
 		sh.set("uModel", m);
 		card.tex->bind(0);
 		quad.draw();
@@ -1267,6 +1294,7 @@ void Board::Impl::drawUnits(const Shader &sh)
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uPoolWarm", 1.f);
 	sh.set("uPoolRoofed", 0);
+	sh.set("uFigShadow", 0);
 }
 
 void Board::Impl::buildHiddenText()
@@ -2599,7 +2627,7 @@ void Board::setShadowPass(bool on, const glm::vec3 &light)
 	// standees turn toward whoever looks at them: in the shadow pass that is the light, so they
 	// cast their full silhouette
 	static glm::vec3 saved;
-	if (on && !_p->shadowPass) { saved = _p->viewer; _p->viewer = light; }
+	if (on && !_p->shadowPass) { saved = _p->viewer; _p->viewer = light; _p->shadowLight = light; _p->hasShadowLight = true; }
 	else if (!on && _p->shadowPass) _p->viewer = saved;
 	_p->shadowPass = on;
 }

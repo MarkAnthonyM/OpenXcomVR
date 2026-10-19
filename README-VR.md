@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.9)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.10)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -170,10 +170,17 @@ stand) in an X-COM command center at a holographic war table:
 - **Weather.** Each outdoor mission rolls its own weather (the same mission
   always gets the same, so a reload keeps it): snow on polar and mountain
   maps (about half the time), rain on jungle, forest, farmland and city maps
-  (about a third) with lightning flashes now and then that light the room and
-  show the map in its own colours for a moment (plus thunder a moment later),
-  blowing dust in the desert and red sand on Mars, slow cloud shadows
-  drifting over about 40% of daytime missions and a low mist on some dawn missions.
+  (about a third), blowing dust in the desert and red sand on Mars. Rain and
+  snow come light, steady or heavy (40 / 40 / 20%): a drizzle falling nearly
+  straight under broken cloud, steady rain under overcast, or a thunderstorm
+  driven by the wind under dark, fast clouds; flurries, steady snow, or a
+  blizzard driven sideways with a pale haze over the map. Steady and heavy
+  rain and snow come and go in gusts over a minute or so. Lightning comes
+  with the rain: never in a drizzle, now and then far off in steady rain (a
+  dim flicker, a low rumble seconds later), often in a thunderstorm, half the
+  time close (a flash that lights the room and shows the map in its own
+  colours, thunder at once). Slow cloud shadows drift over about 40% of
+  daytime missions, and a low mist lies on about a third of dawn missions.
   Roofs keep rain and snow out (they land on roofs and treetops, never inside
   a building or a landed UFO), and it all thins out around your hands and the
   cursor. It is purely for show: the game's rules, what your soldiers see and
