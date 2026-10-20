@@ -111,7 +111,8 @@ uniform int uFeed;           // the motion scanner's camera: the picture in the 
 uniform vec3 uFeedO;         // ...the soldier's tile (world)
 uniform vec3 uFeedE;         // ...one tile east and south as world vectors over their squared length (dot gives tiles)
 uniform vec3 uFeedS;
-uniform float uFeedPing;     // ...the wave's radius (tiles from the soldier); below 0 none
+uniform vec4 uFeedClock;     // ...the ping: seconds into it, pings so far, the wave's speed (tiles/s), seconds between pings
+uniform vec3 uFeedFill;      // ...the picture fills in over x seconds after the wave, each point stays y + up to z seconds
 uniform int uFeedN;          // ...contacts: offset from the soldier (tiles), ring radius (tiles), brightness
 uniform vec4 uFeedC[24];
 out vec4 fragColor;
@@ -306,37 +307,52 @@ vec3 displayContent(vec2 uv)
 	return col;
 }
 
-/// The motion scanner's camera: brightness in eight steps of the radar's green; the ping's wave spreading
-/// from the soldier to the edge of the scan (the game's 19 x 19 tiles); rings on whatever is at a contact's
-/// tile, on any floor (the game doesn't say which).
+float feedHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+/// The motion scanner's camera: brightness in eight steps of the radar's green, shown only where the ping
+/// has been. The wave spreads from the soldier to the edge of the scan (the game's 19 x 19 tiles); each pixel
+/// of the little picture comes up a moment after it passes (scattered points that join up), stays, and
+/// drops out again at random just before the next wave gets there; beyond the range it stays black.
+/// Contacts are rings on whatever is at their tile, on any floor (the game doesn't say which).
 vec3 feedColor(vec3 c)
 {
+	vec3 rel = vWorld - uFeedO;
+	vec2 t = vec2(dot(rel, uFeedE), dot(rel, uFeedS));
+	float d = length(t);
+	bool inRange = max(abs(t.x), abs(t.y)) < 9.5;
+	float now = uFeedClock.x, speed = uFeedClock.z, cyc = uFeedClock.w;
+	float vis = 0.0;
+	if (inRange)
+	{
+		float t0 = d / speed + feedHash(gl_FragCoord.xy) * uFeedFill.x;
+		float life = uFeedFill.y + feedHash(gl_FragCoord.yx + 17.31) * uFeedFill.z;
+		float a = now - t0;
+		if (a >= 0.0 && a < life) vis = 1.0;
+		else if (a < 0.0 && uFeedClock.y > 0.5 && a + cyc < life) vis = 1.0; // the last ping's, not gone yet
+	}
 	float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
 	float v = pow(clamp(l * 2.2, 0.0, 1.0), 0.55);
 	v = floor(v * 7.0 + 0.5) / 7.0;
 	vec3 g = mix(vec3(0.002, 0.010, 0.003), vec3(0.20, 0.62, 0.14), v);
-	vec3 rel = vWorld - uFeedO;
-	vec2 t = vec2(dot(rel, uFeedE), dot(rel, uFeedS));
-	float d = length(t);
-	float fw = max(fwidth(d), 1e-4);
-	if (uFeedPing >= 0.0 && max(abs(t.x), abs(t.y)) < 9.5)
-	{
-		// it fizzles where it meets the edge of the range: first the sides, the corners last
-		float fizz = 1.0 - 0.75 * smoothstep(8.5, 13.6, uFeedPing);
-		float band = 1.0 - smoothstep(0.0, max(0.35, fw * 1.5), abs(d - uFeedPing));
-		float wake = d < uFeedPing ? exp(-(uFeedPing - d) * 1.2) * 0.2 : 0.0;
-		g += vec3(0.30, 0.95, 0.40) * (band + wake) * fizz;
-	}
 	for (int i = 0; i < 24; ++i)
 	{
 		if (i >= uFeedN) break;
 		vec4 k = uFeedC[i];
-		if (k.w <= 0.0) continue;
 		float r = length(t - k.xy);
 		float rw = max(fwidth(r), 1e-4);
 		float ring = 1.0 - smoothstep(0.0, max(0.07, rw * 1.2), abs(r - k.z));
 		float fill = (1.0 - smoothstep(k.z * 0.5, k.z, r)) * 0.3;
-		g = mix(g, vec3(1.0, 0.62, 0.10) * min(k.w, 1.6), clamp((ring + fill) * min(k.w, 1.0), 0.0, 1.0));
+		g = mix(g, vec3(1.0, 0.62, 0.10) * min(k.w, 1.6), clamp(ring + fill, 0.0, 1.0));
+	}
+	g *= vis;
+	// the wavefront itself: it fizzles where it meets the edge of the range, the sides first, the corners last
+	float R = now * speed;
+	if (inRange && R < 14.0)
+	{
+		float fw = max(fwidth(d), 1e-4);
+		float fizz = 1.0 - 0.75 * smoothstep(8.5, 13.6, R);
+		float band = 1.0 - smoothstep(0.0, max(0.35, fw * 1.5), abs(d - R));
+		g += vec3(0.30, 0.95, 0.40) * band * fizz;
 	}
 	return g;
 }

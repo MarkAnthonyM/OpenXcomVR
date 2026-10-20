@@ -168,7 +168,8 @@ struct State
 	float bHold = 0.f;              // Left B held (recenter / seat calibration)
 	bool bCalibrated = false;
 	struct TapHold { float t = 0.f; bool fired = false; };
-	TapHold thX, thY, thDpadLeft; // Touch X / Y, Frame D-pad left: tap and hold do different things
+	TapHold thX, thY, thDpadLeft;
+	bool scannerOwnClick = false; // the scanner's close button is clicking (the only click let through while it is out) // Touch X / Y, Frame D-pad left: tap and hold do different things
 	bool padWasTouched[2] = {false, false};
 	float padLast[2] = {0.f, 0.f};
 	float padLevelAcc = 0.f;   // left trackpad travel toward the next level step
@@ -249,6 +250,13 @@ static void pushButton(Uint8 button, bool down)
 	SDL_PushEvent(&ev);
 }
 
+/// While the motion scanner is out, nothing reaches the game but its own close button: any click or key on
+/// the game's scanner screen would close it (only the red button should), and the map stays put.
+static bool scannerLocked()
+{
+	return S->scanner.isOpen() && !S->scannerOwnClick;
+}
+
 static void pushKey(SDLKey key, Uint16 unicode)
 {
 	for (int down = 1; down >= 0; --down)
@@ -314,6 +322,7 @@ static bool createResources()
 	S->board.setMapRect(S->table.mapRect());
 	S->board.clickScreen = [](int gx, int gy, int button)
 	{
+		if (scannerLocked()) return;
 		glm::vec2 uv((gx + 0.5f) / std::max(1, S->surfW), (gy + 0.5f) / std::max(1, S->surfH));
 		int wx, wy;
 		gameToWindow(uv, wx, wy);
@@ -628,8 +637,8 @@ static TableContext tableContext()
 	ctx.haptic = [](int hand, float amp, float sec) { if (S->mode == MODE_HEADSET) S->xr.haptic(hand, amp, sec); };
 	for (int h = 0; h < 2; ++h) ctx.handBusy[h] = S->grab[h].kind != Grab::NONE;
 	ctx.eye = S->mode == MODE_HEADSET ? xfPoint(S->rig, S->head.pos) : S->head.pos;
-	ctx.pressKey = [](int key) { pushKey((SDLKey)key, (Uint16)(key < 128 ? key : 0)); };
-	ctx.typeKey = [](int key, int ch) { pushKey((SDLKey)key, (Uint16)ch); };
+	ctx.pressKey = [](int key) { if (!scannerLocked()) pushKey((SDLKey)key, (Uint16)(key < 128 ? key : 0)); };
+	ctx.typeKey = [](int key, int ch) { if (!scannerLocked()) pushKey((SDLKey)key, (Uint16)ch); };
 	return ctx;
 }
 
@@ -668,6 +677,7 @@ static void updateHandsAndTable(float dt, bool simulated)
 	fc.hover = S->board.hoverScreen;
 	fc.mouse = [](int gx, int gy, int button, bool down)
 	{
+		if (scannerLocked()) return;
 		// the mouse goes there now (the game sees the hover), the button follows two frames later
 		int wx, wy;
 		gameToWindow(glm::vec2((gx + 0.5f) / std::max(1, S->surfW), (gy + 0.5f) / std::max(1, S->surfH)), wx, wy);
@@ -691,7 +701,7 @@ static void updateHandsAndTable(float dt, bool simulated)
 			if (glm::length(n) > 1e-6f && glm::length(e) > 1e-6f) { sc.north = glm::normalize(n); sc.east = glm::normalize(e); }
 		}
 		sc.tileCenter = [](int x, int y, int z) { return S->board.tileCenter(x, y, z); };
-		sc.clickScreen = S->board.clickScreen;
+		sc.clickScreen = [](int gx, int gy, int button) { S->scannerOwnClick = true; S->board.clickScreen(gx, gy, button); S->scannerOwnClick = false; };
 		sc.haptic = ctx.haptic;
 		S->scanner.update(sc, S->handsVis, dt);
 	}
@@ -788,7 +798,7 @@ static void updateHeadsetInput(float dt)
 		glm::vec3 gripW = xfPoint(S->rig, H[h].grip.pos);
 		if (H[h].grabBtn.pressed)
 		{
-			if (S->board.canGrab(gripW))
+			if (!S->scanner.isOpen() && S->board.canGrab(gripW))
 			{
 				g.kind = Grab::BOARD;
 				S->board.beginGrab(h, gripW);
@@ -838,9 +848,13 @@ static void updateHeadsetInput(float dt)
 	//         right B / A held = zoom in / out
 	// Frame:  left D-pad up / down = level; D-pad left tap = recenter, hold = seat height;
 	//         right Y / A held = zoom in / out
+	// while the motion scanner is out the map stays put: no levels, zoom, sliding or turning, no clicks
+	const bool scanning = S->scanner.isOpen();
 	if (H[0].kind == CTRL_TOUCH)
 	{
 		int y = tapOrHold(H[0].b, S->thY, dt), x = tapOrHold(H[0].a, S->thX, dt);
+		if (scanning && y == 1) y = 0;
+		if (scanning && x == 1) x = 0;
 		if (y == 1) { S->board.wheel(1); S->xr.haptic(0, 0.35f, 0.012f); }
 		else if (y == 2) calibrateSeat();
 		if (x == 1) { S->board.wheel(-1); S->xr.haptic(0, 0.35f, 0.012f); }
@@ -848,8 +862,8 @@ static void updateHeadsetInput(float dt)
 	}
 	else if (H[0].kind == CTRL_FRAME)
 	{
-		if (H[0].dpadUp.pressed) { S->board.wheel(1); S->xr.haptic(0, 0.35f, 0.012f); }
-		if (H[0].dpadDown.pressed) { S->board.wheel(-1); S->xr.haptic(0, 0.35f, 0.012f); }
+		if (H[0].dpadUp.pressed && !scanning) { S->board.wheel(1); S->xr.haptic(0, 0.35f, 0.012f); }
+		if (H[0].dpadDown.pressed && !scanning) { S->board.wheel(-1); S->xr.haptic(0, 0.35f, 0.012f); }
 		int d = tapOrHold(H[0].dpadLeft, S->thDpadLeft, dt);
 		if (d == 1) recenter();
 		else if (d == 2) calibrateSeat();
@@ -868,7 +882,7 @@ static void updateHeadsetInput(float dt)
 	{
 		// zoom on buttons (controllers without trackpads): about 2x per second while held
 		const Button *in = H[1].kind == CTRL_TOUCH ? &H[1].b : H[1].kind == CTRL_FRAME ? &H[1].y : nullptr;
-		if (in && H[1].active)
+		if (in && H[1].active && !scanning)
 		{
 			float dir = (in->down ? 1.f : 0.f) - (H[1].a.down ? 1.f : 0.f);
 			if (dir != 0.f) S->board.zoom(std::exp(dir * 0.7f * dt));
@@ -886,14 +900,14 @@ static void updateHeadsetInput(float dt)
 		glm::vec2 right(-fwd.y, fwd.x);
 		glm::vec2 st = H[0].stick;
 		float m = glm::length(st);
-		if (H[0].active && m > 0.15f)
+		if (H[0].active && m > 0.15f && !scanning)
 		{
 			float speed = 0.45f * std::pow((m - 0.15f) / 0.85f, 1.5f); // metres of table per second
 			glm::vec2 dir = (right * st.x + fwd * st.y) / m;
 			S->board.pan(dir * speed * dt);
 		}
 		float rx = H[1].stick.x;
-		if (H[1].active && std::fabs(rx) > 0.2f)
+		if (H[1].active && std::fabs(rx) > 0.2f && !scanning)
 		{
 			float r = (std::fabs(rx) - 0.2f) / 0.8f;
 			S->board.rotate((rx > 0 ? 1.f : -1.f) * glm::radians(90.f) * r * r * dt); // like turning your view to the right
@@ -903,7 +917,7 @@ static void updateHeadsetInput(float dt)
 			if (H[h].trackpadTouch && S->padWasTouched[h])
 			{
 				float dy = H[h].trackpad.y - S->padLast[h];
-				if (std::fabs(dy) < 0.5f)
+				if (std::fabs(dy) < 0.5f && !scanning)
 				{
 					if (h == 1) S->board.zoom(std::exp(dy * 0.9f)); // swipe up = closer
 					else padLevelSwipe(dy);
@@ -943,7 +957,7 @@ static void updateHeadsetInput(float dt)
 
 	// buttons of the pointing hand
 	HandState &P = H[S->pointerHand];
-	if (P.triggerBtn.pressed && S->laserOn[S->pointerHand])
+	if (P.triggerBtn.pressed && S->laserOn[S->pointerHand] && !scanning)
 	{
 		glm::vec3 o = xfPoint(S->rig, P.aim.pos), d = xfDir(S->rig, P.aim.forward());
 		RayHit hit = castRay(o, d);
@@ -956,7 +970,7 @@ static void updateHeadsetInput(float dt)
 	// right click only with the laser out (over the table the thumb rests on A to pinch):
 	// A on Index, the right stick click on Touch (A/B zoom there), X on Frame
 	const Button &rc = H[1].kind == CTRL_TOUCH ? H[1].stickClick : H[1].kind == CTRL_FRAME ? H[1].x : H[1].a;
-	if (rc.pressed && S->pointerHand == 1 && S->laserOn[1])
+	if (rc.pressed && S->pointerHand == 1 && S->laserOn[1] && !scanning)
 	{
 		if (S->pointerOnPanel) { pushButton(SDL_BUTTON_RIGHT, true); S->rightSent = true; }
 		else if (S->pointerOnBoard) S->board.click(SDL_BUTTON_RIGHT);
@@ -965,7 +979,7 @@ static void updateHeadsetInput(float dt)
 	(void)P;
 	// back: right B (Index, Frame), the left menu button (Touch, where B zooms); Frame's View/Menu too
 	bool back = H[1].kind == CTRL_TOUCH ? H[0].menu.pressed : (H[1].b.pressed || H[0].menu.pressed || H[1].menu.pressed);
-	if (back) pushKey(SDLK_ESCAPE, 27);
+	if (back && !scanning) pushKey(SDLK_ESCAPE, 27);
 
 	// scroll wheel: right stick up/down while pointing at the screen, for lists. Not on the battlescape
 	// itself, where the wheel would change the view level (that is the left trackpad's job).
@@ -974,7 +988,7 @@ static void updateHeadsetInput(float dt)
 	bool mapOnTop = !S->game->getStates().empty() && dynamic_cast<BattlescapeState*>(S->game->getStates().back());
 	int fgx, fgy;
 	bool floatScroll = !S->pointerOnPanel && S->floatWin.scrollPoint(fgx, fgy);
-	if ((S->pointerOnPanel || floatScroll) && !mapOnTop && std::fabs(sy) > 0.55f && now >= S->wheelNext)
+	if ((S->pointerOnPanel || floatScroll) && !mapOnTop && !scanning && std::fabs(sy) > 0.55f && now >= S->wheelNext)
 	{
 		// at a floating window, the wheel turns where a finger last was on it (or its middle)
 		if (floatScroll) S->board.hoverScreen(fgx, fgy);
@@ -1233,7 +1247,9 @@ static void renderScannerFeed()
 	sh.set("uHoleY", glm::vec2(S->table.surfaceY() - 0.002f, S->table.surfaceY() + 0.003f));
 	S->roomMesh.draw();
 	sh.set("uHoleCount", 0);
+	S->board.setFeedPass(true);
 	S->board.draw(sh, vp, eye, S->time);
+	S->board.setFeedPass(false);
 	sh.use();
 	S->scanner.feedOverlay(sh);
 	glDisable(GL_FRAMEBUFFER_SRGB);

@@ -124,6 +124,9 @@ public:
 	bool viewLocked() const;
 	float curtain() const;
 	void setShadowPass(bool on, const glm::vec3 &light = glm::vec3(0.f));
+	/// Drawing for the motion scanner's camera: the map and figures without the table's markers (cursor,
+	/// selection, path, waypoints, readouts).
+	void setFeedPass(bool on);
 	void lights(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const;
 	bool alert() const;
 	float nightLevel() const;

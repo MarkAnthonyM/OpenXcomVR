@@ -52,12 +52,17 @@ const char *BTN_NAME[4] = {"blue", "yellow", "green", "red"};
 // the left edge (left hand), so the fingers wrap the edge and keep off the side panel
 const glm::vec2 GRIP_R{298.f, 150.f};
 const glm::vec2 GRIP_L{22.f, 150.f};
+const float TILT = 35.f;                 // the camera looks this far below where the hand points (degrees),
+                                         // so the wrist needn't bend down to aim at the table; the screen
+                                         // tips up toward the eyes
 const int FEED_N = 152;                  // the camera's picture (pixels): the size of the game's radar
 const int TS = 4;                        // texels per art pixel on the compass and the side display
 const float RANGE = 9.5f;                // tiles from the soldier to the edge of the scan (19 x 19)
 const float CORNER = 13.6f;              // ...to its corners
 const float PING_SPEED = CORNER / 1.2f;  // tiles per second: the wave reaches the corners in 1.2 s
-const float PING_CYCLE = 2.5f;           // a ping every 2.5 s; the picture fades from 1.5 s
+const float PING_CYCLE = 2.5f;           // a ping every 2.5 s
+const float FILL = 0.3f;                 // the picture fills in behind the wave over this long (scattered points)...
+const float LIFE = 1.9f, LIFE_JITTER = 0.45f; // ...each point stays this long, then drops out (just before the next wave)
 const float FOVS[] = {25.f, 35.f, 45.f, 60.f, 75.f};
 const int FOV_N = 5, FOV_DEFAULT = 2;
 const char *DIRS[8] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
@@ -148,13 +153,15 @@ struct HandScanner::Impl
 	void blit(std::vector<uint32_t> &dst, int dw, int dh, const TextMask &m, float xPx, int yPx, uint32_t col, float alpha) const;
 	float tc() const { return std::fmod(pingT, PING_CYCLE); }
 	int cycle() const { return (int)(pingT / PING_CYCLE); }
-	float pingRadius() const { float r = tc() * PING_SPEED; return r <= CORNER + 0.3f ? r : -1.f; }
+	/// A contact's light (0 = not shown): from when the wave reaches it (a flash first) until its part of the
+	/// picture drops out (the shader's own timing, without the per-pixel scatter).
 	float contactLight(const Contact &c) const
 	{
-		float t0 = c.dist / PING_SPEED, now = tc();
-		float fade = 1.f - 0.88f * smooth(1.5f, 2.4f, now);
-		if (now >= t0) return fade + 0.9f * std::exp(-(now - t0) * 7.f);
-		return cycle() > 0 ? 0.12f : 0.f;
+		const float life = LIFE + LIFE_JITTER * 0.5f;
+		float a = tc() - (c.dist / PING_SPEED + FILL * 0.5f);
+		if (a >= 0.f && a < life) return 1.f + 0.9f * std::exp(-a * 7.f);
+		if (a < 0.f && cycle() > 0 && a + PING_CYCLE < life) return 1.f;
+		return 0.f;
 	}
 	glm::vec3 artToDevice(float x, float y, float z) const { return glm::vec3((x - grip.x) * PX, (grip.y - y) * PX, z); }
 	float frontZ(uint8_t c) const;
@@ -367,8 +374,8 @@ void HandScanner::Impl::build(Game *g)
 	Log(LOG_INFO) << "[VR] scanner: built from DETBORD.PCK, " << (x1 - x0 + 1) << " x " << (y1 - y0 + 1) << " pixels";
 }
 
-/// Held by its grip in the hand: the edge in the fist, the screen facing back along the forearm (toward
-/// the player), the camera looking out of the back where the hand points.
+/// Held by its grip in the hand: the edge in the fist, the screen facing back toward the player, the
+/// camera looking out of the back a little below where the hand points (TILT).
 void HandScanner::Impl::place(const Hands &hands, float dt)
 {
 	const HandPose &H = hands.pose[hand];
@@ -383,8 +390,12 @@ void HandScanner::Impl::place(const Hands &hands, float dt)
 	if (glm::length(down) < 1e-4f) return;
 	down = glm::normalize(down);
 	glm::vec3 up = -down;
-	glm::vec3 toUser = -fwd;                          // the screen faces back toward the player
-	glm::vec3 right = glm::normalize(glm::cross(up, toUser));
+	glm::vec3 right = glm::normalize(glm::cross(up, -fwd));
+	// tipped about its horizontal axis: the camera (out of the back) looks TILT below the hand's forward
+	const float ct = std::cos(glm::radians(TILT)), st = std::sin(glm::radians(TILT));
+	glm::vec3 cam = fwd * ct - up * st;
+	up = up * ct + fwd * st;
+	glm::vec3 toUser = -cam;                          // the screen faces back toward the player
 	glm::vec3 inward = glm::cross(ik - wr, lk - wr);  // into the fist
 	if (glm::length(inward) > 1e-6f) inward = glm::normalize(inward) * (hand == 1 ? 1.f : -1.f);
 	glm::vec3 anchor = palm + inward * 0.022f;
@@ -745,12 +756,13 @@ void HandScanner::feedUniforms(const Shader &sh) const
 	sh.set("uFeedO", p.origin);
 	sh.set("uFeedE", p.eastT);
 	sh.set("uFeedS", p.southT);
-	sh.set("uFeedPing", p.pingRadius());
+	sh.set("uFeedClock", glm::vec4(p.tc(), (float)p.cycle(), PING_SPEED, PING_CYCLE));
+	sh.set("uFeedFill", glm::vec3(FILL, LIFE, LIFE_JITTER));
 	int n = 0;
 	for (const Impl::Contact &c : p.contacts)
 	{
 		if (n >= 24) break;
-		float k = p.contactLight(c);
+		float k = std::max(1.f, p.contactLight(c)); // where its part of the picture shows, with the flash
 		std::string name = "uFeedC[" + std::to_string(n) + "]";
 		sh.set(name.c_str(), glm::vec4((float)c.dx, (float)c.dy, 0.2f + 0.06f * c.size, k));
 		++n;

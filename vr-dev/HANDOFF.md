@@ -448,6 +448,19 @@ Room and rendering
     (north up, or turning with the device inside a circle, the whole square
     kept) with the camera's view as a wedge; readout "CONTACTS n" (or "MOTION
     n" if too wide), "NEAREST", "<tiles> <dir>".
+  - scanner.3, after the owner's first headset try: the device is tipped 35
+    degrees in the hand (TILT: the camera looks below the hand's forward, the
+    screen tips up; his wrist had to bend down too far). The camera skips the
+    table's markers (Board::setFeedPass: no drawHud). While the scanner is out
+    the map can't be moved and no input reaches the game except its own close
+    button (scannerLocked in VrSystem: board.clickScreen, floating-window
+    mouse, table keys, trigger, right-click, Back, the wheel; sticks, pads,
+    level and zoom buttons, grabbing the map): any click on ScannerState
+    closes it. The whole picture follows the ping (owner: fade to black, but
+    no long black stretch): each pixel shows from when the wave passes it
+    (plus a random 0-0.3 s, so it fills in as points) for 1.9-2.35 s (random,
+    so it dissolves), so every spot is black for well under a second before
+    the next wave refills it; outside the 19 x 19 range it is always black.
   - Test ops `usescanner` (ScannerState for the selected soldier, no time
     units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
     three screens); test `scan`.

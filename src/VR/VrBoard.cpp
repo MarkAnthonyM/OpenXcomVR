@@ -347,6 +347,7 @@ struct Board::Impl
 	Mesh wire[2], arrow, pointer, goal;
 	Mesh cube;                         // unit cube for voxel effects
 	bool shadowPass = false;           // drawing into the shadow map: terrain and figures only
+	bool feedPass = false;             // drawing for the scanner's camera: no markers
 
 	// ---- voxel effects: particles (board voxel space), what spawned them, and lights for the room
 	struct Particle
@@ -1536,7 +1537,7 @@ void Board::Impl::drawBattle(const Shader &sh)
 
 	drawEffects(sh, M);
 
-	drawHud(sh, M);
+	if (!feedPass) drawHud(sh, M);
 	drawCurtain(sh);
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
@@ -2694,6 +2695,8 @@ void Board::update(Game *game, float dt)
 		p.globe->getCenter(&p.cenLon, &p.cenLat);
 	}
 }
+
+void Board::setFeedPass(bool on) { _p->feedPass = on; }
 
 void Board::setShadowPass(bool on, const glm::vec3 &light)
 {
