@@ -95,12 +95,14 @@ TESTS = [  # script, save, check, what it covers
     ("bd", "geo_test.asav", has("float: scrolled at"), "dragging a finger on a floating list scrolls it (shots/bd_scrolled.png)"),
     ("wx", "outside.asav", has("weather=rain", "weather=snow", "sky=dusk", "weather=none+mist", "sky=night", "strikes=1"),
      "sun and weather over the battle (shots/wx_*.png: rain, lightning, snow, dust, sand, clouds, mist, dusk, night)"),
+    ("scan", "outside.asav", has("scanner: open in the right hand", "scanner=open hand=right", "scanner: close button", "scanner: closed"),
+     "the motion scanner appears in the hand, its picture turns with it, its button closes it (shots/scanner_*.png)"),
     ("mm", None, check_menu, "the main menu at start doesn't flash a floating window"),
     ("br", None, has("float: open N8OpenXcom13BriefingStateE", "float: touch 160,172"), "the briefing floats; touching OK starts the battle"),
 ]
 
 # tests that run another test's script with extra options: name -> (script, [args])
-VARIANTS = {}
+VARIANTS = {"scan": ("scanner", []), }
 
 def main():
     want = set(sys.argv[1:])

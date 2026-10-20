@@ -15,6 +15,9 @@
 #include "VrHands.h"
 #include "VrTable.h"
 #include "VrFloat.h"
+#include "VrScanner.h"
+#include "../Battlescape/ScannerState.h"
+#include "../Battlescape/BattlescapeGame.h"
 #include "VrApi.h"
 #include "VrVersion.h"
 #include "../Engine/Game.h"
@@ -134,6 +137,7 @@ struct State
 	Hands handsVis;
 	Table table;
 	FloatWindow floatWin;         // pop-ups projected over the table
+	HandScanner scanner;          // the motion scanner in the hand
 	std::vector<Collider> colliders;
 	float grabHold[2] = {0.f, 0.f};
 	bool laserOn[2] = {true, true};
@@ -671,6 +675,24 @@ static void updateHandsAndTable(float dt, bool simulated)
 	};
 	fc.haptic = ctx.haptic;
 	S->floatWin.update(fc, S->handsVis, dt);
+	{
+		// the motion scanner: in the hand while the game's scanner screen is up
+		ScannerContext sc;
+		sc.game = S->game;
+		sc.pixels = &S->pixels;
+		sc.surfW = S->surfW;
+		sc.surfH = S->surfH;
+		sc.eye = ctx.eye;
+		if (S->board.battle())
+		{
+			glm::vec3 o = S->board.tileCenter(0, 0, 0), s1 = S->board.tileCenter(0, 1, 0), e1 = S->board.tileCenter(1, 0, 0);
+			glm::vec2 n(o.x - s1.x, o.z - s1.z), e(e1.x - o.x, e1.z - o.z);
+			if (glm::length(n) > 1e-6f && glm::length(e) > 1e-6f) { sc.north = glm::normalize(n); sc.east = glm::normalize(e); }
+		}
+		sc.clickScreen = S->board.clickScreen;
+		sc.haptic = ctx.haptic;
+		S->scanner.update(sc, S->handsVis, dt);
+	}
 	S->board.baseFingers(S->handsVis, ctx.handBusy, ctx.haptic, dt);
 	{
 		std::vector<glm::vec3> pts;
@@ -1163,6 +1185,7 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 	S->board.draw(sh, vp, eye, S->time);
 	sh.use();
 	S->floatWin.draw(sh);
+	S->scanner.draw(sh);
 	S->table.draw(sh);
 	S->table.drawWalls(sh);
 
@@ -1319,6 +1342,21 @@ static void runScript()
 		else if (c.op == "boardpan") { S->board.pan(glm::vec2((float)num(0, 0), (float)num(1, 0))); }
 		else if (c.op == "boardrotate") { S->board.rotate(glm::radians((float)num(0, 0))); }
 		else if (c.op == "boardzoom") { S->board.zoom((float)num(0, 1)); }
+		else if (c.op == "usescanner")
+		{
+			// test helper: the selected soldier uses a motion scanner (the game's scanner screen, no time units)
+			static BattleAction a;
+			SavedBattleGame *sb = S->game && S->game->getSavedGame() ? S->game->getSavedGame()->getSavedBattle() : nullptr;
+			if (sb && sb->getSelectedUnit())
+			{
+				a = BattleAction();
+				a.actor = sb->getSelectedUnit();
+				a.type = BA_USE;
+				S->game->pushState(new ScannerState(&a));
+			}
+			else Log(LOG_INFO) << "[VR] script: usescanner needs a selected soldier";
+		}
+		else if (c.op == "scannerpress") { if (!S->scanner.testPress()) Log(LOG_INFO) << "[VR] script: the scanner isn't open"; }
 		else if (c.op == "camunit")
 		{
 			// test helper: look at the selected soldier from behind and above (back, up in metres)
@@ -1737,7 +1775,7 @@ static void runScript()
 			glm::vec3 t = hp.tip(F_INDEX);
 			Log(LOG_INFO) << "[VR] status: " << S->table.status() << " | tip " << t.x << "," << t.y << "," << t.z
 				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch << " | " << S->floatWin.status()
-				<< " | " << S->board.baseStatus() << " | " << S->board.weatherStatus();
+				<< " | " << S->board.baseStatus() << " | " << S->board.weatherStatus() << " | " << S->scanner.status();
 		}
 		else if (c.op == "shot") { S->pendingShot = c.args.empty() ? "vr_shot.png" : c.args[0]; return; }
 		else if (c.op == "gameshot" && !S->pixels.empty())

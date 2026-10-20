@@ -284,6 +284,20 @@ Room and rendering
   fall under a roof that the view level hides, and thin out near hands and
   the cursor. Lightning lights only what is drawn on the table.
   `vrWeather` off removes the weather, not the sun.
+- Scanner branch (`vr-prototype-scanner`, builds 0.13.0-scanner.N): when the
+  game's ScannerState is the top state, VrScanner shows a handheld scanner in
+  the right hand (left if only it is tracked). Owner's choices: a voxel model
+  of the item's own BIGOBS art (STR_MOTION_SCANNER bigSprite 23: 12 x 16
+  pixels, a 9 x 4 screen, an orange knob on the left = the close button);
+  the picture turns with the device (option "B": where it points is at the
+  top; heading = device forward + screen-up laid flat, relative to the map's
+  north from Board::tileCenter); the scan stays the game's (centred on the
+  soldier, 19 x 19 tiles), the whole square kept inside the round screen at
+  any angle; closing only with the button (letting go was rejected: accidental
+  drops), which sends the game a right-click. Device frame from hand joints:
+  handle along index->little knuckle, screen facing back along the forearm.
+  Test ops `usescanner` (opens ScannerState for the selected soldier, no time
+  units) and `scannerpress`; test `scan`.
 
 ## Known gaps
 

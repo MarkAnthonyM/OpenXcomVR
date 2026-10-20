@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.13.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0-scanner.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -141,6 +141,17 @@ stand) in an X-COM command center at a holographic war table:
   isn't already on the table. Base defence and alien base missions are
   indoors and keep the plain room light. `vrWeather` (default on) turns the
   weather off; the sun stays.
+- **The motion scanner in your hand (scanner branch).** When a soldier uses a
+  motion scanner (the time units are spent as usual), a handheld scanner
+  appears in your right hand: a voxel model of the game's own scanner item,
+  held by its grip, with the game's scanner picture live on its screen. The
+  picture turns with the device like a motion tracker: the part of the map it
+  points at is at the top of the screen (a small mark there shows the way it
+  points). The scan itself is the game's: centred on the soldier who used it,
+  the same 19 x 19 tiles and blips, all of the square kept in view at any
+  angle. Close it with the orange button on its left side, pressed with your
+  other hand's index finger; letting go never closes it. The wall screen
+  shows the game's scanner screen as before.
 - **Shots light up the night.** Lasers, plasma, rockets (their exhaust),
   incendiary rounds and blaster bombs light the ground and figures around them
   in their colour as they fly, stronger weapons brighter and further; their
@@ -319,6 +330,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (a critically damped follower turns the game's ~33 steps a second into smooth motion at the headset's frame rate), tile picking, the HUD (wireframe cursor, selected-unit marker, path preview, readouts in the game's font), voxel fog of war, voxel effects (projectiles, explosions, smoke, fire), the whole-map minimap, globe. |
 | `VrHands.*` | Hand skeletons (from XR hand tracking or posed from controller inputs), collision against box colliders with per-finger joint solving, pinch / point gestures. |
 | `VrTable.*` | The table's control panel: hatches and spring buttons (battlescape and geoscape keys), spotted-alien buttons, the pop-up action board, the keyboard, the inventory tray with voxel item models, head/tile taps, the wrist minimap and the live wall screens. |
+| `VrScanner.*` | The motion scanner in the hand: shown while the game's ScannerState is up; voxel model from the scanner item's BIGOBS art; the ScannerView's area of the game frame turned by the device's heading on a round screen; the close button sends the game a right-click. |
 | `VrFloat.*` | Floating pop-up windows: picks the game's top non-screen state, copies its area of the game frame, the projection and voxel-assembly effects, finger touches and the laser. |
 | `VrBase.*` | The base on the table: voxel relief rebuilt from the base view's sprites, craft models, scaffolding, labels, finger taps / holds / placement. |
 | `VrWeather.*` | The sky over an outdoor battle: the sun's direction at the site and its height and colour from the mission's darkness, the weather roll, rain / snow / dust particles stopping at roofs, mist, cloud drift, lightning and procedural thunder. |
