@@ -139,10 +139,13 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   but untested until someone has tried them. The zip includes `LICENSE.txt`,
   `THIRD-PARTY-NOTICES.txt`, `licenses/` and `BUILD-INFO.txt` (package.sh
   does this).
-- Branch `vr-prototype-weather` (from vr-prototype 0.13.0): exploring the
-  weather and time of day. Its builds are `0.13.0-weather.<n>`; it has the
-  sky debug panel on the left wrist (`vrDebugPanel`, `VrDebug.cpp`), the moon,
-  the sky visuals and vanilla mode (`vrVanillaSky`).
+- Branch `vr-prototype-weather` (from vr-prototype 0.13.0): the weather and
+  time of day, builds `0.13.0-weather.1` ... `.13`, merged into vr-prototype as
+  0.14.0. It brought the sky debug panel on the left wrist (`vrDebugPanel`,
+  `VrDebug.cpp`), the moon, the sky visuals and vanilla mode (`vrVanillaSky`).
+- Branch `vr-prototype-scanner` (from vr-prototype 0.13.0): the motion scanner
+  in the hand (`VrScanner.cpp`), builds `0.13.0-scanner.<n>`. Merge
+  vr-prototype (0.14.0) into it before its next build.
 - Released so far: 0.12.2 (the first published release; 0.9.1 was prepared but never published). The
   tags proto-0.1.0 ... proto-0.8.0 on the fork are from before the tag-only-releases rule.
 
