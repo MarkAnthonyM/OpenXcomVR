@@ -275,6 +275,7 @@ struct Board::Impl
 	int globalShade() const { return glm::clamp(battle->getGlobalShade() + shadeOffset, 0, 15); }
 	RoomLayout layout;
 	glm::vec3 viewer{0.f, 1.65f, 0.f};
+	glm::vec3 listenerFwd{0.f, 0.f, -1.f}; // where the head faces (world)
 	Game *game = nullptr;
 	bool hasBattle = false, hasGlobe = false;
 	double time = 0.0;
@@ -1224,6 +1225,7 @@ void Board::Impl::updateBattle(float dt)
 		v.center = glm::vec2(focus.x, focus.z);
 		v.radius = std::max(mapRect.z - mapRect.x, mapRect.w - mapRect.y) * 0.5f / k * 1.15f;
 		v.viewer = glm::vec3(inv * glm::vec4(viewer, 1.f));
+		v.viewerFwd = glm::vec3(inv * glm::vec4(listenerFwd, 0.f));
 		for (const glm::vec3 &h : handPts) v.fade.push_back(glm::vec4(glm::vec3(inv * glm::vec4(h, 1.f)), 0.07f / k));
 		if (cursorSet && battle->getTile(cursorTile))
 			v.fade.push_back(glm::vec4((cursorTile.x + 0.5f) * TILE_W, cursorTile.z * TILE_H + 8.f, (cursorTile.y + 0.5f) * TILE_W, 1.4f * TILE_W));
@@ -2520,6 +2522,7 @@ void Board::init(const RoomLayout &layout)
 }
 
 void Board::setViewer(const glm::vec3 &head) { _p->viewer = head; }
+void Board::setListener(const glm::vec3 &forward) { _p->listenerFwd = forward; }
 void Board::setMapRect(const glm::vec4 &rect) { _p->mapRect = rect; _p->baseView.init(rect, _p->surfaceY()); }
 BattlescapeState *Board::battleState() const { return _p->hasBattle ? _p->bs : nullptr; }
 SavedBattleGame *Board::battle() const { return _p->hasBattle ? _p->battle : nullptr; }

@@ -61,6 +61,8 @@ public:
 	void init(const RoomLayout &layout);
 	/// Where the player's head is (standees turn to face it).
 	void setViewer(const glm::vec3 &head);
+	/// Where the head faces (world): sounds on the table come from their places.
+	void setListener(const glm::vec3 &forward);
 	/// Lets the board click a point of the flat game screen (game pixel coords, SDL button).
 	std::function<void(int, int, int)> clickScreen;
 	/// Moves the game's mouse to a point of the flat game screen (game pixel coords).
