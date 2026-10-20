@@ -400,6 +400,13 @@ Room and rendering
   the chunk hash) or the sun moves; before, every chunk rebuild cleared it
   (shade changes as soldiers move at night). Measured on the preview machine:
   474 roofed tiles traced in 2.2 ms (Skyranger save), 202 in 0.4 ms (farm).
+- 0.13.0-weather.13: the sun-reach trace skips the tile's own object
+  (V_OBJECT on the starting tile). The trace starts just above the floor,
+  which is inside a craft's fittings on some cabin-edge tiles, so those tiles
+  were called indoors and filled in. On the owner's Shadow_blocked_2 save,
+  24,35 is now sunlit; 25,35 stays indoors because the object on 24,35 really
+  blocks its sun (neighbour shading). Still left: a tile half in the sun (e.g.
+  24,29) is all or nothing; the proper fix is a terrain-only shadow map.
 - The wrist debug panel's darkness buttons are a table-only offset
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.

@@ -215,8 +215,9 @@ struct Board::Impl
 		return t && t->getMapData(O_FLOOR);
 	}
 	/// Does the sun (or moon) reach the floor of a tile through the terrain (figures left out)? Four
-	/// points of the floor are traced toward it through the game's own collision voxels; at least two
-	/// must get out. A low sun reaches under a roof from the side (a craft's open cabin, an overhang).
+	/// points of the floor are traced toward it through the game's own collision voxels (the tile's own
+	/// object left out); at least two must get out. A low sun reaches under a roof from the side (a
+	/// craft's open cabin, an overhang).
 	bool sunReachesFloor(const Position &p) const
 	{
 		const SkyLight &s = weather.sky();
@@ -237,8 +238,12 @@ struct Board::Impl
 			{
 				q += d;
 				if (q.z >= topZ) break;
-				VoxelType v = te->voxelCheck(Position((int)q.x, (int)q.y, (int)q.z), nullptr, true);
+				Position vp((int)q.x, (int)q.y, (int)q.z);
+				VoxelType v = te->voxelCheck(vp, nullptr, true);
 				if (v == V_OUTOFBOUNDS) break;
+				// the tile's own furniture doesn't count: the trace starts just above the floor, which can be
+				// inside an object standing there (a craft's fittings), and that object doesn't hide the sky
+				if (v == V_OBJECT && vp.toTile() == p) continue;
 				if (v != V_EMPTY) { blocked = true; break; }
 			}
 			if (!blocked) ++out;
