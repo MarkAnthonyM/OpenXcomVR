@@ -143,9 +143,30 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   time of day, builds `0.13.0-weather.1` ... `.13`, merged into vr-prototype as
   0.14.0. It brought the sky debug panel on the left wrist (`vrDebugPanel`,
   `VrDebug.cpp`), the moon, the sky visuals and vanilla mode (`vrVanillaSky`).
-- Branch `vr-prototype-scanner` (from vr-prototype 0.13.0): the motion scanner
-  in the hand (`VrScanner.cpp`), builds `0.13.0-scanner.<n>`. Merge
-  vr-prototype (0.14.0) into it before its next build.
+- Branch `vr-prototype-scanner` (from vr-prototype 0.13.0, 0.14.0 merged
+  in): the motion scanner in the hand (`VrScanner.cpp`), builds
+  `0.13.0-scanner.1`, then `0.14.0-scanner.<n>`.
+- Branch `vr-prototype-thunder` (from vr-prototype 0.14.0): better thunder,
+  builds `0.14.0-thunder.<n>`. The owner asked for the three improvements
+  (variety, direction, distance) on their own branch.
+  - `VrAudio.*`: the table's own mixer channels. The game allocates 16 and
+    reserves 0-4; VrAudio adds AUDIO_SLOTS more and reserves 0..4+slots, so
+    ours are 5.. (the game's free pool keeps its size) and a position set
+    with Mix_SetPosition never sticks to a channel the game uses next.
+    `playAt` (volume, angle clockwise from ahead; only with
+    Options::StereoSound) and `moveSound` (each frame while playing; clears
+    the position when done). Slots: two for thunder (a new clap doesn't cut
+    the last roll), one spare (meant for the scanner's sounds).
+  - `synthThunder(near, variant, freq)`: 4 near + 4 far variants, each its own
+    noise, scaled to the same peak (the volume says the distance). Near: the
+    old recipe (crack + rumble in swells, 4 s), first swell right after the
+    crack. Far: no crack, a third low-pass, soft start, longer swells and
+    slower decay (6 s). Made on first use per variant.
+  - Each strike gets a bearing (its own Rng, so the weather's dice are
+    unchanged) and a variant; the thunder plays from that bearing relative to
+    the head (Board::setListener -> WeatherView::viewerFwd, map space) and
+    is re-aimed every frame as the head turns. The flash itself is still
+    undirected. Test op `thunderwav <path> <near 1/0> <variant>`.
 - Released so far: 0.12.2 (the first published release; 0.9.1 was prepared but never published). The
   tags proto-0.1.0 ... proto-0.8.0 on the fork are from before the tag-only-releases rule.
 

@@ -2,6 +2,7 @@
  * OXCE VR tabletop - the sky over a battle on the table (see VrWeather.h).
  */
 #include "VrWeather.h"
+#include "VrAudio.h"
 #include "../Engine/Game.h"
 #include "../Engine/Options.h"
 #include "../Engine/Logger.h"
@@ -169,47 +170,99 @@ void orientedBox(MeshData &md, const glm::vec3 &c, const glm::vec2 &d, const glm
 	for (auto &q : f) md.addQuad(p[q[0]], p[q[1]], p[q[2]], p[q[3]], col, 0.f);
 }
 
-/// Thunder, made once: a crack and a long low rumble (brown noise in a few rolling swells).
-Mix_Chunk *thunderSound()
+/// Thunder, made in code (the game has none): a low rumble (brown noise, filtered) rolling in a few swells.
+/// Near: a crack first, about 4 s. Far: no crack, duller (one more low-pass), a soft start and a longer roll,
+/// about 6 s. Each variant is its own noise; every one is scaled to the same peak (distance is the volume's job).
+std::vector<float> synthThunder(bool nearStrike, int variant, int freq)
 {
-	static Mix_Chunk *chunk = nullptr;
-	static bool tried = false;
-	if (tried) return chunk;
-	tried = true;
-	int freq = 0, channels = 0;
-	Uint16 format = 0;
-	if (!Mix_QuerySpec(&freq, &format, &channels) || format != AUDIO_S16SYS || channels < 1) return nullptr;
-	const int n = freq * 4;
-	Uint8 *buf = (Uint8*)SDL_malloc((size_t)n * channels * 2);
-	if (!buf) return nullptr;
-	Sint16 *out = (Sint16*)buf;
-	Rng rng(0x7417u);
-	float brown = 0.f, lp1 = 0.f, lp2 = 0.f, crackLp = 0.f;
-	struct Swell { float at, len, gain; } swells[5];
-	for (int i = 0; i < 5; ++i) swells[i] = {rng.r(0.05f, 2.2f), rng.r(0.4f, 1.3f), rng.r(0.45f, 1.f)};
+	Rng rng(0x7417u + (uint32_t)variant * 7919u + (nearStrike ? 0u : 104729u));
+	const float len = nearStrike ? 4.f : 6.f;
+	const int n = (int)(freq * len);
+	std::vector<float> out((size_t)n, 0.f);
+	// the filters are tuned for 22-44 kHz (the coefficients are per sample)
+	const float cut = (nearStrike ? 0.08f : 0.05f) * 44100.f / (float)freq;
+	float brown = 0.f, lp1 = 0.f, lp2 = 0.f, lp3 = 0.f, crackLp = 0.f;
+	struct Swell { float at, len, gain; };
+	std::vector<Swell> swells;
+	// a near clap starts loud: its first swell comes right after the crack
+	if (nearStrike) swells.push_back(Swell{rng.r(0.02f, 0.2f), rng.r(0.3f, 0.8f), 1.f});
+	for (int i = 0; i < (nearStrike ? 4 : 6); ++i)
+		swells.push_back(nearStrike ? Swell{rng.r(0.05f, 2.2f), rng.r(0.4f, 1.3f), rng.r(0.45f, 1.f)}
+			: Swell{rng.r(0.2f, 3.6f), rng.r(0.8f, 2.0f), rng.r(0.5f, 1.f)});
+	float peak = 1e-6f;
 	for (int i = 0; i < n; ++i)
 	{
 		float t = (float)i / freq;
 		float w = rng.f() * 2.f - 1.f;
 		brown = (brown + w * 0.04f) * 0.996f;
-		lp1 += (brown - lp1) * 0.08f;
-		lp2 += (lp1 - lp2) * 0.08f;
+		lp1 += (brown - lp1) * cut;
+		lp2 += (lp1 - lp2) * cut;
+		lp3 += (lp2 - lp3) * cut;
 		crackLp += (w - crackLp) * 0.35f;
 		float env = 0.f;
-		for (const Swell &s : swells)
+		for (const Swell &sw : swells)
 		{
-			float x = (t - s.at) / s.len;
-			if (x > -1.f && x < 3.f) env += s.gain * (x < 0.f ? (1.f + x) : std::exp(-x * 1.4f));
+			float x = (t - sw.at) / sw.len;
+			if (x > -1.f && x < 3.f) env += sw.gain * (x < 0.f ? (1.f + x) : std::exp(-x * 1.4f));
 		}
-		env *= std::exp(-t * 0.55f);
-		float crack = t < 0.25f ? std::exp(-t * 22.f) * crackLp * 0.5f : 0.f;
-		float v = glm::clamp(lp2 * 9.f * env + crack, -1.f, 1.f);
-		if (i > n - freq / 4) v *= (float)(n - i) / (freq / 4); // fade out
-		for (int c = 0; c < channels; ++c) out[i * channels + c] = (Sint16)(v * 26000.f);
+		env *= std::exp(-t * (nearStrike ? 0.55f : 0.35f));
+		float v;
+		if (nearStrike) v = lp2 * env + (t < 0.25f ? std::exp(-t * 22.f) * crackLp * 0.055f : 0.f);
+		else v = lp3 * env * std::min(1.f, t / 0.35f);
+		out[(size_t)i] = v;
+		peak = std::max(peak, std::fabs(v));
 	}
-	chunk = Mix_QuickLoad_RAW(buf, (Uint32)(n * channels * 2));
-	return chunk;
+	const int fade = freq / 4;
+	for (int i = 0; i < n; ++i)
+	{
+		float v = out[(size_t)i] * 0.8f / peak;
+		if (i > n - fade) v *= (float)(n - i) / fade;
+		out[(size_t)i] = v;
+	}
+	return out;
 }
+
+const int THUNDER_VARIANTS = 4;
+
+/// A thunder variant as a mixer chunk, made the first time it is needed.
+Mix_Chunk *thunderSound(bool nearStrike, int variant)
+{
+	static Mix_Chunk *chunks[2][THUNDER_VARIANTS] = {};
+	static bool tried[2][THUNDER_VARIANTS] = {};
+	int k = nearStrike ? 0 : 1;
+	variant = ((variant % THUNDER_VARIANTS) + THUNDER_VARIANTS) % THUNDER_VARIANTS;
+	if (tried[k][variant]) return chunks[k][variant];
+	tried[k][variant] = true;
+	int freq = 0, channels = 0;
+	Uint16 format = 0;
+	if (!Mix_QuerySpec(&freq, &format, &channels) || format != AUDIO_S16SYS || channels < 1) return nullptr;
+	std::vector<float> s = synthThunder(nearStrike, variant, freq);
+	Uint8 *buf = (Uint8*)SDL_malloc(s.size() * channels * 2);
+	if (!buf) return nullptr;
+	Sint16 *out = (Sint16*)buf;
+	for (size_t i = 0; i < s.size(); ++i)
+		for (int c = 0; c < channels; ++c) out[i * channels + c] = (Sint16)(glm::clamp(s[i], -1.f, 1.f) * 32000.f);
+	chunks[k][variant] = Mix_QuickLoad_RAW(buf, (Uint32)(s.size() * channels * 2));
+	return chunks[k][variant];
+}
+}
+
+bool writeThunderWav(const std::string &path, bool nearStrike, int variant)
+{
+	const int freq = 44100;
+	std::vector<float> s = synthThunder(nearStrike, variant, freq);
+	FILE *f = fopen(path.c_str(), "wb");
+	if (!f) return false;
+	auto u32 = [&](uint32_t v) { fwrite(&v, 4, 1, f); };
+	auto u16 = [&](uint16_t v) { fwrite(&v, 2, 1, f); };
+	uint32_t bytes = (uint32_t)s.size() * 2;
+	fwrite("RIFF", 1, 4, f); u32(36 + bytes); fwrite("WAVE", 1, 4, f);
+	fwrite("fmt ", 1, 4, f); u32(16); u16(1); u16(1); u32(freq); u32(freq * 2); u16(2); u16(16);
+	fwrite("data", 1, 4, f); u32(bytes);
+	for (float v : s) { int16_t x = (int16_t)(glm::clamp(v, -1.f, 1.f) * 32000.f); fwrite(&x, 2, 1, f); }
+	fclose(f);
+	Log(LOG_INFO) << "[VR] thunder " << (nearStrike ? "near" : "far") << " " << variant << " written to " << path;
+	return true;
 }
 
 struct Weather::Impl
@@ -236,6 +289,12 @@ struct Weather::Impl
 	float pulse[3] = {0.f, 0.f, 0.f};   // its pulses: start times
 	int pulses = 0;
 	float thunderIn = -1.f, thunderVol = 1.f;
+	glm::vec2 strikeDir{0.f, -1.f};     // where the strike was (map xz, unit): its thunder comes from there
+	int thunderVariant = 0;
+	int thunderSlot = 0;                // two channels, so a new clap doesn't cut the last one's roll
+	Rng trng{0x7a3du};                  // the thunder's own dice (the weather's stay as they were)
+	struct Rolling { int channel; glm::vec2 dir; };
+	std::vector<Rolling> rolling;       // thunder still playing: kept in its direction as the head turns
 	int strikes = 0;
 	int lightning = 0;                  // 0 none, 1 now and then far off, 2 often, near and far
 	float flashAmp = 1.f;               // this strike's brightness (near 1, far dim)
@@ -285,6 +344,15 @@ struct Weather::Impl
 		}
 		return f;
 	}
+	/// A direction on the map (xz) as heard: degrees clockwise from where the head faces.
+	float thunderAngle(const WeatherView &v, const glm::vec2 &dir) const
+	{
+		glm::vec2 f(v.viewerFwd.x, v.viewerFwd.z);
+		if (glm::length(f) < 1e-4f) return 0.f;
+		f = glm::normalize(f);
+		glm::vec2 r(-f.y, f.x);
+		return std::atan2(glm::dot(dir, r), glm::dot(dir, f)) * 180.f / PI;
+	}
 	void startStrike()
 	{
 		strikeT = 0.f;
@@ -297,6 +365,11 @@ struct Weather::Impl
 		else { flashAmp = rng.r(0.28f, 0.45f); thunderIn = rng.r(2.f, 5.f); thunderVol = rng.r(0.3f, 0.45f); }
 		nextStrike = lightning == 2 ? rng.r(4.f, 10.f) : rng.r(15.f, 35.f);
 		lastNear = nearStrike;
+		float az = trng.r(0.f, 2.f * PI);
+		strikeDir = glm::vec2(std::sin(az), -std::cos(az)); // bearing from the map's north, clockwise
+		thunderVariant = (int)(trng.f() * THUNDER_VARIANTS) % THUNDER_VARIANTS;
+		Log(LOG_INFO) << "[VR] lightning: " << (nearStrike ? "near" : "far") << " strike, bearing " << (int)std::lround(az * 180.f / PI)
+			<< ", thunder variant " << thunderVariant;
 		++strikes;
 	}
 };
@@ -716,6 +789,13 @@ void Weather::update(float dt, const WeatherView &v)
 		p.sky.cloudOffset += p.wind * p.cloudSpeed * gust * dt;
 	}
 
+	// thunder still rolling stays where its strike was while the head turns
+	for (size_t i = 0; i < p.rolling.size();)
+	{
+		if (moveSound(p.rolling[i].channel, p.thunderAngle(v, p.rolling[i].dir))) ++i;
+		else p.rolling.erase(p.rolling.begin() + (long)i);
+	}
+
 	// lightning: a few quick pulses, thunder a moment later
 	p.sky.flash = 0.f;
 	if (p.kind == RAIN)
@@ -738,10 +818,15 @@ void Weather::update(float dt, const WeatherView &v)
 		{
 			p.thunderIn -= dt;
 			if (p.thunderIn < 0.f && !Options::mute)
-				if (Mix_Chunk *c = thunderSound())
+				if (Mix_Chunk *c = thunderSound(p.lastNear, p.thunderVariant))
 				{
-					Mix_VolumeChunk(c, (int)(Options::soundVolume * p.thunderVol));
-					Mix_PlayChannel(-1, c, 0);
+					p.thunderSlot ^= 1;
+					int ch = playAt(p.thunderSlot ? AUDIO_THUNDER_B : AUDIO_THUNDER_A, c, p.thunderVol, p.thunderAngle(v, p.strikeDir));
+					if (ch >= 0)
+					{
+						p.rolling.erase(std::remove_if(p.rolling.begin(), p.rolling.end(), [ch](const Impl::Rolling &r) { return r.channel == ch; }), p.rolling.end());
+						p.rolling.push_back({ch, p.strikeDir});
+					}
 				}
 		}
 	}
