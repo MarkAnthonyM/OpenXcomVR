@@ -395,6 +395,11 @@ Room and rendering
   cleared when the sun moves or a chunk is rebuilt; chunks under a roof hash
   the sun direction. Under the Skyranger's cabin the low sun got in from the
   side, but the soft light filled the soldiers' shadows there.
+- 0.13.0-weather.12: the sun-reach cache is only cleared when the terrain
+  changes (Chunk::terrain: a hash of the parts and UFO doors, worked out with
+  the chunk hash) or the sun moves; before, every chunk rebuild cleared it
+  (shade changes as soldiers move at night). Measured on the preview machine:
+  474 roofed tiles traced in 2.2 ms (Skyranger save), 202 in 0.4 ms (farm).
 - The wrist debug panel's darkness buttons are a table-only offset
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.

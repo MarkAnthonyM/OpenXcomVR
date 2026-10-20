@@ -154,6 +154,8 @@ struct Proto
 struct Chunk
 {
 	uint64_t hash = ~0ull;
+	uint64_t terrain = 0;    // its terrain alone (parts, UFO doors): when that changes, sun-reach traces are redone
+	bool terrainKnown = false;
 	std::unique_ptr<Mesh> mesh;
 	bool empty = true;
 };
@@ -245,7 +247,7 @@ struct Board::Impl
 		return out >= 2;
 	}
 	/// Under a roof the sky can't reach: the soldiers' light stays a soft light of its own there. The
-	/// traces are kept until the sun moves or a chunk is rebuilt (terrain may have changed).
+	/// traces are kept until the sun moves or the terrain changes anywhere (see the chunk loop).
 	mutable std::unordered_map<int, bool> reachCache;
 	mutable glm::vec3 reachSun{0.f};
 	bool indoors(const Position &p) const
@@ -443,7 +445,7 @@ struct Board::Impl
 	uint32_t sample(const Surface *spr, uint32_t fallback, float px, float py);
 	const Proto &proto(const MapData *md);
 	void buildProto(const MapData *md, Proto &p);
-	uint64_t chunkHash(int cx, int cy, int z);
+	uint64_t chunkHash(int cx, int cy, int z, uint64_t *terrain = nullptr);
 	void buildChunk(int cx, int cy, int z, Chunk &ch);
 	void updateBattle(float dt);
 	void drawBattle(const Shader &sh);
@@ -708,10 +710,11 @@ const Proto &Board::Impl::proto(const MapData *md)
 	return p;
 }
 
-uint64_t Board::Impl::chunkHash(int cx, int cy, int z)
+uint64_t Board::Impl::chunkHash(int cx, int cy, int z, uint64_t *terrain)
 {
-	uint64_t h = 1469598103934665603ull;
+	uint64_t h = 1469598103934665603ull, th = 1469598103934665603ull;
 	auto mix = [&](uint64_t v) { h ^= v; h *= 1099511628211ull; };
+	auto mixT = [&](uint64_t v) { th ^= v; th *= 1099511628211ull; };
 	for (int y = cy * CHUNK; y < std::min(my, (cy + 1) * CHUNK); ++y)
 		for (int x = cx * CHUNK; x < std::min(mx, (cx + 1) * CHUNK); ++x)
 		{
@@ -722,11 +725,14 @@ uint64_t Board::Impl::chunkHash(int cx, int cy, int z)
 				mix((uint64_t)(uintptr_t)t->getMapData((TilePart)part));
 				mix(t->isDiscovered((TilePart)part));
 				mix(t->isUfoDoorOpen((TilePart)part));
+				mixT((uint64_t)(uintptr_t)t->getMapData((TilePart)part));
+				mixT(t->isUfoDoorOpen((TilePart)part));
 			}
 			mix((uint64_t)tileShade(t));
 			mix((uint64_t)(poolWarm(t) * 2.f));
 			mix(roofed(Position(x, y, z)) ? sunKey() : 0ull); // under a roof it depends on where the sun is
 		}
+	if (terrain) *terrain = th;
 	return h;
 }
 
@@ -1137,11 +1143,19 @@ void Board::Impl::updateBattle(float dt)
 			for (int cx = 0; cx < cxN; ++cx)
 			{
 				Chunk &ch = chunks[((size_t)z * cyN + cy) * cxN + cx];
-				uint64_t h = chunkHash(cx, cy, z);
+				uint64_t th = 0;
+				uint64_t h = chunkHash(cx, cy, z, &th);
+				// the sun-reach traces only depend on the terrain (and the sun, which clears them itself):
+				// something destroyed or a door opened anywhere can change them, so they are all redone
+				if (!ch.terrainKnown || th != ch.terrain)
+				{
+					if (ch.terrainKnown) reachCache.clear();
+					ch.terrain = th;
+					ch.terrainKnown = true;
+				}
 				if (h == ch.hash) continue;
 				if (ch.mesh && budget-- <= 0) continue;
 				if (hidden && ch.mesh) continue;
-				reachCache.clear(); // the terrain may have changed
 				buildChunk(cx, cy, z, ch);
 				ch.hash = h;
 			}
