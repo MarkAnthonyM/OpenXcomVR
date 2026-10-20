@@ -147,7 +147,8 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   in): the motion scanner in the hand (`VrScanner.cpp`), builds
   `0.13.0-scanner.1`, then `0.14.0-scanner.<n>`.
 - Branch `vr-prototype-thunder` (from vr-prototype 0.14.0): better thunder,
-  builds `0.14.0-thunder.<n>`. The owner asked for the three improvements
+  builds `0.14.0-thunder.<n>`; merged into vr-prototype as 0.15.0 (thunder.1, owner
+  approved). The owner asked for the three improvements
   (variety, direction, distance) on their own branch.
   - `VrAudio.*`: the table's own mixer channels. The game allocates 16 and
     reserves 0-4; VrAudio adds AUDIO_SLOTS more and reserves 0..4+slots, so
