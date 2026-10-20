@@ -694,6 +694,7 @@ static void updateHandsAndTable(float dt, bool simulated)
 		sc.surfW = S->surfW;
 		sc.surfH = S->surfH;
 		sc.eye = ctx.eye;
+		sc.headFwd = S->mode == MODE_HEADSET ? xfDir(S->rig, S->head.forward()) : S->head.forward();
 		if (S->board.battle())
 		{
 			glm::vec3 o = S->board.tileCenter(0, 0, 0), s1 = S->board.tileCenter(0, 1, 0), e1 = S->board.tileCenter(1, 0, 0);
@@ -1479,6 +1480,7 @@ static void runScript()
 			// test helper: press one of the scanner's buttons (red closes it; blue, yellow zoom; green turns the radar)
 			if (!S->scanner.testPress(c.args.empty() ? "red" : c.args[0])) Log(LOG_INFO) << "[VR] script: the scanner isn't open";
 		}
+		else if (c.op == "scannerwav") { writeScannerSounds(c.args.empty() ? "scanner-" : c.args[0]); }
 		else if (c.op == "scannerdump") { S->scanner.dump(c.args.empty() ? "scanner_screens.png" : c.args[0]); }
 		else if (c.op == "camunit")
 		{

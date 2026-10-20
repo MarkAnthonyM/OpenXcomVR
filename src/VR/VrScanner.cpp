@@ -3,6 +3,7 @@
  */
 #include "VrScanner.h"
 #include "VrRoom.h"
+#include "VrAudio.h"
 #include "../Engine/Game.h"
 #include "../Engine/State.h"
 #include "../Engine/Surface.h"
@@ -92,6 +93,108 @@ int dir8(float dx, float dy)
 }
 }
 
+// ---- the scanner's sounds, made in code (the game has none that fit)
+enum ScanSound { SND_ON, SND_OFF, SND_PING, SND_CLICK, SND_CLICK_RED, SND_BLIP0, SND_BLIPS = 8, SND_COUNT = SND_BLIP0 + SND_BLIPS };
+const char *SND_NAME[SND_COUNT] = {"on", "off", "ping", "click", "click-red", "blip-1", "blip-2", "blip-3", "blip-4", "blip-5", "blip-6", "blip-7", "blip-8"};
+
+/// One of the scanner's sounds (mono, -1..1) at a sample rate. Blips: 0 = a contact right by the soldier
+/// (high), 7 = at the far corner of the range (low).
+std::vector<float> synthScan(int which, int freq)
+{
+	const float TAU = 6.2831853f;
+	auto make = [&](float len) { return std::vector<float>((size_t)(len * freq), 0.f); };
+	auto normalize = [](std::vector<float> &v, float peak) {
+		float m = 1e-6f;
+		for (float x : v) m = std::max(m, std::fabs(x));
+		for (float &x : v) x *= peak / m;
+	};
+	uint32_t seed = 0x51c4u + (uint32_t)which * 977u;
+	auto noise = [&]() { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return (seed >> 8) / 8388608.f - 1.f; };
+	std::vector<float> v;
+	if (which == SND_PING)
+	{
+		// a sonar ping: a clear tone sinking a little, with two fading echoes
+		v = make(1.1f);
+		std::vector<float> dry = v;
+		float ph = 0.f;
+		for (size_t i = 0; i < dry.size(); ++i)
+		{
+			float t = (float)i / freq;
+			ph += TAU * (1080.f - 120.f * std::min(t / 0.5f, 1.f)) / freq;
+			float env = std::min(t / 0.005f, 1.f) * std::exp(-t / 0.22f);
+			dry[i] = (std::sin(ph) + 0.12f * std::sin(2.f * ph)) * env;
+		}
+		const struct { float at, gain; } echo[3] = {{0.f, 1.f}, {0.2f, 0.35f}, {0.4f, 0.15f}};
+		for (const auto &e : echo)
+		{
+			size_t off = (size_t)(e.at * freq);
+			float lp = 0.f;
+			for (size_t i = 0; i + off < v.size(); ++i)
+			{
+				lp += (dry[i] - lp) * (e.at > 0.f ? 0.35f : 1.f); // the echoes duller
+				v[i + off] += lp * e.gain;
+			}
+		}
+		normalize(v, 0.7f);
+	}
+	else if (which >= SND_BLIP0)
+	{
+		// a contact's return: a short blip, higher the closer it is
+		int k = which - SND_BLIP0;
+		float f = 1500.f * std::pow(0.5f, k / (float)(SND_BLIPS - 1));
+		v = make(0.13f);
+		float ph = 0.f;
+		for (size_t i = 0; i < v.size(); ++i)
+		{
+			float t = (float)i / freq;
+			ph += TAU * f / freq;
+			float env = std::min(t / 0.003f, 1.f) * std::exp(-t / 0.035f);
+			v[i] = (std::sin(ph) + 0.25f * std::sin(2.f * ph)) * env;
+		}
+		normalize(v, 0.7f);
+	}
+	else if (which == SND_ON || which == SND_OFF)
+	{
+		// power: a quick chirp up (on) or down (off), slightly buzzy
+		bool on = which == SND_ON;
+		float len = on ? 0.4f : 0.35f;
+		v = make(len);
+		float ph = 0.f;
+		for (size_t i = 0; i < v.size(); ++i)
+		{
+			float t = (float)i / freq, x = t / len;
+			float f = on ? 300.f * std::pow(1300.f / 300.f, x) : 1300.f * std::pow(220.f / 1300.f, x);
+			ph += TAU * f * (1.f + 0.02f * std::sin(TAU * 30.f * t)) / freq;
+			float env = std::min(t / 0.01f, 1.f) * std::min((len - t) / 0.08f, 1.f);
+			v[i] = (std::sin(ph) + 0.3f * std::sin(3.f * ph)) * env;
+		}
+		normalize(v, 0.6f);
+	}
+	else if (which == SND_CLICK)
+	{
+		// a button: a small, bright click
+		v = make(0.03f);
+		for (size_t i = 0; i < v.size(); ++i)
+		{
+			float t = (float)i / freq;
+			v[i] = noise() * std::exp(-t / 0.004f) + 0.6f * std::sin(TAU * 2400.f * t) * std::exp(-t / 0.006f);
+		}
+		normalize(v, 0.7f);
+	}
+	else
+	{
+		// the red button: a lower, heavier click
+		v = make(0.06f);
+		for (size_t i = 0; i < v.size(); ++i)
+		{
+			float t = (float)i / freq;
+			v[i] = std::sin(TAU * 900.f * t) * std::exp(-t / 0.015f) + 0.5f * noise() * std::exp(-t / 0.004f);
+		}
+		normalize(v, 0.7f);
+	}
+	return v;
+}
+
 /// A line of the game's small font: 1 where a glyph pixel is.
 struct TextMask
 {
@@ -140,6 +243,12 @@ struct HandScanner::Impl
 	bool haveScan = false;
 	float pingT = 0.f, lastTc = 0.f;
 	int lastCycle = -1;
+	// sounds: made the first time each is needed; they come from the device, wherever it is around the head
+	Mix_Chunk *snd[SND_COUNT] = {};
+	bool sndTried[SND_COUNT] = {};
+	int pings = 0, blips = 0;
+	bool soundOn = false;           // the power-on chirp, once the device has its place
+	void sound(int which, AudioSlot slot, float volume, const ScannerContext &ctx);
 	// the screens' pictures
 	std::vector<uint32_t> bar, side;
 	TextMask dirMask[8];
@@ -590,6 +699,27 @@ void HandScanner::Impl::composeSide()
 	}
 }
 
+void HandScanner::Impl::sound(int which, AudioSlot slot, float volume, const ScannerContext &ctx)
+{
+	if (which == SND_PING) ++pings;
+	if (which >= SND_BLIP0) ++blips;
+	int freq = audioFreq();
+	if (!freq) return;
+	if (!sndTried[which]) { sndTried[which] = true; snd[which] = makeChunk(synthScan(which, freq)); }
+	if (!snd[which]) return;
+	// from the device, as the head hears it: degrees clockwise from where it faces
+	glm::vec3 d = glm::vec3(xf[3]) - ctx.eye;
+	glm::vec2 f(ctx.headFwd.x, ctx.headFwd.z), dv(d.x, d.z);
+	float angle = 0.f;
+	if (glm::length(f) > 1e-4f && glm::length(dv) > 1e-4f)
+	{
+		f = glm::normalize(f);
+		glm::vec2 r(-f.y, f.x);
+		angle = std::atan2(glm::dot(dv, r), glm::dot(dv, f)) * 57.29578f;
+	}
+	playAt(slot, snd[which], volume, angle);
+}
+
 void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt)
 {
 	Impl &p = *_p;
@@ -614,6 +744,7 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		p.lastCycle = -1;
 		p.feedFresh = false;
 		p.last = "open";
+		p.soundOn = true;
 		if (ctx.haptic) ctx.haptic(p.hand, 0.35f, 0.08f);
 		Log(LOG_INFO) << "[VR] scanner: open in the " << (p.hand == 1 ? "right" : "left") << " hand";
 	}
@@ -622,6 +753,7 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		p.phase = Impl::CLOSING;
 		p.t = 0.f;
 		p.src = nullptr;
+		p.sound(SND_OFF, AUDIO_SCANNER_UI, 0.45f, ctx);
 		Log(LOG_INFO) << "[VR] scanner: closed";
 	}
 	if (p.phase == Impl::OPENING && p.t > 0.25f) { p.phase = Impl::OPEN; p.t = 0.f; }
@@ -629,6 +761,7 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 	if (p.phase == Impl::CLOSED || !p.artOk) return;
 
 	p.place(hands, dt);
+	if (p.soundOn) { p.soundOn = false; p.sound(SND_ON, AUDIO_SCANNER_UI, 0.45f, ctx); }
 	// where the camera points, on the map: out of the back of the device, laid flat (pointed straight
 	// down, the top of the screen decides)
 	glm::vec3 fwd = -glm::vec3(p.xf[2]), up = glm::vec3(p.xf[1]);
@@ -647,14 +780,25 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 	{
 		p.pingT += dt;
 		float now = p.tc();
-		if (p.cycle() != p.lastCycle) { p.lastCycle = p.cycle(); p.lastTc = 0.f; }
-		bool tick = false;
+		if (p.cycle() != p.lastCycle)
+		{
+			p.lastCycle = p.cycle();
+			p.lastTc = -1.f;
+			p.sound(SND_PING, AUDIO_SCANNER_PING, 0.55f, ctx);
+		}
+		// contacts the wave reached this frame: one blip (and tick) for them all, pitched by the nearest
+		float nearest = -1.f;
 		for (const Impl::Contact &c : p.contacts)
 		{
 			float t0 = c.dist / PING_SPEED;
-			if (t0 > p.lastTc && t0 <= now) tick = true;
+			if (t0 > p.lastTc && t0 <= now && (nearest < 0.f || c.dist < nearest)) nearest = c.dist;
 		}
-		if (tick && ctx.haptic) ctx.haptic(p.hand, 0.18f, 0.015f);
+		if (nearest >= 0.f)
+		{
+			if (ctx.haptic) ctx.haptic(p.hand, 0.18f, 0.015f);
+			int k = std::min(SND_BLIPS - 1, (int)(nearest / CORNER * SND_BLIPS));
+			p.sound(SND_BLIP0 + k, AUDIO_SCANNER_BLIP, 0.5f, ctx);
+		}
 		p.lastTc = now;
 	}
 	p.composeBar();
@@ -689,6 +833,7 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		p.pending = -1;
 		p.pressT[b] = 0.f;
 		++p.presses;
+		p.sound(b == B_RED ? SND_CLICK_RED : SND_CLICK, AUDIO_SCANNER_UI, 0.45f, ctx);
 		if (ctx.haptic) { ctx.haptic(1 - p.hand, 0.5f, 0.04f); ctx.haptic(p.hand, 0.25f, 0.04f); }
 		std::string what;
 		if (b == B_RED)
@@ -875,6 +1020,14 @@ void HandScanner::draw(const Shader &sh) const
 	sh.set("uMode", 0);
 }
 
+bool writeScannerSounds(const std::string &prefix)
+{
+	for (int i = 0; i < SND_COUNT; ++i)
+		if (!writeWav(prefix + SND_NAME[i] + ".wav", synthScan(i, 44100), 44100)) return false;
+	Log(LOG_INFO) << "[VR] scanner sounds written to " << prefix << "*.wav";
+	return true;
+}
+
 bool HandScanner::dump(const std::string &path) const
 {
 	const Impl &p = *_p;
@@ -919,7 +1072,7 @@ std::string HandScanner::status() const
 			for (const Impl::Contact &q : p.contacts) if (q.dist < n->dist) n = &q;
 			o << " nearest=" << (int)std::lround(n->dist) << "," << DIRS[dir8((float)n->dx, (float)n->dy)];
 		}
-		o << " feed=" << (p.feedFresh ? "on" : "off");
+		o << " feed=" << (p.feedFresh ? "on" : "off") << " pings=" << p.pings << " blips=" << p.blips;
 	}
 	o << " presses=" << p.presses << " last=" << p.last;
 	return o.str();

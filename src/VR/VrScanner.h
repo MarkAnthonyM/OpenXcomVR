@@ -46,10 +46,14 @@ struct ScannerContext
 	int surfW = 0, surfH = 0;
 	glm::vec2 north{0.f, -1.f}, east{1.f, 0.f};     // the battle map's directions on the table (world xz)
 	glm::vec3 eye{0.f, 1.3f, 0.f};
+	glm::vec3 headFwd{0.f, 0.f, -1.f};              // where the head faces (world): sounds come from the device
 	std::function<glm::vec3(int, int, int)> tileCenter; // world position of a map tile's floor centre
 	std::function<void(int, int, int)> clickScreen; // game pixel x, y, SDL button
 	std::function<void(int, float, float)> haptic;  // hand, amplitude, seconds
 };
+
+/// Tests: the scanner's sounds as WAV files (prefix + name + .wav).
+bool writeScannerSounds(const std::string &prefix);
 
 class HandScanner
 {
