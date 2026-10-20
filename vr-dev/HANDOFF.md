@@ -461,6 +461,18 @@ Room and rendering
     (plus a random 0-0.3 s, so it fills in as points) for 1.9-2.35 s (random,
     so it dissolves), so every spot is black for well under a second before
     the next wave refills it; outside the 19 x 19 range it is always black.
+  - scanner.4: the dissolve sweeps outward too: each pixel shows for 1.8 s
+    (+ up to 0.4 s, so it dissolves) from when the wave passes it, and the
+    next ping starts as the edge of the range begins to go out (cycle = wave
+    crossing 1.2 s + 1.8 s = 3 s; every spot dark about a second; owner's
+    rule). When the scanner opens, Board::showRange centres the table on the
+    soldier and zooms out only if the 19 x 19 square (turned with the table)
+    doesn't fit the map area; the view stays like that afterwards (owner).
+    The controls stay locked: with the range on the table there's no need to
+    turn or slide (the owner first asked for turning, for soldiers at the
+    table's edge). The green button (radar north up / turning) stays for now;
+    ideas discussed for it: mark the contacts on the table until the end of the
+    turn (favoured), ping now, show the range, freeze the picture.
   - Test ops `usescanner` (ScannerState for the selected soldier, no time
     units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
     three screens); test `scan`.

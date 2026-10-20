@@ -60,9 +60,11 @@ const int TS = 4;                        // texels per art pixel on the compass 
 const float RANGE = 9.5f;                // tiles from the soldier to the edge of the scan (19 x 19)
 const float CORNER = 13.6f;              // ...to its corners
 const float PING_SPEED = CORNER / 1.2f;  // tiles per second: the wave reaches the corners in 1.2 s
-const float PING_CYCLE = 2.5f;           // a ping every 2.5 s
 const float FILL = 0.3f;                 // the picture fills in behind the wave over this long (scattered points)...
-const float LIFE = 1.9f, LIFE_JITTER = 0.45f; // ...each point stays this long, then drops out (just before the next wave)
+const float LIFE = 1.8f, LIFE_JITTER = 0.4f; // ...each point stays this long, then drops out over the next 0.4 s
+// the next ping starts just as the edge of the range begins to go out, so every spot is dark for about the
+// time the wave takes to cross the range (about a second) before the next wave lights it again
+const float PING_CYCLE = CORNER / PING_SPEED + LIFE; // 3 s
 const float FOVS[] = {25.f, 35.f, 45.f, 60.f, 75.f};
 const int FOV_N = 5, FOV_DEFAULT = 2;
 const char *DIRS[8] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};

@@ -2,7 +2,10 @@ wait 14000
 cam 0.0 1.35 0.15 0 -25
 waitframes 2
 hand 0.06 1.12 -0.18 0 40 0 0.9 0.9 1
+boardzoom 2.5
+boardpan 0.35 0.1
 waitframes 4
+shot shots/scanner_before.png
 usescanner
 wait 4000
 status

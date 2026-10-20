@@ -111,9 +111,9 @@ TESTS = [  # script, save, check, what it covers
      "cloud shadows: separate clouds with crisp, cool edges, by day and at dusk (shots/clouds_*.png)"),
     ("storms", "outside.asav", has("weather=rain clouds=30", "strength=0", "clouds=75", "strikes=1", "weather=snow clouds=70", "strength=2"),
      "rain and snow strengths: drizzle, thunderstorm with a strike, flurries, blizzard (shots/storms_*.png)"),
-    ("scan", "outside.asav", has("scanner: open in the right hand", "contacts=5 nearest=1,W feed=on", "blue button (zoom in) fov=35",
+    ("scan", "outside.asav", has("scanner: open in the right hand", "table centred on the soldier", "contacts=5 nearest=1,W feed=on", "blue button (zoom in) fov=35",
                                  "green button (radar turns)", "radar=turning", "red button (close)", "scanner: closed"),
-     "the motion scanner in the hand: camera with the ping, compass, side radar; zoom, turn, close (shots/scanner_*.png)"),
+     "the motion scanner in the hand: the table fits the range, camera with the ping, compass, side radar; zoom, turn, close (shots/scanner_*.png)"),
     ("mm", None, check_menu, "the main menu at start doesn't flash a floating window"),
     ("br", None, has("float: open N8OpenXcom13BriefingStateE", "float: touch 160,172"), "the briefing floats; touching OK starts the battle"),
 ]

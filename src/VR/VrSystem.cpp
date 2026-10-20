@@ -704,6 +704,19 @@ static void updateHandsAndTable(float dt, bool simulated)
 		sc.clickScreen = [](int gx, int gy, int button) { S->scannerOwnClick = true; S->board.clickScreen(gx, gy, button); S->scannerOwnClick = false; };
 		sc.haptic = ctx.haptic;
 		S->scanner.update(sc, S->handsVis, dt);
+		// as it comes out, the table centres on the soldier and fits the whole scan (19 x 19 tiles), so
+		// the camera can see all of it wherever the soldier stands (the map can't be moved while it is out)
+		static bool scannerWasOpen = false;
+		bool open = S->scanner.isOpen();
+		SavedBattleGame *sb = S->board.battle();
+		if (open && !scannerWasOpen && sb && sb->getSelectedUnit())
+		{
+			Position u = sb->getSelectedUnit()->getPosition();
+			S->board.showRange(glm::vec2(u.x + 0.5f, u.y + 0.5f), 9.5f);
+			glm::vec3 a = S->board.tileCenter(u.x - 9, u.y - 9, u.z), b = S->board.tileCenter(u.x + 9, u.y + 9, u.z);
+			Log(LOG_INFO) << "[VR] scanner: table centred on the soldier, range " << a.x << "," << a.z << " .. " << b.x << "," << b.z;
+		}
+		scannerWasOpen = open;
 	}
 	S->board.baseFingers(S->handsVis, ctx.handBusy, ctx.haptic, dt);
 	{

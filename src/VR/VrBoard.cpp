@@ -3379,6 +3379,22 @@ void Board::centerOnTile(const glm::vec2 &tile)
 	syncCamera(p);
 }
 
+void Board::showRange(const glm::vec2 &tile, float half)
+{
+	Impl &p = *_p;
+	revalidate(p);
+	if (!p.hasBattle || OpenXcom::VR::viewLocked(p)) return;
+	// the square turned with the table, across the table's map area (a little margin)
+	float w = p.mapRect.z - p.mapRect.x, d = p.mapRect.w - p.mapRect.y;
+	float ext = 2.f * half * (std::fabs(std::cos(p.yaw)) + std::fabs(std::sin(p.yaw)));
+	if (w > 0.f && d > 0.f && ext > 0.f)
+	{
+		float fit = std::min(w, d) * 0.96f / ext;
+		if (p.tileSize > fit) p.tileSize = glm::clamp(fit, 0.02f, 0.14f);
+	}
+	centerOnTile(tile);
+}
+
 bool Board::globeSphere(glm::vec3 &center, float &radius) const
 {
 	const Impl &p = *_p;

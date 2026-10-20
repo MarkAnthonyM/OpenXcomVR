@@ -116,6 +116,9 @@ public:
 	bool renderMinimap(std::vector<uint32_t> &px, int S, bool align);
 	glm::vec2 minimapTile(const glm::vec2 &uv, bool align) const;
 	void centerOnTile(const glm::vec2 &tile);
+	/// Centres the table on a tile and zooms out (only if needed) so a square of 2 x half tiles around it
+	/// fits on the table at the current turn (the motion scanner's range).
+	void showRange(const glm::vec2 &tile, float half);
 	/// Test helper: an explosion effect at a tile (no damage, effect only).
 	void testBurst(int tx, int ty, int tz, bool big);
 	/// Lighting: draw only what casts shadows; this frame's flashes (world position, colour);

@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.14.0-scanner.3)
+# OpenXcom Extended — VR Tabletop (prototype 0.14.0-scanner.4)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -231,13 +231,16 @@ stand) in an X-COM command center at a holographic war table:
   looking out of the back, a little below where your hand points: aim it at
   the table and it shows that part of the map in the radar's green, without
   the table's markers (cursor, selection, path). The picture only shows where
-  the scanner's ping has been: every 2.5 seconds a ping spreads from the
+  the scanner's ping has been: every 3 seconds a ping spreads from the
   soldier who used it to the edge of the game's range (the same 19 x 19
   tiles), the picture fills in behind it as scattered points, and each
   movement contact lights up as a ring on its tile (on whatever is there; like
-  the game, it doesn't say which floor), with a tick in your hand. Each part
-  of the picture dissolves to black just before the next wave reaches it;
-  beyond the range the screen stays black. Contacts out of view get an arrow
+  the game, it doesn't say which floor), with a tick in your hand. The picture
+  then dissolves to black from the middle out, the edge of the range last; as
+  the edge starts to go, the next ping goes out, so each spot is dark for
+  about a second. Beyond the range the screen stays black. When the scanner
+  comes out, the table centres on the soldier and zooms out if needed so the
+  whole range is on the table (it stays that way afterwards). Contacts out of view get an arrow
   at the screen's edge. The bar at the top of the side panel is a compass showing
   where the camera points; the side display has the game's own radar picture
   (with the camera's view on it) and how many contacts there are and how far
