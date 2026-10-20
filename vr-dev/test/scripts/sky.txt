@@ -1,0 +1,29 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -10
+waitframes 2
+sunaz 340
+weather clear
+shade 6
+wait 2500
+status
+shot shots/sky_dusk.png
+weather clouds
+wait 4000
+status
+shot shots/sky_clouds.png
+weather clear
+skyclock 2 0 0
+sunaz -1
+shade 15
+wait 2500
+status
+shot shots/sky_moon.png
+skyclock 2 12 0
+weather auto
+weather clear
+wait 2500
+status
+shot shots/sky_starlit.png
+skyclock -1
+weather auto
+quit

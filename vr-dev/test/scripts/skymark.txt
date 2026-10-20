@@ -1,0 +1,17 @@
+wait 9000
+cam 0.0 1.62 0.25 0 -38
+waitframes 2
+weather clear
+wait 1500
+status
+shot shots/skymark_day.png
+skyclock 2 0 0
+wait 1500
+status
+shot shots/skymark_fullmoon.png
+skyclock 2 18 0
+wait 1500
+status
+shot shots/skymark_dusk.png
+skyclock -1
+quit

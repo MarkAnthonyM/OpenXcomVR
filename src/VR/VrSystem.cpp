@@ -12,6 +12,7 @@
 #include "VrRoom.h"
 #include "VrBoard.h"
 #include "VrWeather.h"
+#include "VrDebug.h"
 #include "VrHands.h"
 #include "VrTable.h"
 #include "VrFloat.h"
@@ -1004,7 +1005,39 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uSunKeyCol", sky.col);
 	sh.set("uSunKeySky", sky.sky);
 	sh.set("uFlash", sky.flash);
+	sh.set("uMapShade", sky.on ? sky.mapShade : 0.f);
+	sh.set("uMoonFloor", sky.on ? sky.moonFloor : 0.f);
+	// the game's own light (soldiers, flares, fires): a warm lamp, as bright as the room light used to make it
+	const glm::vec3 lamp(1.0f, 0.93f, 0.82f);
+	sh.set("uLampCol", lamp * (1.f - 0.45f * S->night));
+	// soldiers' own light takes the colour of the sun or moon instead (fires and flares keep the lamp):
+	// the sky light's hue, about as bright as the lamp (no channel above 1.4)
+	{
+		auto lum = [](const glm::vec3 &c) { return glm::dot(c, glm::vec3(0.2126f, 0.7152f, 0.0722f)); };
+		glm::vec3 pool = lamp;
+		if (sky.on && lum(sky.col) > 1e-4f)
+		{
+			pool = sky.col * (lum(lamp) / lum(sky.col));
+			float mx = std::max(pool.r, std::max(pool.g, pool.b));
+			if (mx > 1.4f) pool *= 1.4f / mx;
+		}
+		sh.set("uPoolSkyCol", pool * (1.f - 0.45f * S->night));
+		// out in the open the soldiers' light is the sky's own: on the tiles the game counts as lit the sun
+		// or moon shines (from its direction, with its shadows) as brightly as that light was, plus a
+		// little of the sky's fill so the shade there isn't black
+		glm::vec3 fill = pool;
+		if (sky.on && lum(sky.sky) > 1e-4f) fill = sky.sky * (lum(lamp) / lum(sky.sky));
+		sh.set("uPoolFillCol", fill * 0.2f * (1.f - 0.45f * S->night));
+		sh.set("uPoolSunY", sky.on ? std::max(sky.dir.y, 0.2f) : 1.f);
+	}
+	sh.set("uPoolRoofed", 0);
+	sh.set("uFigShadow", 0);
+	sh.set("uPoolWarm", 1.f);
 	sh.set("uCloud", sky.cloud);
+	sh.set("uCloud2", sky.cloud2);
+	sh.set("uWet", sky.on ? sky.wet : 0.f);
+	sh.set("uSunBoost", sky.on ? sky.boost : 1.f);
+	sh.set("uTerrain", 0);
 	sh.set("uMapInv", sky.mapInv);
 	sh.set("uSunArea", sky.area);
 	sh.set("uFadeCount", 0);
@@ -1061,6 +1094,20 @@ static void computeLights(float dt)
 	add(L.lightPos[1], L.lightCol[1] * S->roomTint * fill);  // (1-3: room fills)
 	add(L.lightPos[2], L.lightCol[2] * S->roomTint * fill);
 	add(L.lightPos[3], L.lightCol[3] * S->roomTint * fill);
+	// the light's side of the room glows faintly in its colour, low down, as if through haze (dawn, dusk
+	// and moonlit nights; nothing by day or under a starless sky)
+	if (S->sky.on && glm::length(S->sky.col) > 1e-3f)
+	{
+		glm::vec2 hz(S->sky.dir.x, S->sky.dir.z);
+		if (glm::length(hz) > 1e-3f)
+		{
+			hz = glm::normalize(hz);
+			float low = 1.f - glm::smoothstep(0.25f, 0.6f, S->sky.dir.y);
+			glm::vec3 c = S->sky.col / std::max(0.01f, std::max(S->sky.col.r, std::max(S->sky.col.g, S->sky.col.b)));
+			float k = (S->night > 0.9f ? 0.35f : 1.f) * low * glm::clamp(glm::length(S->sky.col) * 1.5f, 0.f, 1.f);
+			if (k > 0.01f) add(glm::vec3(T.x + hz.x * 2.0f, T.y + 0.35f, T.z + hz.y * 2.0f), c * 1.2f * k);
+		}
+	}
 	// lightning over the battle: a flash fills the room
 	if (S->sky.flash > 0.01f) add({T.x + 0.3f, T.y + 1.5f, T.z - 0.5f}, glm::vec3(0.75f, 0.82f, 1.0f) * 6.f * S->sky.flash);
 	add(S->panel.pos + glm::vec3(0.f, 0.f, 0.6f), S->gameGlow * 0.9f);          // the game screen's light
@@ -1196,6 +1243,10 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 		S->quadMesh.draw();
 		glDisable(GL_BLEND);
 	}
+	// see-through weather and sky over the battle, after everything solid
+	sh.set("uMode", 0);
+	sh.set("uTint", glm::vec4(1.f));
+	S->board.drawWeather(sh);
 
 	S->handsVis.draw(sh);
 	if (!drawHands) return;
@@ -1492,6 +1543,16 @@ static void runScript()
 		else if (c.op == "weather") { S->board.forceWeather(c.args.empty() ? "auto" : c.args[0]); }
 		else if (c.op == "strike") { S->board.testStrike(); }
 		else if (c.op == "sunaz") { Weather::forceSun((float)num(0, -1)); }
+		else if (c.op == "dbgpin")
+		{
+			// hold the wrist debug panel in front of the eye (the preview has no left hand to turn)
+			glm::vec3 fwd = S->head.forward();
+			S->table.debugPanel().testPin(num(0, 1) > 0.5, S->head.pos + fwd * (float)num(1, 0.3), -fwd);
+		}
+		else if (c.op == "skyshift") { Weather::shiftClock(num(0, 0), c.args.empty()); S->board.skyChanged(); }
+		else if (c.op == "skyclock") { Weather::forceClock((int)num(0, -1), (int)num(1, 0), (int)num(2, 0)); S->board.skyChanged(); }
+		else if (c.op == "dbgpage") { S->table.debugPanel().testPage((int)num(0, 0)); }
+		else if (c.op == "dbgpress") { if (c.args.empty() || !S->table.debugPanel().testPress(c.args[0])) Log(LOG_INFO) << "[VR] debug panel: no control " << (c.args.empty() ? "" : c.args[0]); }
 		else if (c.op == "shade") { S->board.testShade((int)num(0, 0)); }
 		else if (c.op == "testufo")
 		{
@@ -1737,7 +1798,7 @@ static void runScript()
 			glm::vec3 t = hp.tip(F_INDEX);
 			Log(LOG_INFO) << "[VR] status: " << S->table.status() << " | tip " << t.x << "," << t.y << "," << t.z
 				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch << " | " << S->floatWin.status()
-				<< " | " << S->board.baseStatus() << " | " << S->board.weatherStatus();
+				<< " | " << S->board.baseStatus() << " | " << S->board.weatherStatus() << " | " << S->table.debugPanel().status();
 		}
 		else if (c.op == "shot") { S->pendingShot = c.args.empty() ? "vr_shot.png" : c.args[0]; return; }
 		else if (c.op == "gameshot" && !S->pixels.empty())

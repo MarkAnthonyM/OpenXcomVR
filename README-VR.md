@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.13.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.13.0-weather.13)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -120,20 +120,68 @@ stand) in an X-COM command center at a holographic war table:
   game's palette shading (measured from the palette, applied in linear light),
   so lit areas, flares and fires stand out and unlit ground is near black; the
   fog over unexplored ground darkens with the night too.
-- **The sun over the mission.** On an outdoor mission the table is lit by the
-  sun standing where it really stands over the landing site at that hour (the
-  far edge of the table is north), while the game's own darkness level for
-  the mission sets how high it is and its colour: a high white sun with short
-  shadows by day, a low gold or deep orange one with long shadows at dawn and
-  dusk, faint blue moonlight at night. The tiles stay exactly as dark as the
-  game makes them; the room picks up a little of the light's colour.
+- **The sun and moon over the mission.** On an outdoor mission the table is
+  lit by the sun standing where it really stands over the landing site at
+  that hour (the far edge of the table is north), while the game's own
+  darkness level for the mission sets how high it is and its colour: a warm
+  white sun by day, a low, glowing deep-gold one in the evening's golden hour
+  turning deep orange and finally red-orange at sunset (paler and pinker on a
+  morning mission), fading into the night sky at darkness 10-11. The sun is
+  never higher than 50°, lower than you look down onto the table from your
+  seat, so shadows reach out past what casts them wherever you sit; at
+  sunset it is down to 15° (shadows about 3.7 times as long as what casts
+  them). The moon stands at least 20° high for its light and shadows. From golden
+  hour to sunset the sunlit ground glows as if the map were a few darkness
+  steps lighter (3 at darkness 4-8, 2 at 9-10, 1 at 11) while the shade keeps
+  the game's own darkness, and every shade (a wall's, a figure's, a roof's or
+  a cloud's) is equally deep and cool. Roofs keep the sun and clouds out of
+  the rooms below even when the view level cuts them away. The ground is
+  matte (grass, dirt and stone don't mirror the sun) except in the rain,
+  when it glistens a little. The shadows take the
+  sky's cool blue-violet at dawn and dusk, so the sunlit faces glow against
+  them. At
+  night (darkness 12-15) the real moon takes over: its position and phase are
+  worked out from the game's date and time and the site (the game itself has
+  no moon), so a full moon gives brighter light and clearer shadows than a
+  thin one (though never less than 40% of a full moon's light), and the
+  unlit ground shows faintly under a bright moon. When the real moon is below
+  the horizon it is mirrored above it (the same direction, as high as it is
+  low), so every night has moonlight. The sun and moon are never shown as objects: you see them
+  in their light. The room glows faintly in its colour on the side
+  it comes from at dawn, dusk and on moonlit nights, and cloud shadows drift
+  across the map by day and on moonlit nights, each mission at its own speed
+  (up to about a tile a second, storms up to 1.4, with gusts): voxel
+  clouds of quarter-tile blocks, lumpy and clustered with sunlit gaps between
+  them and stretched along the wind, their shadows cast along the sun's
+  direction (so they fall on walls and roofs where a real cloud's would) and
+  their shade cool and blue against the warm sunlight, and at night a passing
+  cloud swallows the moonlight on part of the battlefield for a while. The game's own
+  light (wherever a tile is lighter than the map's darkness) works like this:
+  out in the open, the tiles your soldiers' light makes lit are lit by the
+  sun or moon itself, from its direction and with its shadows, as brightly as
+  the game makes them (sunset orange at dusk, pink at dawn, silver-blue
+  moonlight at night), so figures and walls cast shadows across them; under a
+  roof, where the sun or moon can't get in (a low sun does reach under an
+  overhang or into an open cabin), it stays a soft light in the same colour.
+  Fires, flares and other lit items stay a warm lamp. It all looks the same
+  wherever you turn the map, and the room's lights no longer reach the map. The tiles stay exactly as dark as the game makes them. Everything
+  here is for show only: the game's darkness and what soldiers see are
+  unchanged. `vrVanillaSky` (default off) brings back the table as it was
+  before all this: the room's light over the table, no sun, moon or weather.
 - **Weather.** Each outdoor mission rolls its own weather (the same mission
   always gets the same, so a reload keeps it): snow on polar and mountain
   maps (about half the time), rain on jungle, forest, farmland and city maps
-  (about a third) with lightning flashes now and then that light the room and
-  show the map in its own colours for a moment (plus thunder a moment later),
-  blowing dust in the desert and red sand on Mars, slow cloud shadows
-  drifting over most daytime missions and a low mist on some dawn missions.
+  (about a third), blowing dust in the desert and red sand on Mars. Rain and
+  snow come light, steady or heavy (40 / 40 / 20%): a drizzle falling nearly
+  straight under broken cloud, steady rain under overcast, or a thunderstorm
+  driven by the wind under dark, fast clouds; flurries, steady snow, or a
+  blizzard driven sideways with a pale haze over the map. Steady and heavy
+  rain and snow come and go in gusts over a minute or so. Lightning comes
+  with the rain: never in a drizzle, now and then far off in steady rain (a
+  dim flicker, a low rumble seconds later), often in a thunderstorm, half the
+  time close (a flash that lights the room and shows the map in its own
+  colours, thunder at once). Slow cloud shadows drift over about 40% of
+  daytime missions, and a low mist lies on about a third of dawn missions.
   Roofs keep rain and snow out (they land on roofs and treetops, never inside
   a building or a landed UFO), and it all thins out around your hands and the
   cursor. It is purely for show: the game's rules, what your soldiers see and
@@ -141,6 +189,41 @@ stand) in an X-COM command center at a holographic war table:
   isn't already on the table. Base defence and alien base missions are
   indoors and keep the plain room light. `vrWeather` (default on) turns the
   weather off; the sun stays.
+- **Sky debug panel (weather branch).** With `vrDebugPanel` on (off by
+  default), turning the inside of your left wrist toward your face during a
+  battle raises a panel along the forearm; press its tabs and buttons with the
+  right index finger. **INFO** shows the mission and the terrain it was read
+  as (and its map sets), indoors or outdoors, the site and the game clock with
+  the local time there, the darkness level and where it came from (the globe
+  or the mission's own rule), the sun or moon the table uses (direction,
+  height, where the direction came from, colour swatches) next to the real
+  sun's height at the site, how each weather roll went ("rain: rolled 0.21,
+  needs < 0.35"), live particle and lightning numbers, the settings and the
+  frame time. **CONTROLS** forces the weather (AUTO gives the mission's own
+  roll back), darkens or lightens the table's map (GAME goes back to the
+  game's level), turns the sun 15° either way (REAL gives the real sun back)
+  and strikes lightning; VANILLA switches `vrVanillaSky` on and off. The SKY
+  CLOCK row moves the date and time the sun and moon are worked out for (the
+  game's own clock and darkness stay as they are): -1H / +1H, +12H to swap day
+  and night (New Battle always lands at noon, when a full moon is down), -MOON
+  / +MOON to step four days (about an eighth of the moon's cycle) and GAME to
+  go back to the game's clock. The info
+  page also shows the moon's phase and height (or that it is mirrored) and
+  how strong its light is. While the panel
+  setting is on, a **sky marker** stands over the battle map: an orange
+  compass ring (N is the map's top edge and turns with the map), the real sun
+  and the real moon (drawn with its phase) on lines from the middle at their
+  true height and direction, each labelled with its height and direction
+  ("BELOW" and dimmed at the ring's edge, where it will rise or has set, when
+  under the horizon), the table's own light as a thick line in its colour
+  with its height, direction and the darkness level ("STARLIGHT ONLY" when
+  there is none), and the sky clock (GMT and local) under the ring, in yellow
+  while it is shifted. It shows the sky clock buttons at work: the sun and
+  moon move, while the table's light keeps the height the game's darkness
+  gives it. The controls change the table only: the game's
+  darkness, what your soldiers see and the flat screen stay as they are.
+  Forced weather and a turned sun carry on into the next battles until you
+  press AUTO / REAL.
 - **Shots light up the night.** Lasers, plasma, rockets (their exhaust),
   incendiary rounds and blaster bombs light the ground and figures around them
   in their colour as they fly, stronger weapons brighter and further; their
@@ -322,6 +405,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrFloat.*` | Floating pop-up windows: picks the game's top non-screen state, copies its area of the game frame, the projection and voxel-assembly effects, finger touches and the laser. |
 | `VrBase.*` | The base on the table: voxel relief rebuilt from the base view's sprites, craft models, scaffolding, labels, finger taps / holds / placement. |
 | `VrWeather.*` | The sky over an outdoor battle: the sun's direction at the site and its height and colour from the mission's darkness, the weather roll, rain / snow / dust particles stopping at roofs, mist, cloud drift, lightning and procedural thunder. |
+| `VrDebug.*` | The sky debug panel on the left wrist (weather branch): info and controls pages drawn with the dashboards' canvas, pressed with the right index finger. |
 | `VrDash.*` | The geoscape dashboards on the back-wall monitors, drawn with the game's fonts straight from the saved game. |
 | `VrGL.*`, `VrShaders.h` | Tiny GL helper layer (incl. a shadow map target) and the single scene shader: linear lighting into an sRGB target, up to 12 point lights per frame, shadows from the key light, soft room-corner shading, the table's up-glow, the fog material. |
 
@@ -391,7 +475,7 @@ Key ideas:
 
 Engine hooks: `Game.cpp` (startup, event filter, per-loop `VR::frame`),
 `Screen.cpp` (hand the composed frame to VR), `Options` (`vrMode`, `vrTableScale`,
-`vrSeatOffset`, `vrShadows`, `vrWeather`),
+`vrSeatOffset`, `vrShadows`, `vrWeather`, `vrDebugPanel`),
 `UnitWalkBState` (in VR every visible unit counts as on screen: the engine
 otherwise skips most of the walk animation, and runs at timer interval 0, for
 units outside the flat camera's view, which made them sprint across the table),

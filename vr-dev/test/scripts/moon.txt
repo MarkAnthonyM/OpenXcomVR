@@ -1,0 +1,22 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -42
+waitframes 2
+dbgpin 1 0.32
+dbgpress CONTROLS
+dbgpress HALFDAY
+wait 800
+status
+shot shots/moon_controls.png
+wait 2000
+shot shots/moon_controls2.png
+dbgpress INFO
+wait 600
+shot shots/moon_info.png
+dbgpress PHASEP
+dbgpress PHASEP
+wait 500
+status
+dbgpress NOW
+wait 300
+status
+quit

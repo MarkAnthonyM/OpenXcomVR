@@ -1,0 +1,30 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -42
+waitframes 2
+dbgpin 1 0.32
+waitframes 10
+shot shots/dbg_info.png
+dbgpress CONTROLS
+dbgpress RAIN
+dbgpress DARKER
+dbgpress DARKER
+dbgpress DARKER
+dbgpress DARKER
+dbgpress DARKER
+dbgpress DARKER
+dbgpress TURNR
+wait 1500
+shot shots/dbg_controls.png
+status
+dbgpress INFO
+wait 600
+shot shots/dbg_info2.png
+dbgpin 0
+wait 800
+shot shots/dbg_table.png
+dbgpress AUTO
+dbgpress GAME
+dbgpress REAL
+wait 500
+status
+quit

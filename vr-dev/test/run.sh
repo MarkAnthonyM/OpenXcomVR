@@ -8,6 +8,9 @@ vr_linux_env
 S="$1"; shift
 [ -f "$S" ] || S="$VR_REPO/vr-dev/test/scripts/${S%.txt}.txt"
 [ -f "$S" ] || { echo "no script $S"; exit 1; }
+# every run starts from the test settings: the game saves options given on the command line (such as
+# -vrDebugPanel true) into its config, which would carry them into the next tests
+cp "$VR_REPO/vr-dev/test/options.cfg" "$VR_RUN/cfg/options.cfg"
 pgrep -x Xvfb >/dev/null || { (setsid nohup Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &); sleep 2; }
 cd "$VR_RUN" && DISPLAY=:99 OXCE_VR_SCRIPT="$S" timeout 200 "$VR_PREVIEW_BUILD/bin/openxcom" \
 	-data "$VR_RUN/data/" -user "$VR_RUN/user/" -cfg "$VR_RUN/cfg/" -vrMode 2 \

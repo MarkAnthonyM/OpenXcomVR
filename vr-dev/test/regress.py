@@ -95,12 +95,28 @@ TESTS = [  # script, save, check, what it covers
     ("bd", "geo_test.asav", has("float: scrolled at"), "dragging a finger on a floating list scrolls it (shots/bd_scrolled.png)"),
     ("wx", "outside.asav", has("weather=rain", "weather=snow", "sky=dusk", "weather=none+mist", "sky=night", "strikes=1"),
      "sun and weather over the battle (shots/wx_*.png: rain, lightning, snow, dust, sand, clouds, mist, dusk, night)"),
+    ("dbg", "outside.asav", has("debug panel: RAIN", "debug panel: TURNR", "dbg=shown page=1", "sky=day sun=137,50"),
+     "the sky debug panel: info and controls pages (shots/dbg_*.png)"),
+    ("sky", "outside.asav", has("moon=99%,70", "night (moon mirrored)", "clouds="),
+     "low sun, cloud shadows, real full moon, the moon mirrored up when it is down (shots/sky_*.png)"),
+    ("sky2", "outnight.asav", has("sky=vanilla", "moon=99%,70"),
+     "night: the soldiers' light is its own lamp; vanilla mode (shots/sky2_*.png)"),
+    ("moon", "outnight.asav", has("debug panel: HALFDAY", "moon=99%,70 ", "debug panel: NOW"),
+     "the panel's sky clock: +12 h brings New Battle's full moon up; +moon steps its phase (shots/moon_*.png)"),
+    ("mark", "outside.asav", has("mark=sun+90,moon-", "mark=sun-90,moon+7", "mark=sun+0,moon-1"),
+     "debug panel on: the sun, the moon and the table light shown over the map (shots/skymark_*.png)"),
+    ("pools", "outnight.asav", has("sky=night sun=359,70", "moon=99%,-69,mirrored", "sky=dusk", "sky=dawn"),
+     "soldiers' light in the sky light's colour: full moon, mirrored moon, dusk, pink dawn (shots/pools_*.png)"),
+    ("clouds", "outside.asav", has("sky=day sun=137,50 weather=none clouds=68", "sky=dusk"),
+     "cloud shadows: separate clouds with crisp, cool edges, by day and at dusk (shots/clouds_*.png)"),
+    ("storms", "outside.asav", has("weather=rain clouds=30", "strength=0", "clouds=75", "strikes=1", "weather=snow clouds=70", "strength=2"),
+     "rain and snow strengths: drizzle, thunderstorm with a strike, flurries, blizzard (shots/storms_*.png)"),
     ("mm", None, check_menu, "the main menu at start doesn't flash a floating window"),
     ("br", None, has("float: open N8OpenXcom13BriefingStateE", "float: touch 160,172"), "the briefing floats; touching OK starts the battle"),
 ]
 
 # tests that run another test's script with extra options: name -> (script, [args])
-VARIANTS = {}
+VARIANTS = {"dbg": ("dbg", ["-vrDebugPanel", "true"]), "mark": ("skymark", ["-vrDebugPanel", "true"])}
 
 def main():
     want = set(sys.argv[1:])

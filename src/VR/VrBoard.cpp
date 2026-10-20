@@ -154,6 +154,8 @@ struct Proto
 struct Chunk
 {
 	uint64_t hash = ~0ull;
+	uint64_t terrain = 0;    // its terrain alone (parts, UFO doors): when that changes, sun-reach traces are redone
+	bool terrainKnown = false;
 	std::unique_ptr<Mesh> mesh;
 	bool empty = true;
 };
@@ -187,6 +189,90 @@ struct Board::Impl
 	float partTop(const MapData *d);
 	void updateStops();
 	std::vector<glm::vec3> handPts;
+	// the debug panel's sky marker: where the sun, the moon and the table's light are
+	Mesh skyMarkMesh;
+	std::string skyMarkText; // what it showed last (tests)
+	glm::vec3 shadowLight{0.f};  // where the shadow pass turned the standees toward (world)
+	bool hasShadowLight = false;
+	void drawSkyMarker(const Shader &sh);
+	int shadeOffset = 0;            // the debug panel's darkness change (the table only, not the game)
+	int tileShade(const Tile *t) const { return glm::clamp(t->getShade() + shadeOffset, 0, 15); }
+	/// How much of a tile's own light is warm (fires, flares, lit items: 1) rather than the soldiers' (0),
+	/// which takes the sky light's colour under the sun or moon.
+	static float poolWarm(const Tile *t)
+	{
+		int u = t->getLight(LL_UNITS), o = std::max(t->getLight(LL_FIRE), t->getLight(LL_ITEMS));
+		if (o <= 0 && u <= 0) return 1.f;
+		return o > u ? 1.f : o == u ? 0.5f : 0.f;
+	}
+	/// Is there a ceiling over a tile (a floor on the level right above)? The sky can't light it then.
+	/// Only the next level counts: something higher (a craft's wing, an overhang) leaves the ground under
+	/// it open to a low sun, which the shadow map already handles.
+	bool roofed(const Position &p) const
+	{
+		if (p.z + 1 >= battle->getMapSizeZ()) return false;
+		Tile *t = battle->getTile(Position(p.x, p.y, p.z + 1));
+		return t && t->getMapData(O_FLOOR);
+	}
+	/// Does the sun (or moon) reach the floor of a tile through the terrain (figures left out)? Four
+	/// points of the floor are traced toward it through the game's own collision voxels (the tile's own
+	/// object left out); at least two must get out. A low sun reaches under a roof from the side (a
+	/// craft's open cabin, an overhang).
+	bool sunReachesFloor(const Position &p) const
+	{
+		const SkyLight &s = weather.sky();
+		if (!s.on || s.dir.y <= 0.02f) return false;
+		TileEngine *te = battle->getTileEngine();
+		if (!te) return false;
+		// map voxels: x east, y up, z south -> the engine's x east, y south, z up
+		glm::vec3 d(s.dir.x, s.dir.z, s.dir.y);
+		d /= std::max(std::max(std::fabs(d.x), std::fabs(d.y)), std::fabs(d.z)); // about a voxel a step
+		const float topZ = (float)(battle->getMapSizeZ() * 24);
+		int out = 0;
+		static const float off[4][2] = {{4.f, 4.f}, {12.f, 4.f}, {4.f, 12.f}, {12.f, 12.f}};
+		for (auto &o : off)
+		{
+			glm::vec3 q(p.x * 16.f + o[0], p.y * 16.f + o[1], p.z * 24.f + 3.f);
+			bool blocked = false;
+			for (int i = 0; i < 2000; ++i)
+			{
+				q += d;
+				if (q.z >= topZ) break;
+				Position vp((int)q.x, (int)q.y, (int)q.z);
+				VoxelType v = te->voxelCheck(vp, nullptr, true);
+				if (v == V_OUTOFBOUNDS) break;
+				// the tile's own furniture doesn't count: the trace starts just above the floor, which can be
+				// inside an object standing there (a craft's fittings), and that object doesn't hide the sky
+				if (v == V_OBJECT && vp.toTile() == p) continue;
+				if (v != V_EMPTY) { blocked = true; break; }
+			}
+			if (!blocked) ++out;
+		}
+		te->voxelCheckFlush();
+		return out >= 2;
+	}
+	/// Under a roof the sky can't reach: the soldiers' light stays a soft light of its own there. The
+	/// traces are kept until the sun moves or the terrain changes anywhere (see the chunk loop).
+	mutable std::unordered_map<int, bool> reachCache;
+	mutable glm::vec3 reachSun{0.f};
+	bool indoors(const Position &p) const
+	{
+		if (!roofed(p)) return false;
+		glm::vec3 sd = weather.sky().dir;
+		if (sd != reachSun) { reachCache.clear(); reachSun = sd; }
+		int key = (p.z * battle->getMapSizeY() + p.y) * battle->getMapSizeX() + p.x;
+		auto it = reachCache.find(key);
+		if (it != reachCache.end()) return it->second;
+		bool in = !sunReachesFloor(p);
+		reachCache[key] = in;
+		return in;
+	}
+	uint64_t sunKey() const
+	{
+		glm::vec3 d = weather.sky().dir;
+		return (uint64_t)(int)(d.x * 1000.f) * 1000003ull + (uint64_t)(int)(d.y * 1000.f) * 1009ull + (uint64_t)(int)(d.z * 1000.f);
+	}
+	int globalShade() const { return glm::clamp(battle->getGlobalShade() + shadeOffset, 0, 15); }
 	RoomLayout layout;
 	glm::vec3 viewer{0.f, 1.65f, 0.f};
 	Game *game = nullptr;
@@ -364,7 +450,7 @@ struct Board::Impl
 	uint32_t sample(const Surface *spr, uint32_t fallback, float px, float py);
 	const Proto &proto(const MapData *md);
 	void buildProto(const MapData *md, Proto &p);
-	uint64_t chunkHash(int cx, int cy, int z);
+	uint64_t chunkHash(int cx, int cy, int z, uint64_t *terrain = nullptr);
 	void buildChunk(int cx, int cy, int z, Chunk &ch);
 	void updateBattle(float dt);
 	void drawBattle(const Shader &sh);
@@ -410,7 +496,7 @@ void Board::Impl::bindBattle(SavedBattleGame *save)
 	mx = save->getMapSizeX();
 	my = save->getMapSizeY();
 	mz = save->getMapSizeZ();
-	weather.begin(game, save);
+	weather.begin(game, save, shadeOffset);
 	stopCache.assign((size_t)mx * my, 0.f);
 	openCache.assign((size_t)mx * my, 0);
 	stopTimer = 0.f;
@@ -629,10 +715,11 @@ const Proto &Board::Impl::proto(const MapData *md)
 	return p;
 }
 
-uint64_t Board::Impl::chunkHash(int cx, int cy, int z)
+uint64_t Board::Impl::chunkHash(int cx, int cy, int z, uint64_t *terrain)
 {
-	uint64_t h = 1469598103934665603ull;
+	uint64_t h = 1469598103934665603ull, th = 1469598103934665603ull;
 	auto mix = [&](uint64_t v) { h ^= v; h *= 1099511628211ull; };
+	auto mixT = [&](uint64_t v) { th ^= v; th *= 1099511628211ull; };
 	for (int y = cy * CHUNK; y < std::min(my, (cy + 1) * CHUNK); ++y)
 		for (int x = cx * CHUNK; x < std::min(mx, (cx + 1) * CHUNK); ++x)
 		{
@@ -643,9 +730,14 @@ uint64_t Board::Impl::chunkHash(int cx, int cy, int z)
 				mix((uint64_t)(uintptr_t)t->getMapData((TilePart)part));
 				mix(t->isDiscovered((TilePart)part));
 				mix(t->isUfoDoorOpen((TilePart)part));
+				mixT((uint64_t)(uintptr_t)t->getMapData((TilePart)part));
+				mixT(t->isUfoDoorOpen((TilePart)part));
 			}
-			mix((uint64_t)t->getShade());
+			mix((uint64_t)tileShade(t));
+			mix((uint64_t)(poolWarm(t) * 2.f));
+			mix(roofed(Position(x, y, z)) ? sunKey() : 0ull); // under a roof it depends on where the sun is
 		}
+	if (terrain) *terrain = th;
 	return h;
 }
 
@@ -744,7 +836,7 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 				if (z == 0 && fogX >= 0)
 				{
 					float u0 = fogX / (float)ATLAS, v0 = fogY / (float)ATLAS, u1 = (fogX + 16) / (float)ATLAS, v1 = (fogY + 16) / (float)ATLAS;
-					float sb = shadeFactor(t->getShade()); // as dark as the night around it
+					float sb = shadeFactor(tileShade(t)); // as dark as the night around it
 					md.addQuad(off + glm::vec3(0, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, 0), off + glm::vec3(0, 0.5f, 0), glm::vec4(sb, sb, sb, 1.f), MAT_BOARD, {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0});
 				}
 				// walls already seen from outside stay standing (the flat map shows them too)
@@ -754,15 +846,16 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 					if (!d || !t->isDiscovered(tp) || t->isUfoDoorOpen(tp)) continue;
 					const Proto &p = proto(d);
 					uint32_t base = (uint32_t)md.verts.size();
-					float b = shadeFactor(t->getShade());
+					float b = shadeFactor(tileShade(t));
 					for (const Vertex &v : p.verts) { Vertex w = v; w.pos += off; w.color = glm::vec4(b, b, b, 1.f); md.verts.push_back(w); }
 					for (uint32_t i : p.idx) md.indices.push_back(base + i);
 				}
 				continue;
 			}
 			// shade 0 (bright) .. 15 (dark), like the flat map
-			float b = shadeFactor(t->getShade());
-			glm::vec4 tint(b, b, b, 1.f);
+			float b = shadeFactor(tileShade(t));
+			// alpha: the share of warm light (fires, flares) in its own light, + 2 under a roof (shader mode 3)
+			glm::vec4 tint(b, b, b, poolWarm(t) + (indoors(Position(x, y, z)) ? 2.f : 0.f));
 			for (int part = 0; part < O_MAX; ++part)
 			{
 				TilePart tp = (TilePart)part;
@@ -1055,7 +1148,16 @@ void Board::Impl::updateBattle(float dt)
 			for (int cx = 0; cx < cxN; ++cx)
 			{
 				Chunk &ch = chunks[((size_t)z * cyN + cy) * cxN + cx];
-				uint64_t h = chunkHash(cx, cy, z);
+				uint64_t th = 0;
+				uint64_t h = chunkHash(cx, cy, z, &th);
+				// the sun-reach traces only depend on the terrain (and the sun, which clears them itself):
+				// something destroyed or a door opened anywhere can change them, so they are all redone
+				if (!ch.terrainKnown || th != ch.terrain)
+				{
+					if (ch.terrainKnown) reachCache.clear();
+					ch.terrain = th;
+					ch.terrainKnown = true;
+				}
 				if (h == ch.hash) continue;
 				if (ch.mesh && budget-- <= 0) continue;
 				if (hidden && ch.mesh) continue;
@@ -1125,7 +1227,7 @@ void Board::Impl::updateBattle(float dt)
 		for (const glm::vec3 &h : handPts) v.fade.push_back(glm::vec4(glm::vec3(inv * glm::vec4(h, 1.f)), 0.07f / k));
 		if (cursorSet && battle->getTile(cursorTile))
 			v.fade.push_back(glm::vec4((cursorTile.x + 0.5f) * TILE_W, cursorTile.z * TILE_H + 8.f, (cursorTile.y + 0.5f) * TILE_W, 1.4f * TILE_W));
-		v.light = shadeFactor(battle->getGlobalShade());
+		v.light = shadeFactor(globalShade());
 		v.stop = [this](int x, int y) { return (x < 0 || y < 0 || x >= mx || y >= my) ? 0.f : stopCache[(size_t)y * mx + x]; };
 		v.open = [this](int x, int y) { return x >= 0 && y >= 0 && x < mx && y < my && openCache[(size_t)y * mx + x] != 0; };
 		weather.update(dt, v);
@@ -1195,13 +1297,14 @@ void Board::Impl::drawUnits(const Shader &sh)
 	glm::mat4 M = boardMatrix();
 	glm::mat4 inv = glm::inverse(M);
 	glm::vec3 viewerVox = glm::vec3(inv * glm::vec4(viewer, 1.f));
+	glm::vec3 lightVox = glm::vec3(inv * glm::vec4(shadowLight, 1.f)); // where the shadow pass turned the standees
 	for (BattleUnit *u : *battle->getUnits())
 	{
 		auto it = cards.find(u);
 		if (it == cards.end() || !it->second.tex) continue;
 		if (u->isOut()) continue;
 		if (!(u->getFaction() == FACTION_PLAYER || u->getVisible() || battle->getDebugMode())) continue;
-		if (u->getPosition().z > viewLevel) continue;
+		if (u->getPosition().z > viewLevel && !shadowPass) continue;
 		const UnitCard &card = it->second;
 		glm::vec3 p = card.visInit ? card.vis : unitVoxelPos(u);
 		int size = u->getArmor()->getSize();
@@ -1227,13 +1330,44 @@ void Board::Impl::drawUnits(const Shader &sh)
 		sh.set("uMode", 3);
 		// lit by its tile, like the flat map draws units (dark at night unless a light is near)
 		float ub = 1.f;
-		if (Tile *ut = u->getTile()) ub = shadeFactor(ut->getShade());
+		float uw = 1.f;
+		bool under = false;
+		if (Tile *ut = u->getTile()) { ub = shadeFactor(tileShade(ut)); uw = poolWarm(ut); under = indoors(ut->getPosition()); }
 		sh.set("uTint", glm::vec4(ub, ub, ub, 1.f));
+		sh.set("uPoolWarm", uw);
+		sh.set("uPoolRoofed", under ? 1 : 0);
+		if (!shadowPass && hasShadowLight)
+		{
+			// the shadow map holds this card turned to the light: each point of the card you see takes its
+			// sun shadow from the matching point of that copy (same height, same distance from the middle),
+			// so the card never shades itself while walls and other figures still shade the parts they cover
+			glm::vec2 tl(lightVox.x - p.x, lightVox.z - p.z);
+			float faceL = std::atan2(tl.x, tl.y);
+			glm::mat4 mL = M * glm::translate(glm::mat4(1.f), p + glm::vec3(0, lift, 0))
+				* glm::rotate(glm::mat4(1.f), faceL, {0, 1, 0})
+				* glm::translate(glm::mat4(1.f), {0.f, card.anchorY - h * 0.5f, 0.f})
+				* glm::scale(glm::mat4(1.f), {w, h, 1.f});
+			glm::vec3 axis(m * glm::vec4(0.f, 0.f, 0.f, 1.f));
+			glm::vec3 rv = glm::normalize(glm::vec3(m * glm::vec4(1.f, 0.f, 0.f, 0.f)));
+			glm::vec3 rl = glm::normalize(glm::vec3(mL * glm::vec4(1.f, 0.f, 0.f, 0.f)));
+			glm::vec3 nl = glm::normalize(glm::vec3(mL * glm::vec4(0.f, 0.f, 1.f, 0.f)));
+			glm::vec3 up = glm::normalize(glm::vec3(m * glm::vec4(0.f, 1.f, 0.f, 0.f)));
+			if (glm::dot(nl, shadowLight - axis) < 0.f) nl = -nl;
+			sh.set("uFigShadow", 1);
+			sh.set("uFigAxis", axis);
+			sh.set("uFigRV", rv);
+			sh.set("uFigRL", rl);
+			sh.set("uFigNL", nl);
+			sh.set("uFigUp", up);
+		}
 		sh.set("uModel", m);
 		card.tex->bind(0);
 		quad.draw();
 	}
 	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uPoolWarm", 1.f);
+	sh.set("uPoolRoofed", 0);
+	sh.set("uFigShadow", 0);
 }
 
 void Board::Impl::buildHiddenText()
@@ -1374,13 +1508,16 @@ void Board::Impl::drawBattle(const Shader &sh)
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uModel", M);
 	atlas.tex.bind(0);
-	for (int z = 0; z <= std::min(viewLevel, mz - 1); ++z)
+	sh.set("uTerrain", 1);
+	// levels the view cuts away still cast shadows: roofs keep the sun (and clouds) out of the rooms below
+	for (int z = 0; z <= (shadowPass ? mz - 1 : std::min(viewLevel, mz - 1)); ++z)
 		for (int cy = 0; cy < cyN; ++cy)
 			for (int cx = 0; cx < cxN; ++cx)
 			{
 				const Chunk &ch = chunks[((size_t)z * cyN + cy) * cxN + cx];
 				if (ch.mesh && !ch.empty) ch.mesh->draw();
 			}
+	sh.set("uTerrain", 0);
 
 	drawUnits(sh);
 	sh.set("uGlowCount", 0);
@@ -1397,7 +1534,6 @@ void Board::Impl::drawBattle(const Shader &sh)
 		if (fc.mesh && !fc.empty) fc.mesh->draw();
 	glDisable(GL_BLEND);
 
-	weather.draw(sh, M);
 	drawEffects(sh, M);
 
 	drawHud(sh, M);
@@ -1860,6 +1996,7 @@ void Board::Impl::drawEffects(const Shader &sh, const glm::mat4 &M)
 		float k = glm::clamp(beamFade / (0.12f + 0.1f * projPower), 0.f, 1.f);
 		boxAlong(beamA, beamB, (0.35f + 0.7f * projPower) * k, glm::vec4(beamColor * 1.2f, k));
 	}
+	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
 	glDisable(GL_BLEND);
 	sh.set("uTint", glm::vec4(1.f));
@@ -1883,7 +2020,7 @@ const Board::Impl::Label &Board::Impl::label(const std::string &text, Uint8 colo
 	Mod *mod = game->getMod();
 	Font *big = mod->getFont("FONT_BIG", false), *small = mod->getFont("FONT_SMALL", false);
 	if (!big || !small) return l;
-	const int W = 128, H = 20;
+	const int W = 256, H = 20;
 	Text t(W, H, 0, 0);
 	SDL_Color sp[256];
 	for (int i = 0; i < 256; ++i) sp[i] = pal[i];
@@ -2563,7 +2700,7 @@ void Board::setShadowPass(bool on, const glm::vec3 &light)
 	// standees turn toward whoever looks at them: in the shadow pass that is the light, so they
 	// cast their full silhouette
 	static glm::vec3 saved;
-	if (on && !_p->shadowPass) { saved = _p->viewer; _p->viewer = light; }
+	if (on && !_p->shadowPass) { saved = _p->viewer; _p->viewer = light; _p->shadowLight = light; _p->hasShadowLight = true; }
 	else if (!on && _p->shadowPass) _p->viewer = saved;
 	_p->shadowPass = on;
 }
@@ -2638,22 +2775,70 @@ bool Board::sky(BoardSky &out) const
 	out.dir = glm::normalize(glm::vec3(M * glm::vec4(s.dir, 0.f)));
 	out.col = s.col;
 	out.sky = s.sky;
-	out.cloud = glm::vec4(s.cloud, 1.f / 150.f, s.cloudOffset.x, s.cloudOffset.y);
+	out.cloud = glm::vec4(s.cloud, 1.f / 70.f, s.cloudOffset.x, s.cloudOffset.y); // clouds 3-6 tiles across
+	out.cloud2 = glm::vec4(s.wind.x, s.wind.y, 4.f, 1.5f); // quarter-tile voxels, stretched 1.5 : 1 along the wind
 	out.mapInv = glm::inverse(M);
 	out.area = p.clipRect();
 	out.flash = s.flash;
+	out.mapShade = shadeFactor(p.globalShade());
+	out.moonFloor = s.moonFloor;
+	out.wet = s.wet;
+	out.boost = s.boost;
 	return true;
 }
 
 void Board::setHandPoints(const std::vector<glm::vec3> &pts) { _p->handPts = pts; }
 
-std::string Board::weatherStatus() const { return _p->hasBattle ? _p->weather.status() : "sky=-"; }
+std::string Board::weatherStatus() const
+{
+	if (!_p->hasBattle) return "sky=-";
+	return _p->weather.status() + (_p->skyMarkText.empty() ? "" : " mark=" + _p->skyMarkText);
+}
 
 void Board::forceWeather(const std::string &kind)
 {
 	Weather::force(kind);
-	if (_p->hasBattle && _p->battle) _p->weather.begin(_p->game, _p->battle);
+	if (_p->hasBattle && _p->battle) _p->weather.begin(_p->game, _p->battle, _p->shadeOffset);
 }
+
+void Board::rotateSun(float degrees)
+{
+	Impl &p = *_p;
+	float az = Weather::forcedSun() >= 0.f ? Weather::forcedSun() : p.weather.info().sunAz;
+	Weather::forceSun(std::fmod(az + degrees + 720.f, 360.f));
+	if (p.hasBattle && p.battle) p.weather.begin(p.game, p.battle, p.shadeOffset);
+}
+
+void Board::realSun()
+{
+	Weather::forceSun(-1.f);
+	if (_p->hasBattle && _p->battle) _p->weather.begin(_p->game, _p->battle, _p->shadeOffset);
+}
+
+void Board::setShadeOffset(int offset)
+{
+	Impl &p = *_p;
+	if (offset == p.shadeOffset) return;
+	p.shadeOffset = offset;
+	// the tiles' colours change: their chunks rebuild by their hash; the sky is worked out again
+	if (p.hasBattle && p.battle) p.weather.begin(p.game, p.battle, p.shadeOffset);
+}
+
+int Board::shadeOffset() const { return _p->shadeOffset; }
+
+void Board::shiftSkyClock(double days, bool reset)
+{
+	Weather::shiftClock(days, reset);
+	skyChanged();
+}
+
+void Board::skyChanged()
+{
+	Impl &p = *_p;
+	if (p.hasBattle && p.battle) p.weather.begin(p.game, p.battle, p.shadeOffset);
+}
+
+SkyInfo Board::skyInfo() const { return _p->hasBattle ? _p->weather.info() : SkyInfo(); }
 
 void Board::testStrike() { _p->weather.strike(); }
 
@@ -2671,7 +2856,164 @@ float Board::nightLevel() const
 	const Impl &p = *_p;
 	if (!p.hasBattle || !p.battle) return 0.f;
 	// the game's darkness runs 0 (day) .. 15; night missions sit around 10 and up
-	return glm::clamp((p.battle->getGlobalShade() - 2) / 8.f, 0.f, 1.f);
+	return glm::clamp((p.globalShade() - 2) / 8.f, 0.f, 1.f);
+}
+
+void Board::drawWeather(const Shader &sh) const
+{
+	const Impl &p = *_p;
+	if (!p.hasBattle || p.hasBase || p.shadowPass || !p.atlas.tex.valid()) return;
+	// after the room's solid parts (the back wall screens too): see-through things last
+	sh.set("uClip", p.clipRect());
+	p.weather.draw(sh, p.boardMatrix());
+	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
+	if (Options::vrDebugPanel) const_cast<Impl&>(p).drawSkyMarker(sh);
+}
+
+namespace
+{
+/// A thin bar from a to b (world), for the sky marker.
+void bar(MeshData &md, const glm::vec3 &a, const glm::vec3 &b, float t, const glm::vec4 &col)
+{
+	glm::vec3 ax = b - a;
+	float len = glm::length(ax);
+	if (len < 1e-5f) return;
+	ax /= len;
+	glm::vec3 p = std::fabs(ax.y) < 0.9f ? glm::normalize(glm::cross(ax, glm::vec3(0, 1, 0))) : glm::vec3(1, 0, 0);
+	glm::vec3 q = glm::cross(ax, p);
+	p *= t * 0.5f; q *= t * 0.5f;
+	glm::vec3 c[8] = {a - p - q, a + p - q, a + p + q, a - p + q, b - p - q, b + p - q, b + p + q, b - p + q};
+	static const int f[6][4] = {{0, 1, 2, 3}, {4, 7, 6, 5}, {0, 4, 5, 1}, {1, 5, 6, 2}, {2, 6, 7, 3}, {3, 7, 4, 0}};
+	for (auto &k : f) md.addQuad(c[k[0]], c[k[1]], c[k[2]], c[k[3]], col, 0.f);
+}
+
+/// A flat disc of little squares facing the eye: the sun (full) or the moon (lit part by its phase).
+void disc(MeshData &md, const glm::vec3 &at, const glm::vec3 &eye, float r, bool moon, float lit, bool waxing, const glm::vec4 &on, const glm::vec4 &off)
+{
+	glm::vec3 n = eye - at;
+	if (glm::length(n) < 1e-4f) return;
+	n = glm::normalize(n);
+	glm::vec3 right = glm::cross(glm::vec3(0, 1, 0), n);
+	right = glm::length(right) > 1e-3f ? glm::normalize(right) : glm::vec3(1, 0, 0);
+	glm::vec3 up = glm::cross(n, right);
+	const int N = 9;
+	float cell = 2.f * r / N;
+	for (int iy = 0; iy < N; ++iy)
+		for (int ix = 0; ix < N; ++ix)
+		{
+			float x = (ix + 0.5f) / N * 2.f - 1.f, y = (iy + 0.5f) / N * 2.f - 1.f;
+			if (x * x + y * y > 1.f) continue;
+			bool isOn = true;
+			if (moon)
+			{
+				float xt = (1.f - 2.f * lit) * std::sqrt(std::max(0.f, 1.f - y * y));
+				isOn = waxing ? x > xt : x < -xt;
+			}
+			glm::vec3 c = at + right * (x * r) + up * (y * r);
+			glm::vec3 h1 = right * (cell * 0.45f), h2 = up * (cell * 0.45f);
+			md.addQuad(c - h1 - h2, c + h1 - h2, c + h1 + h2, c - h1 + h2, isOn ? on : off, 0.f);
+		}
+}
+}
+
+/// Debug panel on: a compass ring on the table round the map, the sun and the moon where they really
+/// stand over the site (or under the horizon, shown on the ring with how far below), and the direction
+/// the table's light comes from. Lets the panel's sky clock and sun keys be seen to do something.
+void Board::Impl::drawSkyMarker(const Shader &sh)
+{
+	skyMarkText.clear();
+	SkyInfo I = weather.info();
+	if (!I.active || !I.outdoor) return;
+	glm::mat4 M = boardMatrix();
+	float k = tileSize / TILE_W;
+	glm::mat4 inv = glm::inverse(M);
+	// on the map's ground level, drawn over the terrain so it never hides behind walls
+	glm::vec3 C((mapRect.x + mapRect.z) * 0.5f, glm::vec3(M * glm::vec4(0.f, 2.f, 0.f, 1.f)).y, (mapRect.y + mapRect.w) * 0.5f);
+	float R = std::min(0.4f, std::min(mapRect.z - mapRect.x, mapRect.w - mapRect.y) * 0.45f);
+	// map directions (x east, z south) turned with the map
+	auto world = [&](const glm::vec3 &mapDir) { glm::vec3 w = glm::vec3(M * glm::vec4(mapDir, 0.f)); return glm::length(w) > 1e-6f ? glm::normalize(w) : w; };
+	auto skyDir = [&](float azDeg, float elDeg)
+	{
+		float a = glm::radians(azDeg), e = glm::radians(elDeg);
+		return world(glm::vec3(std::sin(a) * std::cos(e), std::sin(e), -std::cos(a) * std::cos(e)));
+	};
+	MeshData md;
+	const glm::vec4 ringCol(1.0f, 0.62f, 0.2f, 0.75f);
+	// horizon ring
+	const int SEG = 72;
+	for (int i = 0; i < SEG; ++i)
+	{
+		float a0 = i * 6.2831853f / SEG, a1 = (i + 1) * 6.2831853f / SEG;
+		bar(md, C + glm::vec3(std::cos(a0) * R, 0, std::sin(a0) * R), C + glm::vec3(std::cos(a1) * R, 0, std::sin(a1) * R), 0.0025f, ringCol);
+	}
+	struct Txt { glm::vec3 at; std::string s; Uint8 col; };
+	std::vector<Txt> texts;
+	const Uint8 yellow = (Uint8)(Palette::blockOffset(Pathfinding::yellow - 1) - 1), white = (Uint8)(Palette::blockOffset(0) + 1),
+		green = (Uint8)(Palette::blockOffset(Pathfinding::green - 1) - 1);
+	const char *cn[4] = {"N", "E", "S", "W"};
+	for (int i = 0; i < 4; ++i)
+	{
+		glm::vec3 d = skyDir(i * 90.f, 0.f);
+		bar(md, C + d * (R - 0.012f), C + d * (R + 0.012f), 0.004f, ringCol);
+		texts.push_back({C + d * (R - 0.035f), cn[i], i == 0 ? yellow : white});
+	}
+	auto body = [&](float az, float el, bool moon, const std::string &name)
+	{
+		// up: on its line from the middle, as high as it really is; below the horizon: dimmed, just
+		// outside the ring where it is (it rises or sets there), without the line
+		bool below = el < 0.f;
+		glm::vec3 P = below ? C + skyDir(az, 0.f) * (R + 0.03f) + glm::vec3(0, 0.02f, 0) : C + skyDir(az, el) * R;
+		glm::vec4 on = moon ? glm::vec4(0.9f, 0.93f, 1.f, below ? 0.45f : 1.f) : glm::vec4(1.6f, 1.25f, 0.4f, below ? 0.45f : 1.f);
+		glm::vec4 off = moon ? glm::vec4(0.12f, 0.13f, 0.18f, below ? 0.35f : 0.8f) : on;
+		if (!below) bar(md, C, P, 0.0018f, glm::vec4(glm::vec3(on), 0.55f));
+		disc(md, P, viewer, 0.018f, moon, I.moonIllum, I.moonWaxing, on, off);
+		char b[96];
+		int a = ((int)std::lround(az) % 360 + 360) % 360;
+		if (moon) snprintf(b, sizeof(b), "%s %d%% %s  %d %s  dir %d", name.c_str(), (int)(I.moonIllum * 100.f + 0.5f), I.moonWaxing ? "waxing" : "waning", (int)std::lround(std::fabs(el)), below ? "BELOW" : "up", a);
+		else snprintf(b, sizeof(b), "%s  %d %s  dir %d", name.c_str(), (int)std::lround(std::fabs(el)), below ? "BELOW" : "up", a);
+		texts.push_back({P + glm::vec3(0, 0.03f, 0), b, moon ? white : yellow});
+		skyMarkText += (skyMarkText.empty() ? "" : ",") + std::string(moon ? "moon" : "sun") + (below ? "-" : "+") + std::to_string((int)std::lround(std::fabs(el)));
+	};
+	if (I.realKnown) body(I.realAz, I.realElev, false, "SUN");
+	if (I.moonKnown) body(I.moonAz, I.moonAlt, true, "MOON");
+	// the table's own light: where the key light (sun or moon) shines from, at the height the darkness gives it
+	if (!I.starlit)
+	{
+		glm::vec3 L = skyDir(I.sunAz, I.sunElev);
+		glm::vec3 c = I.sunCol / std::max(0.01f, std::max(I.sunCol.r, std::max(I.sunCol.g, I.sunCol.b)));
+		bar(md, C, C + L * (R * 1.15f), 0.004f, glm::vec4(c * 1.4f, 0.9f));
+		char b[96];
+		snprintf(b, sizeof(b), "TABLE LIGHT  %d up  dir %d  (darkness %d)%s", (int)std::lround(I.sunElev), ((int)std::lround(I.sunAz) % 360 + 360) % 360, I.shade,
+			I.moonMirrored && I.sky.compare(0, 5, "night") == 0 ? "  MIRRORED MOON" : "");
+		texts.push_back({C + L * (R * 1.15f) + glm::vec3(0, 0.02f, 0), b, green});
+	}
+	else texts.push_back({C + glm::vec3(0, 0.03f, 0), "STARLIGHT ONLY  (darkness " + std::to_string(I.shade) + ")", green});
+	// the clock the sun and moon are worked out for
+	{
+		int lh = (int)I.localH, lm = (int)((I.localH - lh) * 60.f);
+		char b[96];
+		snprintf(b, sizeof(b), "%s  /  %02d:%02d LOCAL", I.skyClock.c_str(), lh, lm);
+		texts.push_back({C + skyDir(180.f, 0.f) * (R + 0.07f), b, I.skyShift != 0.0 ? yellow : white});
+	}
+	skyMarkMesh.upload(md, true);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDepthMask(GL_FALSE);
+	glDisable(GL_DEPTH_TEST);
+	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
+	sh.set("uModel", glm::mat4(1.f));
+	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uMode", 2);
+	skyMarkMesh.draw();
+	glm::vec3 viewerVox = glm::vec3(inv * glm::vec4(viewer, 1.f));
+	for (const Txt &t : texts)
+	{
+		const Label &l = label(t.s, t.col);
+		drawLabel(sh, M, glm::vec3(inv * glm::vec4(t.at, 1.f)), viewerVox, l, 0.0026f / k);
+	}
+	glDepthMask(GL_TRUE);
+	glDisable(GL_BLEND);
+	sh.set("uTint", glm::vec4(1.f));
 }
 
 void Board::draw(const Shader &sh, const glm::mat4 &, const glm::vec3 &eye, double)

@@ -88,8 +88,22 @@ uniform vec4 uSunKey;        // outdoor battle: xyz world direction towards the 
 uniform vec3 uSunKeyCol;     // map (and what is over it) instead of light 0, and casts the shadows
 uniform vec4 uSunArea;       // the map on the table (world xz rect): where the sun shines
 uniform vec3 uSunKeySky;     // the sky's light over the map
+uniform float uMapShade;     // outdoor battle: how bright the map's darkness leaves an unlit tile (the game's shade
+uniform vec3 uLampCol;       // as a factor); tiles brighter than that carry the game's own light, lit in this colour
+uniform float uMoonFloor;    // moonlit night: the unlit ground shows at least this bright under the moon
 uniform float uFlash;        // lightning (0..1): lights the map's surfaces from their own colour, however dark the night
-uniform vec4 uCloud;         // cloud shadows: strength, scale per map voxel, drift (map voxels)
+uniform vec3 uPoolSkyCol;     // soldiers' own light under the sun or moon: the sky light's colour
+uniform float uPoolWarm;
+uniform int uPoolRoofed;
+uniform int uFigShadow;        // a standee is drawn: its sun shadow comes from its light-facing copy...
+uniform vec3 uFigAxis, uFigRV, uFigRL, uFigNL, uFigUp; // ...(card middle, your card's across, the copy's across and facing, up)      // this draw (a figure) stands under a roof: the sky can't light its tile
+uniform vec3 uPoolFillCol;    // ...and the sky's fill there
+uniform float uPoolSunY;      // how high the sun or moon stands (sine, at least 0.2): flat ground gets the full light      // this draw's share of warm light (fires, flares) in the game's own light (x vertex alpha)
+uniform vec4 uCloud;
+uniform vec4 uCloud2;
+uniform int uTerrain;        // the map's terrain is being drawn: matte under the sun and moon (no shine)...
+uniform float uWet;
+uniform float uSunBoost;     // the battle map's sunlit part: how much brighter than the game's darkness          // ...unless it is raining: wet ground glistens a little        // cloud wind direction (map xz), voxel size, stretch along the wind         // cloud shadows: strength, scale per map voxel, drift (map voxels)
 uniform mat4 uMapInv;        // world -> battle map voxels
 uniform int uFadeCount;      // mode 6 (mist): it parts around these (world xyz, radius)
 uniform vec4 uFade[3];
@@ -114,10 +128,10 @@ float gridLine(float x, float period, float width)
 	return 1.0 - smoothstep(0.0, width, d);
 }
 
-float shadowFactor(vec3 n)
+float shadowAt(vec3 pos, vec3 n)
 {
 	if (uShadowOn == 0) return 1.0;
-	vec4 p = uShadowVP * vec4(vWorld + n * 0.006, 1.0);
+	vec4 p = uShadowVP * vec4(pos + n * 0.006, 1.0);
 	vec3 q = p.xyz / p.w * 0.5 + 0.5;
 	if (q.x <= 0.0 || q.x >= 1.0 || q.y <= 0.0 || q.y >= 1.0 || q.z >= 1.0) return 1.0;
 	float lit = 0.0;
@@ -131,6 +145,7 @@ float shadowFactor(vec3 n)
 }
 
 bool gNoSun = false;         // the holo glass around the map keeps the room's light (no sun glare on it)
+bool gMap = false;           // a surface of the battle map: under the sun the room's lights stay off it
 
 /// How much of a point is under the battle's sun: over the map, up to about head height above it.
 float sunMask()
@@ -140,6 +155,64 @@ float sunMask()
 	float h = vWorld.y - uTableY;
 	return (1.0 - smoothstep(0.0, 0.03, length(q))) * smoothstep(-0.12, -0.08, h) * (1.0 - smoothstep(0.6, 0.8, h));
 }
+
+/// Cloud shadows drifting over the battle map: 1 in the clear, less under a cloud.
+// cloud shadows: a layer of voxel clouds (quarter-tile blocks) drifting with the wind, lumpy and
+// clustered, stretched along the wind, their shadow cast along the sun onto the ground, walls and roofs.
+// 0 in the open, uCloud.x right under a cloud.
+float gCov = -1.0;   // this fragment's cover, worked out once
+float gShN = -1.0;
+float shadowFactor(vec3 n) { return shadowAt(vWorld, n); }   // this fragment's sun shadow (0 blocked .. 1 in the sun), worked out once
+float gBoost = 1.0;  // the battle map's sunlit part: how much brighter than the game's darkness (glow)
+float cloudCover()
+{
+	if (gCov >= 0.0) return gCov;
+	gCov = 0.0;
+	if (uCloud.x <= 0.0) return 0.0;
+	vec3 mp = (uMapInv * vec4(vWorld, 1.0)).xyz;
+	vec3 L = (uMapInv * vec4(uSunKey.xyz, 0.0)).xyz;
+	L /= max(length(L), 1e-5);
+	// along the sun up to the cloud layer, about 12 tiles over the ground
+	vec2 xz = mp.xz + L.xz * ((200.0 - mp.y) / max(L.y, 0.12));
+	// the cloud's own voxel grid, moving with it
+	vec2 c = xz - uCloud.zw;
+	float vs = uCloud2.z;
+	c = (floor(c / vs) + 0.5) * vs;
+	// into the wind's frame, stretched along it
+	vec2 w = uCloud2.xy;
+	vec2 q = vec2(dot(c, w) / uCloud2.w, dot(c, vec2(-w.y, w.x))) * uCloud.y;
+	// billowing outlines: the noise warped by itself
+	vec2 warp = vec2(noise(q * 0.8 + vec2(3.1, 7.7)), noise(q * 0.8 + vec2(11.3, 1.9))) - 0.5;
+	q += warp * 1.1;
+	float v = 0.0, a = 0.5;
+	for (int i = 0; i < 4; ++i) { v += a * noise(q); q = q * 2.07 + vec2(1.7, 9.2); a *= 0.5; }
+	v /= 0.9375;
+	// clusters: some stretches of sky crowded, others clear
+	float clump = noise(c * uCloud.y * 0.3 + vec2(5.0, 2.0));
+	float thr = 0.50 + 0.14 * (0.5 - clump);
+	gCov = uCloud.x * step(thr, v);
+	return gCov;
+}
+float cloudAt() { return 1.0 - cloudCover(); }
+float sunShadow(vec3 n)
+{
+	if (gShN < 0.0)
+	{
+		float f;
+		if (uFigShadow == 1)
+		{
+			// a standee: ask from the matching point of its light-facing copy in the shadow map
+			vec3 d = vWorld - uFigAxis;
+			f = shadowAt(uFigAxis + uFigRL * dot(d, uFigRV) + uFigUp * dot(d, uFigUp), uFigNL);
+		}
+		else f = shadowFactor(n);
+		gShN = clamp((f - 0.25) / 0.75, 0.0, 1.0);
+	}
+	return gShN;
+}
+/// How open to the sun a point is: 0 in the shade of a wall, a figure or a roof, about 0.1 under a
+/// cloud, 1 in the sun. Clouds only count where the sun reaches, so they never show indoors.
+float sunOpen(vec3 n) { return sunShadow(n) * clamp(1.0 - cloudCover() / 0.75, 0.0, 1.0); }
 
 vec3 lighting(vec3 base, vec3 n, float spec, float rough)
 {
@@ -159,6 +232,7 @@ vec3 lighting(vec3 base, vec3 n, float spec, float rough)
 		float s = pow(max(dot(n, h), 0.0), mix(80.0, 8.0, rough)) * spec;
 		vec3 c = (base * ndl + s) * uLightCol[i] / d2;
 		if (i == 0) c *= (uSunKey.w > 0.5) ? (1.0 - sunK) : shadowFactor(n);
+		else if (gMap) c *= 1.0 - sunK;
 		col += c;
 	}
 	if (sunK > 0.0)
@@ -168,15 +242,12 @@ vec3 lighting(vec3 base, vec3 n, float spec, float rough)
 		float ndl = max(dot(n, L), 0.0);
 		vec3 hv = normalize(L + v);
 		float s = pow(max(dot(n, hv), 0.0), mix(80.0, 8.0, rough)) * spec;
-		float cl = 1.0;
-		if (uCloud.x > 0.0)
-		{
-			vec2 mp = (uMapInv * vec4(vWorld, 1.0)).xz;
-			cl = 1.0 - uCloud.x * smoothstep(0.42, 0.62, fbm((mp - uCloud.zw) * uCloud.y));
-		}
-		// shadows from the sun are deeper than the room light's
-		float sh = mix(0.08, 1.0, (shadowFactor(n) - 0.25) / 0.75);
-		col += sunK * ((base * ndl + s) * uSunKeyCol * sh * cl + base * uSunKeySky * (0.6 + 0.4 * n.y));
+		// under a cloud the sun is mostly gone and the sky's light a little dimmer
+		// shadows from the sun are deeper than the room light's; in any shade (a wall, a figure, a roof,
+		// a cloud) the sky's light is dimmer too
+		float sh = mix(0.08, 1.0, sunShadow(n));
+		float open = sunOpen(n);
+		col += sunK * ((base * ndl + s) * uSunKeyCol * sh * (1.0 - cloudCover()) * gBoost + base * uSunKeySky * (0.6 + 0.4 * n.y) * mix(0.7, 1.0, open));
 	}
 	// the holo table lights from below: undersides of hands and figures, fading with height
 	float h = vWorld.y - uTableY;
@@ -317,7 +388,48 @@ void main()
 			glow += uGlowCol[i] * f * f * (0.35 + 0.65 * max(dot(n, L / max(d, 1e-4)), 0.0));
 		}
 		// lightning: a flash shows the map in its own colours for a moment (only what is on the table already)
-		if (uFlash > 0.0) glow += vec3(0.75, 0.82, 1.0) * uFlash * 0.55 * (0.55 + 0.45 * max(n.y, 0.0)) * sunMask();
+		gMap = true;
+		float sk = sunMask();
+		if (uFlash > 0.0) glow += vec3(0.75, 0.82, 1.0) * uFlash * 0.55 * (0.55 + 0.45 * max(n.y, 0.0)) * sk;
+		if (sk > 0.5 && uMapShade > 0.0)
+		{
+			// under the sun or moon a tile's brightness has two parts: the darkness around it, lit by the
+			// sun or moon and the sky (with shadows), and the game's own light where the tile is brighter
+			// than that (soldiers' light, flares, fires), lit by a lamp of its own
+			float b = max(dot(vColor.rgb * uTint.rgb, vec3(1.0 / 3.0)), 1e-4);
+			vec3 albedo = base / b;
+			// a moonlit night shows the unlit ground faintly; a cloud passing over the moon swallows it
+			// (the moonlit floor is shaded by roofs, walls and clouds like the moonlight itself)
+			float amb = max(min(b, uMapShade), uMoonFloor > 0.0 ? uMoonFloor * sunShadow(n) * cloudAt() : 0.0), loc = max(b - uMapShade, 0.0);
+			// the game's own light on this tile: fires, flares and lit items (warm, a lamp of their own), the
+			// rest is the soldiers' light. In the open that is the sky's light itself, as strong as the game
+			// makes the tile (so it has the sun's or moon's shadows); under a roof it stays a soft light
+			float va = vColor.a;
+			bool roofed = va > 1.5 || uPoolRoofed == 1;
+			float warm = clamp((va > 1.5 ? va - 2.0 : va) * uPoolWarm, 0.0, 1.0);
+			float locSky = loc * (1.0 - warm), locWarm = loc * warm;
+			vec3 skyLit = vec3(0.0);
+			if (!roofed)
+			{
+				// the sun or moon itself, with its shadows: flat ground in full light, faces turned to it a
+				// little more; figures (flat cards for round bodies) catch it from most sides
+				vec3 L = normalize(uSunKey.xyz);
+				float d = dot(n, L);
+				float dirK = uTerrain == 1 ? min(max(d, 0.0) / uPoolSunY, 1.6) : 0.55 + 0.45 * clamp(d * 2.0, 0.0, 1.0);
+				float shK = mix(0.08, 1.0, sunShadow(n)) * cloudAt();
+				skyLit = albedo * locSky * (uPoolSkyCol * dirK * shK * 0.85 + uPoolFillCol * mix(0.45, 1.0, sunOpen(n)));
+				locSky = 0.0;
+			}
+			vec3 bAmb = albedo * amb;
+			// the sunlit part glows brighter than the game's darkness (golden hour, sunset); the shade keeps it
+			gBoost = uSunBoost;
+			// terrain is matte (grass, dirt, stone don't mirror the sun) except wet in the rain; figures keep their sheen
+			vec3 lit = uTerrain == 1 ? lighting(bAmb, n, 0.12 * k * uWet, 0.35) : lighting(bAmb, n, 0.1 * k, 0.8);
+			// in any shade the base light is dimmer and cooler, so shadows read deep on busy ground
+			vec3 c = lit + bAmb * 0.22 * mix(vec3(0.42, 0.46, 0.56), vec3(1.0), sunOpen(n)) + albedo * (locSky * uPoolSkyCol + locWarm * uLampCol) * (0.8 + 0.2 * max(n.y, 0.0)) + skyLit;
+			fragColor = vec4(c + t.rgb * glow, 1.0);
+			return;
+		}
 		fragColor = vec4(lighting(base, n, 0.1 * k, 0.8) + base * 0.22 + t.rgb * glow, 1.0);
 		return;
 	}

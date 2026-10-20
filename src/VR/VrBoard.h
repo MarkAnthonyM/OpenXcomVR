@@ -6,6 +6,7 @@
  */
 #include "VrGL.h"
 #include "VrHands.h"
+#include "VrWeather.h"
 #include <memory>
 #include <functional>
 #include <string>
@@ -32,9 +33,14 @@ struct BoardSky
 	glm::vec3 col{1.f};             // its light
 	glm::vec3 sky{0.f};             // the sky's light
 	glm::vec4 cloud{0.f};           // cloud shadows: strength, scale (per map voxel), drift (map voxels)
+	glm::vec4 cloud2{1.f, 0.f, 4.f, 1.5f}; // their wind direction (map xz), voxel size (map voxels), stretch along the wind
 	glm::mat4 mapInv{1.f};          // world -> map voxels
 	glm::vec4 area{0.f};            // the map on the table (world xz rect)
 	float flash = 0.f;              // lightning
+	float mapShade = 0.f;           // the map's darkness as a brightness factor (tiles brighter carry the game's own light)
+	float moonFloor = 0.f;          // moonlit night: the unlit ground shows at least this bright under the moon
+	float wet = 0.f;                // rain: the ground glistens
+	float boost = 1.f;              // the map's sunlit part: how much brighter than the game's darkness
 };
 
 struct BoardHit
@@ -69,6 +75,9 @@ public:
 	/// Rebuilds geometry when the game state changed. Needs the GL context.
 	void update(Game *game, float dt);
 	void draw(const Shader &sh, const glm::mat4 &viewProj, const glm::vec3 &eye, double time);
+	/// Rain, snow and mist over an outdoor battle (and the debug panel's sky marker): see-through, drawn after
+	/// the room's solid parts.
+	void drawWeather(const Shader &sh) const;
 	bool raycast(const glm::vec3 &o, const glm::vec3 &d, BoardHit &hit) const;
 	/// Table area (world xz rect: xmin, zmin, xmax, zmax) the battle map is shown in.
 	void setMapRect(const glm::vec4 &rect);
@@ -128,6 +137,17 @@ public:
 	void forceWeather(const std::string &kind);
 	void testStrike();
 	void testShade(int shade);
+	/// The left-wrist debug panel: turn the sun (degrees, then it stays set by hand) or give it back
+	/// to the real sun; darken or lighten the table's map (the game's own darkness is unchanged).
+	void rotateSun(float degrees);
+	void realSun();
+	void setShadeOffset(int offset);
+	/// vrVanillaSky changed: the sky is worked out again (vanilla: the pre-0.13 table).
+	void skyChanged();
+	/// The debug panel's sky clock: move the time the sun and moon are worked out for (days; reset = the game's).
+	void shiftSkyClock(double days, bool reset = false);
+	int shadeOffset() const;
+	SkyInfo skyInfo() const;
 	/// The geoscape dome as a sphere (world centre, radius); false when no globe is shown.
 	bool globeSphere(glm::vec3 &center, float &radius) const;
 	bool canGrab(const glm::vec3 &handWorld) const;

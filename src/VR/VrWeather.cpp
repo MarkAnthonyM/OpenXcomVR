@@ -14,10 +14,14 @@
 #include "../Savegame/MissionSite.h"
 #include "../Savegame/AlienBase.h"
 #include "../Mod/MapDataSet.h"
+#include "../Mod/Mod.h"
+#include "../Mod/AlienDeployment.h"
+#include "../Mod/RuleUfo.h"
 #include <SDL_mixer.h>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <sstream>
 
@@ -31,7 +35,58 @@ namespace
 const float TILE_W = 16.f;
 const float PI = 3.14159265f;
 std::string forced = "auto";
+std::string fmt2(const char *f, double a) { char b[96]; snprintf(b, sizeof(b), f, a); return b; }
+int forcedStrength = -1;                  // rain/snow strength when forced (0 light, 1 steady, 2 heavy; -1 rolled)
+const char *STRENGTH_NAME[2][3] = {{"drizzle", "steady rain", "thunderstorm"}, {"flurries", "steady snow", "blizzard"}};
 float forcedAz = -1.f;
+int clockDay = -1, clockHour = 0, clockMinute = 0;
+double skyShift = 0.0;                    // the debug panel's sky clock shift (days)
+
+/// The calendar date and hour of a day count since J2000.0.
+void dateOf(double days, int &y, int &mo, int &d, double &hours)
+{
+	double jd = days + 2451545.0 + 0.5;
+	long z = (long)std::floor(jd);
+	double f = jd - z;
+	long a = z;
+	if (z >= 2299161) { long al = (long)((z - 1867216.25) / 36524.25); a = z + 1 + al - al / 4; }
+	long b = a + 1524, c = (long)((b - 122.1) / 365.25), dd = (long)(365.25 * c), e = (long)((b - dd) / 30.6001);
+	d = (int)(b - dd - (long)(30.6001 * e));
+	mo = (int)(e < 14 ? e - 1 : e - 13);
+	y = (int)(mo > 2 ? c - 4716 : c - 4715);
+	hours = f * 24.0;
+}
+
+/// Days since J2000.0 (2000-01-01 12:00 UT).
+double daysJ2000(int y, int mo, int d, double hours)
+{
+	int a = (14 - mo) / 12, yy = y + 4800 - a, mm = mo + 12 * a - 3;
+	long jdn = d + (153 * mm + 2) / 5 + 365L * yy + yy / 4 - yy / 100 + yy / 400 - 32045;
+	return jdn + (hours - 12.0) / 24.0 - 2451545.0;
+}
+
+/// The moon over a place (low-precision orbit, good to a degree or two): altitude and azimuth (degrees,
+/// azimuth from north clockwise), the lit fraction of its disc and whether it is waxing.
+void moonAt(double days, double latDeg, double lonEastDeg, float &alt, float &az, float &illum, bool &waxing)
+{
+	const double R = 3.14159265358979 / 180.0;
+	double L = 218.316 + 13.176396 * days, M = 134.963 + 13.064993 * days, F = 93.272 + 13.229350 * days;
+	double lam = (L + 6.289 * std::sin(M * R)) * R, beta = 5.128 * std::sin(F * R) * R;
+	double g = 357.529 + 0.98560028 * days, q = 280.459 + 0.98564736 * days;
+	double lamS = (q + 1.915 * std::sin(g * R) + 0.020 * std::sin(2 * g * R)) * R;
+	double eps = (23.439 - 0.0000004 * days) * R;
+	double ra = std::atan2(std::sin(lam) * std::cos(eps) - std::tan(beta) * std::sin(eps), std::cos(lam));
+	double dec = std::asin(std::sin(beta) * std::cos(eps) + std::cos(beta) * std::sin(eps) * std::sin(lam));
+	double gmst = (280.46061837 + 360.98564736629 * days) * R;
+	double ha = gmst + lonEastDeg * R - ra;
+	double la = latDeg * R;
+	alt = (float)(std::asin(std::sin(la) * std::sin(dec) + std::cos(la) * std::cos(dec) * std::cos(ha)) / R);
+	double a = std::atan2(-std::cos(dec) * std::sin(ha), std::sin(dec) * std::cos(la) - std::cos(dec) * std::cos(ha) * std::sin(la)) / R;
+	az = (float)std::fmod(a + 360.0, 360.0);
+	double el = lam - lamS;
+	illum = (float)((1.0 - std::cos(el)) * 0.5);
+	waxing = std::sin(el) > 0.0;
+}
 
 enum Kind { NONE, RAIN, SNOW, DUST, SAND };
 const char *kindName(int k)
@@ -78,11 +133,23 @@ bool missionSite(SavedGame *sg, double &lon, double &lat)
 }
 
 /// The sun by the game's darkness (0..11): how high (degrees) and what colour.
-const float SUN_ELEV[12] = {62, 57, 51, 46, 40, 35, 30, 25, 20, 17, 14, 12};
+// how high the table's sun stands: kept below a seated player's line of sight (about 25-35 degrees down
+// onto the table) for most of the day, so shadows reach out past what casts them from any seat
+const float SUN_ELEV[12] = {50, 47, 44, 40, 35, 32, 29, 26, 23, 20, 17, 15};
+// the evening sun: a warm late-morning white, a rich gold, then deep orange going red-orange at the end
 const glm::vec3 SUN_COL[12] = {
-	{1.00f, 0.97f, 0.92f}, {1.00f, 0.96f, 0.89f}, {1.00f, 0.94f, 0.85f}, {1.00f, 0.91f, 0.78f}, // high white
-	{1.00f, 0.86f, 0.66f}, {1.00f, 0.80f, 0.56f}, {1.00f, 0.74f, 0.48f}, {1.00f, 0.68f, 0.42f}, {1.00f, 0.62f, 0.36f}, // low gold
-	{1.00f, 0.55f, 0.30f}, {1.00f, 0.49f, 0.26f}, {0.96f, 0.43f, 0.23f}}; // deep orange
+	{1.00f, 0.95f, 0.86f}, {1.00f, 0.93f, 0.82f}, {1.00f, 0.91f, 0.77f}, {1.00f, 0.87f, 0.70f}, // warm day
+	{1.00f, 0.80f, 0.42f}, {1.00f, 0.75f, 0.33f}, {1.00f, 0.70f, 0.26f}, {1.00f, 0.64f, 0.20f}, {1.00f, 0.57f, 0.15f}, // deep gold
+	{1.00f, 0.46f, 0.19f}, {1.00f, 0.38f, 0.15f}, {1.00f, 0.30f, 0.12f}}; // orange to red-orange
+// the morning sun from darkness 4 on: paler and pinker than the evening's
+const glm::vec3 DAWN_COL[12] = {
+	{1.00f, 0.95f, 0.86f}, {1.00f, 0.93f, 0.82f}, {1.00f, 0.91f, 0.77f}, {1.00f, 0.87f, 0.72f},
+	{1.00f, 0.84f, 0.68f}, {1.00f, 0.79f, 0.64f}, {1.00f, 0.74f, 0.61f}, {1.00f, 0.69f, 0.59f}, {1.00f, 0.64f, 0.58f},
+	{1.00f, 0.59f, 0.57f}, {1.00f, 0.54f, 0.56f}, {0.98f, 0.49f, 0.55f}};
+// the sky's fill light (what lights the shadows): a clear blue day, a cool blue-violet dusk and a
+// lighter lavender dawn, so the warm sunlit faces stand out against cool shadows
+const glm::vec3 DAY_FILL(0.16f, 0.19f, 0.24f), DUSK_FILL(0.085f, 0.085f, 0.175f), DAWN_FILL(0.11f, 0.10f, 0.18f);
+glm::vec3 sunColour(int shade, bool morning) { shade = glm::clamp(shade, 0, 11); return morning ? DAWN_COL[shade] : SUN_COL[shade]; }
 
 /// How much the game's darkness dims a tile (as the board's shadeFactor).
 float shadeLight(int shade)
@@ -154,10 +221,12 @@ struct Weather::Impl
 	bool mars = false;
 	std::string terrain = "-";
 	std::string skyName = "indoor";
+	bool night = false;
 	float sunAz = 0.f, sunElev = 0.f;   // degrees (azimuth from north, clockwise)
 	SkyLight sky;
 	glm::vec2 wind{1.f, 0.f};           // xz direction (map), unit
 	float windSpeed = 20.f;             // voxels/s
+	float cloudSpeed = 16.f;            // cloud shadows' drift (map voxels/s), before gusts
 	Rng rng;
 	double time = 0.0;
 
@@ -168,6 +237,17 @@ struct Weather::Impl
 	int pulses = 0;
 	float thunderIn = -1.f, thunderVol = 1.f;
 	int strikes = 0;
+	int lightning = 0;                  // 0 none, 1 now and then far off, 2 often, near and far
+	float flashAmp = 1.f;               // this strike's brightness (near 1, far dim)
+	bool lastNear = false;
+	int strength = 1;                   // rain/snow: 0 light, 1 steady, 2 heavy
+	bool haze = false;                  // a blizzard's pale haze (drawn like the mist)
+	float gustPhase = 0.f;
+	float gust() const                  // steady and heavy rain/snow rise and ease over a minute or so
+	{
+		if ((kind != RAIN && kind != SNOW) || strength == 0) return 1.f;
+		return 1.f + 0.3f * (float)std::sin(time * 6.2832 / 55.0 + gustPhase) + 0.1f * (float)std::sin(time * 6.2832 / 17.0 + gustPhase * 2.0);
+	}
 
 	struct Drop { glm::vec3 p; float speed, size, phase, life, maxLife; };
 	std::vector<Drop> drops;
@@ -189,6 +269,9 @@ struct Weather::Impl
 	glm::vec3 mistCol{0.5f};
 	float mistAlpha = 0.f;
 	std::vector<glm::vec4> fade;
+	SkyInfo info;
+
+	glm::vec3 baseCol{0.f};             // the sun's or moon's light
 
 	void respawnFalling(Drop &d, const WeatherView &v, bool anywhere);
 	void respawnDust(Drop &d, const WeatherView &v);
@@ -208,9 +291,12 @@ struct Weather::Impl
 		pulses = 1 + (int)(rng.f() * 3.f);
 		pulse[0] = 0.f;
 		for (int i = 1; i < pulses; ++i) pulse[i] = pulse[i - 1] + rng.r(0.08f, 0.22f);
-		thunderIn = rng.r(0.4f, 2.6f);
-		thunderVol = glm::clamp(1.15f - thunderIn / 3.f, 0.3f, 1.f);
-		nextStrike = rng.r(10.f, 30.f);
+		// near or far: a thunderstorm half the time near, steady rain only far
+		bool nearStrike = lightning == 2 && rng.f() < 0.5f;
+		if (nearStrike) { flashAmp = 1.f; thunderIn = rng.r(0.15f, 0.7f); thunderVol = 1.f; }
+		else { flashAmp = rng.r(0.28f, 0.45f); thunderIn = rng.r(2.f, 5.f); thunderVol = rng.r(0.3f, 0.45f); }
+		nextStrike = lightning == 2 ? rng.r(4.f, 10.f) : rng.r(15.f, 35.f);
+		lastNear = nearStrike;
 		++strikes;
 	}
 };
@@ -218,8 +304,28 @@ struct Weather::Impl
 Weather::Weather() : _p(new Impl()) {}
 Weather::~Weather() = default;
 
-void Weather::force(const std::string &kind) { forced = kind; }
+void Weather::force(const std::string &kind)
+{
+	// rain and snow come at steady strength when forced; forcing the same again steps through the
+	// strengths (drizzle / steady / thunderstorm, flurries / steady / blizzard); "rain:2" picks one
+	std::string k = kind;
+	int want = -1;
+	size_t c = k.find(':');
+	if (c != std::string::npos) { want = std::atoi(k.c_str() + c + 1) % 3; k = k.substr(0, c); }
+	bool fall = k == "rain" || k == "snow";
+	if (!fall) forcedStrength = -1;
+	else if (want >= 0) forcedStrength = want;
+	else if (forced == k && forcedStrength >= 0) forcedStrength = (forcedStrength + 1) % 3;
+	else forcedStrength = 1;
+	forced = k;
+}
+int Weather::forcedWeatherStrength() { return forcedStrength; }
+std::string Weather::forcedWeather() { return forced; }
+float Weather::forcedSun() { return forcedAz; }
 void Weather::forceSun(float azimuth) { forcedAz = azimuth; }
+void Weather::forceClock(int day, int hour, int minute) { clockDay = day; clockHour = hour; clockMinute = minute; }
+void Weather::shiftClock(double days, bool reset) { skyShift = reset ? 0.0 : skyShift + days; }
+double Weather::clockShift() { return skyShift; }
 
 const SkyLight &Weather::sky() const { return _p->sky; }
 
@@ -237,10 +343,11 @@ void Weather::end()
 	p.dirty = false;
 }
 
-void Weather::begin(Game *game, SavedBattleGame *battle)
+void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 {
 	end();
 	Impl &p = *_p;
+	p.info = SkyInfo();
 	if (!game || !battle) return;
 	p.active = true;
 	p.mx = battle->getMapSizeX();
@@ -248,7 +355,14 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 	p.openMask.assign((size_t)p.mx * p.my, 0u);
 	p.maskTimer = 0.f;
 	SavedGame *sg = game->getSavedGame();
-	int shade = glm::clamp(battle->getGlobalShade(), 0, 15);
+	int gameShade = glm::clamp(battle->getGlobalShade(), 0, 15);
+	int shade = glm::clamp(gameShade + shadeOffset, 0, 15);
+	SkyInfo &I = p.info;
+	I.active = true;
+	I.mission = battle->getMissionType();
+	I.shadeGame = gameShade;
+	I.shade = shade;
+	I.forced = forced;
 
 	// what the map is made of
 	bool indoor = battle->getMissionType() == "STR_BASE_DEFENSE";
@@ -270,11 +384,43 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 		}
 	p.terrain = p.mars ? "mars" : snowy ? "snowy" : desert ? "desert" : rainy ? "rainy" : "other";
 	p.outdoor = !indoor;
+	I.sets = sets;
+	I.outdoor = !indoor;
+	I.terrain = p.mars ? "Mars" : snowy ? "polar / mountain" : desert ? "desert" : rainy ? "jungle / forest / farm / city" : "other";
+	// where the game's darkness came from: the mission's own rule, or the globe at the site
+	{
+		const AlienDeployment *dep = nullptr;
+		Mod *mod = game->getMod();
+		if (sg)
+		{
+			for (MissionSite *m : *sg->getMissionSites()) if (m->isInBattlescape()) dep = m->getDeployment();
+			for (AlienBase *b : *sg->getAlienBases()) if (!dep && b->isInBattlescape()) dep = b->getDeployment();
+			for (Ufo *u : *sg->getUfos()) if (!dep && u->isInBattlescape()) dep = mod->getDeployment(u->getRules()->getType(), false);
+		}
+		if (!dep) dep = mod->getDeployment(battle->getMissionType(), false);
+		I.shadeFrom = "the globe at the site";
+		if (dep && dep->getShade() != -1) I.shadeFrom = "the mission (always " + std::to_string(dep->getShade()) + ")";
+		else if (dep && dep->getMinShade() != -1 && gameShade == dep->getMinShade()) I.shadeFrom = "the mission (at least " + std::to_string(dep->getMinShade()) + ")";
+		else if (dep && dep->getMaxShade() != -1 && gameShade == dep->getMaxShade()) I.shadeFrom = "the mission (at most " + std::to_string(dep->getMaxShade()) + ")";
+	}
 	if (indoor)
 	{
+		I.indoorWhy = battle->getMissionType() == "STR_BASE_DEFENSE" ? "base defence" : "base map sets";
+		I.sky = "indoor";
 		p.terrain = "indoor";
 		p.skyName = "indoor";
 		Log(LOG_INFO) << "[VR] sky: indoor mission, no sun or weather (" << battle->getMissionType() << ")";
+		return;
+	}
+	if (Options::vrVanillaSky)
+	{
+		// the table as it was before the sky came in: the room's light over the table, no weather
+		I.vanilla = true;
+		I.outdoor = false;
+		I.sky = "vanilla";
+		p.outdoor = false;
+		p.skyName = "vanilla";
+		Log(LOG_INFO) << "[VR] sky: vanilla (vrVanillaSky): the room's light, no sun or weather";
 		return;
 	}
 
@@ -284,21 +430,44 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 	uint32_t h = 2166136261u;
 	const std::string &mt = battle->getMissionType();
 	h = fnv(h, mt.data(), mt.size());
-	int32_t q[8] = {(int32_t)std::lround(lon * 10000.0), (int32_t)std::lround(lat * 10000.0), shade, p.mx, p.my, 0, 0, 0};
+	int32_t q[8] = {(int32_t)std::lround(lon * 10000.0), (int32_t)std::lround(lat * 10000.0), gameShade, p.mx, p.my, 0, 0, 0};
 	GameTime *gt = sg ? sg->getTime() : nullptr;
 	if (gt) { q[5] = gt->getDay() + 40 * gt->getMonth(); q[6] = gt->getHour(); q[7] = gt->getMinute(); }
 	h = fnv(h, q, sizeof(q));
 	p.rng = Rng(h);
+	I.seed = h;
+	I.site = site;
+	I.lon = lon * 180.0 / 3.14159265358979;
+	if (I.lon > 180.0) I.lon -= 360.0;
+	I.lat = -lat * 180.0 / 3.14159265358979;
+	if (gt)
+	{
+		I.gmtH = gt->getHour(); I.gmtM = gt->getMinute();
+		I.localH = (float)std::fmod(I.gmtH + I.gmtM / 60.0 + I.lon / 15.0 + 48.0, 24.0);
+	}
 	Rng &rng = p.rng;
 
 	// where the sun stands over the site (the table's far edge is north)
 	float az = rng.r(0.f, 360.f);
 	bool morning = rng.f() < 0.5f;
 	bool real = false;
-	const char *why = p.mars ? " (Mars: a rolled direction)" : !site ? " (no site: a rolled direction)" : " (the sun is overhead: a rolled direction)";
+	int cYear = gt ? gt->getYear() : 1999, cMonth = gt ? gt->getMonth() : 1, cDay = gt ? gt->getDay() : 1;
+	double cHours = gt ? gt->getHour() + gt->getMinute() / 60.0 : 12.0;
+	if (clockDay > 0) { cDay = clockDay; cHours = clockHour + clockMinute / 60.0; }
+	if (skyShift != 0.0) dateOf(daysJ2000(cYear, cMonth, cDay, cHours) + skyShift, cYear, cMonth, cDay, cHours);
+	{
+		char b[64];
+		int hh = (int)cHours, mm = (int)((cHours - hh) * 60.0 + 0.5);
+		if (mm == 60) { mm = 0; ++hh; }
+		snprintf(b, sizeof(b), "%04d-%02d-%02d %02d:%02d GMT", cYear, cMonth, cDay, hh % 24, mm);
+		I.skyClock = b;
+		I.skyShift = skyShift;
+		I.gmtH = hh % 24; I.gmtM = mm;
+		I.localH = (float)std::fmod(cHours + I.lon / 15.0 + 48.0, 24.0);
+	}
 	if (site && gt && !p.mars)
 	{
-		double hours = gt->getHour() + gt->getMinute() / 60.0;
+		double hours = cHours;
 		glm::vec3 sun = lonLatToUnit((12.0 - hours) / 24.0 * 6.283185307, 0.0);
 		glm::vec3 up = lonLatToUnit(lon, lat);
 		glm::vec3 east = lonLatToUnit(lon + 1e-3, lat) - up, north = lonLatToUnit(lon, lat - 1e-3) - up;
@@ -307,6 +476,9 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 			east = glm::normalize(east);
 			north = glm::normalize(north);
 			float e = glm::dot(sun, east), n = glm::dot(sun, north);
+			I.realElev = std::asin(glm::clamp(glm::dot(sun, up), -1.f, 1.f)) * 180.f / PI;
+			I.realAz = std::fmod(std::atan2(e, n) * 180.f / PI + 360.f, 360.f);
+			I.realKnown = true;
 			if (std::sqrt(e * e + n * n) > 0.05f)
 			{
 				az = std::atan2(e, n) * 180.f / PI;
@@ -316,27 +488,57 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 			}
 		}
 	}
-	if (forcedAz >= 0.f) { az = forcedAz; why = " (set by a test)"; real = false; }
+	I.sunFrom = real ? "the real sun at the site" : p.mars ? "rolled (Mars)" : !site ? "rolled (no site)" : "rolled (sun overhead)";
+	// the moon over the site, day or night (the debug panel's sky marker shows it either way)
+	if (site && gt && !p.mars)
+	{
+		moonAt(daysJ2000(cYear, cMonth, cDay, cHours), I.lat, I.lon, I.moonAlt, I.moonAz, I.moonIllum, I.moonWaxing);
+		I.moonKnown = true;
+	}
 	float elev;
 	glm::vec3 col, skyCol;
 	bool night = shade >= 12;
+	const glm::vec3 NIGHT_SKY(0.045f, 0.055f, 0.095f);   // starlight
 	if (!night)
 	{
 		elev = SUN_ELEV[shade];
-		col = SUN_COL[shade] * (0.72f / std::max(std::sin(elev * PI / 180.f), 0.42f));
+		col = sunColour(shade, morning) * (0.72f / std::max(std::sin(elev * PI / 180.f), 0.42f));
+		// the evening's golden hour glows: a deep gold reads as brown on ground the game has darkened
+		if (!morning && shade >= 4 && shade <= 8) col *= 1.25f;
 		float k = shade / 11.f;
-		skyCol = glm::mix(glm::vec3(0.16f, 0.19f, 0.24f), glm::vec3(0.12f, 0.08f, 0.09f), k);
+		skyCol = glm::mix(DAY_FILL, morning ? DAWN_FILL : DUSK_FILL, k);
+		// twilight: the last of the sun fades as the night sky takes over
+		if (shade == 10) { col *= 0.75f; skyCol = glm::mix(skyCol, NIGHT_SKY, 0.35f); }
+		if (shade == 11) { col *= 0.5f; skyCol = glm::mix(skyCol, NIGHT_SKY, 0.65f); }
 		p.skyName = shade <= 3 ? "day" : (morning ? "dawn" : "dusk");
 	}
 	else
 	{
-		// moonlight, from the other side of the sky
-		az = std::fmod(az + 180.f, 360.f);
-		elev = 40.f;
-		col = glm::vec3(0.50f, 0.62f, 1.00f) * 0.55f;
-		skyCol = glm::vec3(0.05f, 0.06f, 0.11f);
-		p.skyName = "night";
+		// the moon: where it really is over the site at that hour and how full it is
+		float malt = 40.f, maz = std::fmod(az + 180.f, 360.f), illum = 0.6f;
+		bool waxing = true;
+		if (I.moonKnown)
+		{
+			malt = I.moonAlt; maz = I.moonAz; illum = I.moonIllum; waxing = I.moonWaxing;
+			I.sunFrom = "the real moon at the site";
+		}
+		else I.sunFrom = p.mars ? "rolled (Mars)" : "rolled (no site)";
+		I.moonIllum = illum; I.moonAlt = malt; I.moonAz = maz; I.moonWaxing = waxing;
+		az = maz;
+		// a moon under the horizon is mirrored above it (same direction, as high as it is low), so every
+		// night has a moon; its light follows the phase but never drops below 40% of a full moon's
+		I.moonMirrored = malt < 0.f;
+		if (I.moonMirrored && I.moonKnown) I.sunFrom = "the real moon, mirrored above the horizon";
+		I.tableMoonAlt = std::fabs(malt);
+		I.moonLight = std::max(illum, 0.4f);
+		elev = std::max(I.tableMoonAlt, 20.f); // a low moon's shadows stop at about 2.7 times what casts them
+		skyCol = NIGHT_SKY;
+		col = glm::vec3(0.50f, 0.62f, 1.00f) * (0.08f + 0.52f * I.moonLight) * (0.55f / std::max(std::sin(elev * PI / 180.f), 0.5f));
+		skyCol += glm::vec3(0.01f, 0.012f, 0.02f) * I.moonLight;
+		p.skyName = I.moonMirrored ? "night (moon mirrored)" : "night";
 	}
+	if (forcedAz >= 0.f) { az = forcedAz; real = false; I.sunFrom = "set by hand"; }
+	p.night = night;
 	if (p.mars) skyCol *= glm::vec3(1.25f, 0.8f, 0.65f);
 	p.sunAz = az;
 	p.sunElev = elev;
@@ -346,47 +548,113 @@ void Weather::begin(Game *game, SavedBattleGame *battle)
 	p.wind = glm::normalize(glm::vec2(std::cos(rng.r(0.f, 6.2832f)), std::sin(rng.r(0.f, 6.2832f))) + glm::vec2(1e-3f));
 
 	// the weather: rolled from the mission, so a reload keeps it
-	float r1 = rng.f(), r2 = rng.f(), r3 = rng.f(), r4 = rng.f();
+	float r1 = rng.f(), r2 = rng.f(), r3 = rng.f(), r4 = rng.f(), r5 = rng.f();
 	int kind = NONE;
 	float cloud = 0.f;
 	bool mist = false;
-	if (Options::vrWeather)
+	auto roll = [](const char *what, float r, float need) {
+		char b[64]; snprintf(b, sizeof(b), "%s: rolled %.2f, needs < %.2f", what, r, need); return std::string(b); };
+	if (p.mars) { if (r1 < 0.6f) kind = SAND; I.rollKind = roll("sand", r1, 0.6f); }
+	else if (snowy) { if (r1 < 0.5f) kind = SNOW; I.rollKind = roll("snow", r1, 0.5f); }
+	else if (desert) { if (r1 < 0.4f) kind = DUST; I.rollKind = roll("dust", r1, 0.4f); }
+	else if (rainy) { if (r1 < 0.35f) kind = RAIN; I.rollKind = roll("rain", r1, 0.35f); }
+	else I.rollKind = "none for this terrain";
+	if (p.mars) I.rollClouds = "clouds: none on Mars";
+	else if (shade >= 12)
 	{
-		if (p.mars) { if (r1 < 0.6f) kind = SAND; }
-		else if (snowy) { if (r1 < 0.5f) kind = SNOW; }
-		else if (desert) { if (r1 < 0.4f) kind = DUST; }
-		else if (rainy) { if (r1 < 0.35f) kind = RAIN; }
-		if (!p.mars && shade <= 7 && r2 < 0.7f) cloud = 0.30f + 0.15f * r3;
-		if (!p.mars && kind != DUST && morning && shade >= 3 && shade <= 10 && r4 < 0.5f) mist = true;
-		if (forced != "auto")
-		{
-			kind = NONE; mist = false; cloud = 0.f;
-			if (forced == "rain") kind = RAIN;
-			else if (forced == "snow") kind = SNOW;
-			else if (forced == "dust") kind = DUST;
-			else if (forced == "sand") kind = SAND;
-			else if (forced == "mist") mist = true;
-			else if (forced == "clouds") cloud = 0.4f;
-		}
+		// at night their shadows make the moonlight come and go in patches
+		I.rollClouds = roll("night clouds", r2, 0.6f); if (r2 < 0.6f) cloud = 0.65f + 0.2f * r3;
 	}
+	else if (shade > 7) I.rollClouds = "clouds: too dark (needs <= 7 or a moonlit night)";
+	else { I.rollClouds = roll("clouds", r2, 0.4f); if (r2 < 0.4f) cloud = 0.60f + 0.15f * r3; }
+	if (p.mars) I.rollMist = "mist: none on Mars";
+	else if (kind == DUST) I.rollMist = "mist: not in a dust storm";
+	else if (!morning) I.rollMist = "mist: not morning";
+	else if (shade < 3 || shade > 10) I.rollMist = "mist: needs darkness 3-10";
+	else { I.rollMist = roll("mist", r4, 0.3f); mist = r4 < 0.3f; }
+	if (!Options::vrWeather) { kind = NONE; cloud = 0.f; mist = false; }
+	if (forced != "auto")
+	{
+		kind = NONE; mist = false; cloud = 0.f;
+		if (forced == "rain") kind = RAIN;
+		else if (forced == "snow") kind = SNOW;
+		else if (forced == "dust") kind = DUST;
+		else if (forced == "sand") kind = SAND;
+		else if (forced == "mist") mist = true;
+		else if (forced == "clouds") cloud = night ? 0.75f : 0.68f;
+	}
+	// rain and snow come light (40%), steady (40%) or heavy (20%): drizzle / steady rain / thunderstorm,
+	// flurries / steady snow / blizzard
+	int strength = 1;
+	if (kind == RAIN || kind == SNOW)
+	{
+		strength = r5 < 0.4f ? 0 : r5 < 0.8f ? 1 : 2;
+		if (forced != "auto" && forcedStrength >= 0) strength = forcedStrength;
+		I.rollStrength = std::string(STRENGTH_NAME[kind == SNOW][strength]) + (forced != "auto" ? " (forced)" : fmt2(": rolled %.2f (light < 0.40, steady < 0.80, heavy above)", r5));
+	}
+	else I.rollStrength = "";
+	p.strength = strength;
+	bool haze = false;
 	// overcast under rain and snow, hazy in a sandstorm
-	if (kind == RAIN) { col *= 0.55f; skyCol *= 1.25f; cloud = std::max(cloud, 0.5f); }
-	if (kind == SNOW) { col *= 0.7f; skyCol = skyCol * 1.2f + glm::vec3(0.02f, 0.025f, 0.035f); cloud = std::max(cloud, 0.35f); }
+	if (kind == RAIN)
+	{
+		static const float sun[3] = {0.8f, 0.55f, 0.4f}, sky[3] = {1.1f, 1.25f, 1.3f}, cl[3] = {0.3f, 0.5f, 0.75f};
+		col *= sun[strength]; skyCol *= sky[strength]; cloud = std::max(cloud, cl[strength]);
+	}
+	if (kind == SNOW)
+	{
+		static const float sun[3] = {0.85f, 0.7f, 0.5f}, cl[3] = {0.25f, 0.35f, 0.7f};
+		col *= sun[strength]; skyCol = skyCol * 1.2f + glm::vec3(0.02f, 0.025f, 0.035f); cloud = std::max(cloud, cl[strength]);
+		haze = strength == 2; // a blizzard: a pale haze over the map
+	}
 	if (kind == DUST || kind == SAND) { col *= 0.82f; skyCol = skyCol * 1.1f + glm::vec3(0.03f, 0.02f, 0.01f); }
-	if (night) cloud *= 0.5f;
 	p.kind = kind;
 	p.mist = mist;
+	p.haze = haze;
 	p.sky.col = col;
+	p.baseCol = col;
+	// a moonlit night: the map's unlit ground shows faintly in the moonlight (a full, high moon the most),
+	// so the moon and its cloud shadows can be seen; a moonless night stays as black as the game's
+	p.sky.moonFloor = night ? 0.05f * I.moonLight * glm::smoothstep(0.f, 25.f, I.tableMoonAlt) : 0.f;
 	p.sky.sky = skyCol;
 	p.sky.cloud = cloud;
+	p.sky.wind = p.wind;
+	p.sky.wet = kind == RAIN ? 1.f : 0.f;
+	// golden hour and sunset: the sunlit ground glows as if the map were a few darkness steps lighter;
+	// the shade keeps the game's darkness, so shadows stand out against it
+	{
+		int lift = shade >= 4 && shade <= 8 ? 3 : shade == 9 || shade == 10 ? 2 : shade == 11 ? 1 : 0;
+		p.sky.boost = lift > 0 ? shadeLight(shade - lift) / std::max(shadeLight(shade), 1e-3f) : 1.f;
+	}
 	p.windSpeed = kind == DUST || kind == SAND ? rng.r(35.f, 55.f) : rng.r(10.f, 28.f);
-	p.nextStrike = rng.r(4.f, 9.f);
+	float windT = kind == DUST || kind == SAND ? (p.windSpeed - 35.f) / 20.f : (p.windSpeed - 10.f) / 18.f;
+	{
+		// the clouds ride the same wind: 40-100% of a tile a second, storms (steady rain, thunderstorms,
+		// blizzards, dust, sand) 70-100% of about 1.4 tiles a second
+		bool storm = kind == DUST || kind == SAND || (kind == RAIN && strength >= 1) || (kind == SNOW && strength == 2);
+		p.cloudSpeed = storm ? 22.f * (0.7f + 0.3f * windT) : 16.f * (0.4f + 0.6f * windT);
+	}
+	// light rain and snow fall nearly straight, a thunderstorm drives the rain, a blizzard the snow sideways
+	if (kind == RAIN) p.windSpeed *= strength == 0 ? 0.5f : strength == 2 ? 1.6f : 1.f;
+	if (kind == SNOW) p.windSpeed *= strength == 0 ? 0.6f : strength == 2 ? 2.4f : 1.f;
+	// lightning: none in a drizzle, now and then far off in steady rain, often near and far in a storm
+	p.lightning = kind == RAIN ? strength : 0;
+	p.nextStrike = p.lightning == 2 ? rng.r(3.f, 8.f) : rng.r(8.f, 20.f);
+	p.gustPhase = rng.r(0.f, 6.2832f);
 	// mist takes the colour of the low sun, as bright as the morning allows
 	float light = shadeLight(shade);
-	p.mistCol = glm::mix(glm::vec3(0.86f, 0.87f, 0.90f), SUN_COL[std::min(shade, 11)], 0.3f) * glm::clamp(light * 2.f, 0.15f, 0.8f);
+	p.mistCol = glm::mix(glm::vec3(0.86f, 0.87f, 0.90f), sunColour(shade, morning), 0.3f) * glm::clamp(light * 2.f, 0.15f, 0.8f);
 	p.mistAlpha = mist ? 0.065f : 0.f;
-	Log(LOG_INFO) << "[VR] sky: " << p.skyName << " shade " << shade << " sun az " << (int)az << " elev " << (int)elev
-		<< (real ? " (the real sun at the site)" : why) << " terrain " << p.terrain
+	if (haze) { p.mistCol = glm::vec3(0.86f, 0.89f, 0.95f) * glm::clamp(light * 2.f, 0.15f, 0.85f); p.mistAlpha = 0.09f; }
+	I.sky = p.skyName;
+	I.sunAz = az; I.sunElev = elev;
+	I.sunCol = col; I.skyCol = skyCol;
+	I.weather = kind == RAIN || kind == SNOW ? STRENGTH_NAME[kind == SNOW][strength] : kindName(kind);
+	I.cloud = cloud;
+	I.mist = mist;
+	Log(LOG_INFO) << "[VR] sky: " << p.skyName << " shade " << shade << (night ? " moon az " : " sun az ") << (int)az << " elev " << (int)elev
+		<< (night ? " moon " + std::to_string((int)(I.moonIllum * 100)) + "% at " + std::to_string((int)I.moonAlt) : std::string())
+		<< " (" << I.sunFrom << ")" << " terrain " << p.terrain
 		<< " weather " << kindName(kind) << (mist ? " +mist" : "") << " clouds " << cloud << " [" << sets << "]";
 }
 
@@ -405,8 +673,9 @@ void Weather::Impl::respawnFalling(Drop &d, const WeatherView &v, bool anywhere)
 	d.p.z = rng.r(z0, z1);
 	d.p.y = anywhere ? rng.r(0.f, v.ceiling) : v.ceiling + rng.r(0.f, 12.f);
 	d.phase = rng.r(0.f, 6.2832f);
-	if (kind == RAIN) { d.speed = rng.r(150.f, 190.f); d.size = rng.r(7.f, 11.f); }
-	else { d.speed = rng.r(10.f, 18.f); d.size = rng.r(0.45f, 0.75f); }
+	static const float rainK[3] = {0.8f, 1.f, 1.2f}, snowK[3] = {0.8f, 1.f, 1.7f};
+	if (kind == RAIN) { d.speed = rng.r(150.f, 190.f) * rainK[strength]; d.size = rng.r(7.f, 11.f) * (strength == 0 ? 0.7f : strength == 2 ? 1.25f : 1.f); }
+	else { d.speed = rng.r(10.f, 18.f) * snowK[strength]; d.size = rng.r(0.45f, 0.75f); }
 }
 
 void Weather::Impl::respawnDust(Drop &d, const WeatherView &v)
@@ -440,14 +709,19 @@ void Weather::update(float dt, const WeatherView &v)
 	p.fade = v.fade;
 
 	// clouds drift with the wind
-	if (p.sky.cloud > 0.f) p.sky.cloudOffset += p.wind * (p.kind == RAIN ? 9.f : 5.f) * dt;
+	if (p.sky.cloud > 0.f)
+	{
+		// gusts: the drift wanders about 15% either way
+		float gust = 1.f + 0.1f * (float)std::sin(p.time * 0.21) + 0.05f * (float)std::sin(p.time * 0.53 + 1.3);
+		p.sky.cloudOffset += p.wind * p.cloudSpeed * gust * dt;
+	}
 
 	// lightning: a few quick pulses, thunder a moment later
 	p.sky.flash = 0.f;
 	if (p.kind == RAIN)
 	{
 		p.nextStrike -= dt;
-		if (p.nextStrike <= 0.f && p.strikeT < 0.f) p.startStrike();
+		if (p.lightning > 0 && p.nextStrike <= 0.f && p.strikeT < 0.f) p.startStrike();
 		if (p.strikeT >= 0.f)
 		{
 			p.strikeT += dt;
@@ -457,7 +731,7 @@ void Weather::update(float dt, const WeatherView &v)
 				float t = p.strikeT - p.pulse[i];
 				if (t >= 0.f) f = std::max(f, (i == 0 ? 1.f : 0.75f) * std::exp(-t * 16.f));
 			}
-			p.sky.flash = f;
+			p.sky.flash = f * p.flashAmp;
 			if (p.strikeT > p.pulse[p.pulses - 1] + 0.6f) p.strikeT = -1.f;
 		}
 		if (p.thunderIn >= 0.f)
@@ -474,7 +748,7 @@ void Weather::update(float dt, const WeatherView &v)
 
 	// the open sky over the ground, for the mist (fog of war and roofs change)
 	p.maskTimer -= dt;
-	if (p.mist && p.maskTimer <= 0.f && v.open)
+	if ((p.mist || p.haze) && p.maskTimer <= 0.f && v.open)
 	{
 		p.maskTimer = 0.7f;
 		bool changed = false;
@@ -497,6 +771,17 @@ void Weather::update(float dt, const WeatherView &v)
 	{
 	case RAIN: want = (size_t)std::min(700.f, tiles * 1.1f); break;
 	case SNOW: want = (size_t)std::min(600.f, tiles * 1.0f); break;
+	default: break;
+	}
+	if (p.kind == RAIN || p.kind == SNOW)
+	{
+		// light, steady or heavy, and gusting in the steady and heavy ones
+		static const float dens[3] = {0.35f, 1.f, 1.8f};
+		want = (size_t)((float)want * dens[p.strength] * p.gust());
+	}
+	switch (p.kind)
+	{
+	case RAIN: case SNOW: break;
 	default: want = (size_t)std::min(450.f, tiles * 0.8f); break;
 	}
 	bool falling = p.kind == RAIN || p.kind == SNOW;
@@ -509,7 +794,8 @@ void Weather::update(float dt, const WeatherView &v)
 	}
 	if (p.drops.size() > want) p.drops.resize(want);
 
-	glm::vec3 windV(p.wind.x * p.windSpeed, 0.f, p.wind.y * p.windSpeed);
+	float gw = 0.85f + 0.15f * p.gust();
+	glm::vec3 windV(p.wind.x * p.windSpeed * gw, 0.f, p.wind.y * p.windSpeed * gw);
 	auto outside = [&](const glm::vec3 &q)
 	{
 		return q.x < 0.f || q.z < 0.f || q.x >= v.mx * TILE_W || q.z >= v.my * TILE_W
@@ -600,7 +886,7 @@ void Weather::draw(const Shader &sh, const glm::mat4 &M) const
 	const Impl &p = *_p;
 	if (!p.active || !p.outdoor) return;
 	bool parts = p.kind != NONE && !p.md.indices.empty();
-	if (!parts && !p.mist) return;
+	if (!parts && !p.mist && !p.haze) return;
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDepthMask(GL_FALSE);
@@ -612,7 +898,7 @@ void Weather::draw(const Shader &sh, const glm::mat4 &M) const
 		sh.set("uTint", glm::vec4(1.f));
 		p.mesh.draw();
 	}
-	if (p.mist && p.mx > 0 && p.my > 0)
+	if ((p.mist || p.haze) && p.mx > 0 && p.my > 0)
 	{
 		if (!p.mistBuilt)
 		{
@@ -653,6 +939,17 @@ void Weather::draw(const Shader &sh, const glm::mat4 &M) const
 	sh.set("uTint", glm::vec4(1.f));
 }
 
+SkyInfo Weather::info() const
+{
+	const Impl &p = *_p;
+	SkyInfo I = p.info;
+	I.drawn = p.drawn;
+	I.strikes = p.strikes;
+	I.nextStrike = p.kind == RAIN ? p.nextStrike : -1.f;
+	I.forced = forced;
+	return I;
+}
+
 std::string Weather::status() const
 {
 	const Impl &p = *_p;
@@ -661,7 +958,11 @@ std::string Weather::status() const
 	o << "sky=" << p.skyName;
 	if (!p.outdoor) return o.str();
 	o << " sun=" << (int)p.sunAz << "," << (int)p.sunElev << " weather=" << kindName(p.kind) << (p.mist ? "+mist" : "")
-		<< " clouds=" << (int)(p.sky.cloud * 100) << " drawn=" << p.drawn << " strikes=" << p.strikes;
+		<< " clouds=" << (int)(p.sky.cloud * 100) << " drawn=" << p.drawn << " strikes=" << p.strikes
+		<< " moon=" << (int)(p.info.moonIllum * 100) << "%," << (int)p.info.moonAlt << (p.info.moonMirrored ? ",mirrored" : "") << " glow=" << std::lround(p.sky.boost * 100.f) << "%"
+		<< " cloudspeed=" << std::lround(p.cloudSpeed)
+		<< (p.kind == RAIN || p.kind == SNOW ? std::string(" strength=") + std::to_string(p.strength) : std::string())
+;
 	return o.str();
 }
 

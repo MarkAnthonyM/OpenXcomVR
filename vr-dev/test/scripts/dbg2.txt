@@ -1,0 +1,12 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -42
+waitframes 2
+skyclock 2 0 0
+dbgpin 1 0.32
+waitframes 10
+shot shots/dbg2_moon_info.png
+dbgpress CONTROLS
+wait 400
+shot shots/dbg2_controls.png
+skyclock -1
+quit
