@@ -690,6 +690,7 @@ static void updateHandsAndTable(float dt, bool simulated)
 			glm::vec2 n(o.x - s1.x, o.z - s1.z), e(e1.x - o.x, e1.z - o.z);
 			if (glm::length(n) > 1e-6f && glm::length(e) > 1e-6f) { sc.north = glm::normalize(n); sc.east = glm::normalize(e); }
 		}
+		sc.tileCenter = [](int x, int y, int z) { return S->board.tileCenter(x, y, z); };
 		sc.clickScreen = S->board.clickScreen;
 		sc.haptic = ctx.haptic;
 		S->scanner.update(sc, S->handsVis, dt);
@@ -1064,6 +1065,7 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uSunArea", sky.area);
 	sh.set("uFadeCount", 0);
 	sh.set("uShadowPass", 0);
+	sh.set("uFeed", 0);
 	bool useShadow = S->shadowOn && !shadowPass;
 	sh.set("uShadowOn", useShadow ? 1 : 0);
 	sh.set("uShadowMap", 1);
@@ -1204,6 +1206,41 @@ static void renderShadows()
 	S->shadowOn = true;
 }
 
+/// The motion scanner's camera: the table as seen from the back of the device in the hand, into the
+/// little picture on its screen (the room and the map; no hands, screens or weather).
+static void renderScannerFeed()
+{
+	glm::mat4 view, proj;
+	glm::vec3 eye;
+	if (!S->scanner.feedCamera(view, proj, eye) || !S->scanner.beginFeed()) return;
+	glm::mat4 vp = proj * view;
+	glEnable(GL_FRAMEBUFFER_SRGB);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+	glDepthMask(GL_TRUE);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_BLEND);
+	glClearColor(0.f, 0.f, 0.f, 1.f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	Shader &sh = S->shader;
+	setCommonUniforms(vp, eye);
+	sh.set("uMode", 0);
+	sh.set("uModel", glm::mat4(1.f));
+	S->scanner.feedUniforms(sh);
+	const std::vector<glm::vec4> &holes = S->table.holes();
+	sh.set("uHoleCount", (int)std::min<size_t>(holes.size(), 40));
+	for (size_t i = 0; i < holes.size() && i < 40; ++i) sh.set(("uHoles[" + std::to_string(i) + "]").c_str(), holes[i]);
+	sh.set("uHoleY", glm::vec2(S->table.surfaceY() - 0.002f, S->table.surfaceY() + 0.003f));
+	S->roomMesh.draw();
+	sh.set("uHoleCount", 0);
+	S->board.draw(sh, vp, eye, S->time);
+	sh.use();
+	S->scanner.feedOverlay(sh);
+	glDisable(GL_FRAMEBUFFER_SRGB);
+	S->scanner.endFeed();
+	sh.set("uFeed", 0);
+}
+
 static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye, bool drawHands)
 {
 	glm::mat4 vp = proj * view;
@@ -1233,6 +1270,7 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 	sh.use();
 	S->floatWin.draw(sh);
 	S->scanner.draw(sh);
+	sh.set("uMapShade", S->sky.on ? S->sky.mapShade : 0.f);
 	S->table.draw(sh);
 	S->table.drawWalls(sh);
 
@@ -1407,7 +1445,12 @@ static void runScript()
 			}
 			else Log(LOG_INFO) << "[VR] script: usescanner needs a selected soldier";
 		}
-		else if (c.op == "scannerpress") { if (!S->scanner.testPress()) Log(LOG_INFO) << "[VR] script: the scanner isn't open"; }
+		else if (c.op == "scannerpress")
+		{
+			// test helper: press one of the scanner's buttons (red closes it; blue, yellow zoom; green turns the radar)
+			if (!S->scanner.testPress(c.args.empty() ? "red" : c.args[0])) Log(LOG_INFO) << "[VR] script: the scanner isn't open";
+		}
+		else if (c.op == "scannerdump") { S->scanner.dump(c.args.empty() ? "scanner_screens.png" : c.args[0]); }
 		else if (c.op == "camunit")
 		{
 			// test helper: look at the selected soldier from behind and above (back, up in metres)
@@ -1904,6 +1947,7 @@ static void previewFrame()
 		lastLights = now;
 	}
 	renderShadows();
+	renderScannerFeed();
 	S->previewTarget.bind();
 	glm::mat4 proj = glm::perspective(glm::radians(62.f), (float)w / (float)h, 0.03f, 60.f);
 	drawScene(viewFromPose(S->head), proj, S->head.pos, false);
@@ -1959,6 +2003,7 @@ static void headsetFrame(float dt)
 		GLStateGuard guard;
 		computeLights(dt);
 		renderShadows();
+		renderScannerFeed();
 		for (int e = 0; e < 2; ++e)
 		{
 			GLuint tex = S->xr.acquireEye(e);

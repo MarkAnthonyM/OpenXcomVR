@@ -143,9 +143,9 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   time of day, builds `0.13.0-weather.1` ... `.13`, merged into vr-prototype as
   0.14.0. It brought the sky debug panel on the left wrist (`vrDebugPanel`,
   `VrDebug.cpp`), the moon, the sky visuals and vanilla mode (`vrVanillaSky`).
-- Branch `vr-prototype-scanner` (from vr-prototype 0.13.0): the motion scanner
-  in the hand (`VrScanner.cpp`), builds `0.13.0-scanner.<n>`. Merge
-  vr-prototype (0.14.0) into it before its next build.
+- Branch `vr-prototype-scanner` (from vr-prototype 0.13.0, 0.14.0 merged in):
+  the motion scanner in the hand (`VrScanner.cpp`), builds
+  `0.13.0-scanner.1`, then `0.14.0-scanner.<n>`.
 - Released so far: 0.12.2 (the first published release; 0.9.1 was prepared but never published). The
   tags proto-0.1.0 ... proto-0.8.0 on the fork are from before the tag-only-releases rule.
 
@@ -414,20 +414,43 @@ Room and rendering
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.
   The weather roll keeps using the game's darkness for its seed.
-- Scanner branch (`vr-prototype-scanner`, builds 0.13.0-scanner.N): when the
-  game's ScannerState is the top state, VrScanner shows a handheld scanner in
-  the right hand (left if only it is tracked). Owner's choices: a voxel model
-  of the item's own BIGOBS art (STR_MOTION_SCANNER bigSprite 23: 12 x 16
-  pixels, a 9 x 4 screen, an orange knob on the left = the close button);
-  the picture turns with the device (option "B": where it points is at the
-  top; heading = device forward + screen-up laid flat, relative to the map's
-  north from Board::tileCenter); the scan stays the game's (centred on the
-  soldier, 19 x 19 tiles), the whole square kept inside the round screen at
-  any angle; closing only with the button (letting go was rejected: accidental
-  drops), which sends the game a right-click. Device frame from hand joints:
-  handle along index->little knuckle, screen facing back along the forearm.
-  Test ops `usescanner` (opens ScannerState for the selected soldier, no time
-  units) and `scannerpress`; test `scan`.
+- Scanner branch (`vr-prototype-scanner`): when the game's ScannerState is the
+  top state, VrScanner shows a handheld scanner in the right hand (left if
+  only it is tracked); closing only with a button (letting go was rejected:
+  accidental drops), which sends the game a right-click.
+  - scanner.1 (0.13.0): a voxel model of the item's BIGOBS art with the radar
+    picture turning on its screen. The owner then asked for the scanner of the
+    game's scanner screen instead, with a camera.
+  - scanner.2 (0.14.0, after merging the weather round): the device is
+    DETBORD.PCK made solid (`build`: one alpha-cut textured front quad, walls
+    where the surface steps, a flat back; 0.8 mm per art pixel; the screens
+    set in, the four buttons standing out). Rects in the art: camera 56,24
+    152x152 (the game's ScannerView spot), compass bar 217,29 47x11, side
+    display 216,48 49x81, buttons blue 216,136 / yellow 240,136 / green
+    216,160 / red 240,160 (17x17). Held with the fist just off the right edge
+    (art 298,150; left hand 22,150) so the fingers keep off the side panel.
+  - The camera (owner's choices): low resolution in the radar's green, 152 x
+    152, slightly zoomed (45 degrees; blue/yellow step 25-75). VrSystem's
+    renderScannerFeed draws the room and the board from the back of the
+    device into its own target every other frame; the scene shader's `uFeed`
+    pass (feedColor) turns it into 8 steps of green and adds the ping and the
+    contact rings from world position -> tiles from the soldier (uFeedO/E/S).
+    Rings, not markers at the unit: they light whatever is at the tile, any
+    floor (the owner wanted it faithful: the game doesn't tell the floor).
+    Contacts are exactly ScannerView::draw's (units with motion points within
+    9 tiles, size motionPoints / 5 up to 5), minus the soldier himself.
+  - The ping (owner's idea): from the soldier to the corners of the range in
+    1.2 s, drawn only inside the 19 x 19 square, so it fizzles at the edges;
+    a contact lights when the wave reaches it, the picture fades from 1.5 s to
+    2.4 s (to 12%), a new ping every 2.5 s; a haptic tick per contact.
+  - Compass bar: the map's 8 directions sliding past a middle mark (45 degrees
+    = 18 art pixels), game small font. Side display: the cropped game radar
+    (north up, or turning with the device inside a circle, the whole square
+    kept) with the camera's view as a wedge; readout "CONTACTS n" (or "MOTION
+    n" if too wide), "NEAREST", "<tiles> <dir>".
+  - Test ops `usescanner` (ScannerState for the selected soldier, no time
+    units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
+    three screens); test `scan`.
 
 ## Known gaps
 

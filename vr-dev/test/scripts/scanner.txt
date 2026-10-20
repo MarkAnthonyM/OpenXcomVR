@@ -4,15 +4,23 @@ waitframes 2
 hand 0.06 1.12 -0.18 0 55 0 0.9 0.9 1
 waitframes 4
 usescanner
-wait 1500
+wait 4000
 status
 shot shots/scanner_held.png
+scannerdump shots/scanner_screens.png
+cam 0.0 1.2 -0.02 0 -25
+waitframes 3
+shot shots/scanner_close.png
+scannerpress blue
+wait 400
+scannerpress green
 hand 0.06 1.12 -0.18 60 55 0 0.9 0.9 1
-wait 1000
+wait 1200
 status
-shot shots/scanner_turned.png
-scannerpress
-wait 2000
+scannerdump shots/scanner_turned.png
+shot shots/scanner_turned_view.png
+scannerpress red
+wait 4000
 status
 shot shots/scanner_closed.png
 quit

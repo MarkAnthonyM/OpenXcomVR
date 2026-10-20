@@ -107,6 +107,13 @@ uniform float uSunBoost;     // the battle map's sunlit part: how much brighter 
 uniform mat4 uMapInv;        // world -> battle map voxels
 uniform int uFadeCount;      // mode 6 (mist): it parts around these (world xyz, radius)
 uniform vec4 uFade[3];
+uniform int uFeed;           // the motion scanner's camera: the picture in the radar's green, with the ping
+uniform vec3 uFeedO;         // ...the soldier's tile (world)
+uniform vec3 uFeedE;         // ...one tile east and south as world vectors over their squared length (dot gives tiles)
+uniform vec3 uFeedS;
+uniform float uFeedPing;     // ...the wave's radius (tiles from the soldier); below 0 none
+uniform int uFeedN;          // ...contacts: offset from the soldier (tiles), ring radius (tiles), brightness
+uniform vec4 uFeedC[24];
 out vec4 fragColor;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -299,7 +306,42 @@ vec3 displayContent(vec2 uv)
 	return col;
 }
 
-void main()
+/// The motion scanner's camera: brightness in eight steps of the radar's green; the ping's wave spreading
+/// from the soldier to the edge of the scan (the game's 19 x 19 tiles); rings on whatever is at a contact's
+/// tile, on any floor (the game doesn't say which).
+vec3 feedColor(vec3 c)
+{
+	float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+	float v = pow(clamp(l * 2.2, 0.0, 1.0), 0.55);
+	v = floor(v * 7.0 + 0.5) / 7.0;
+	vec3 g = mix(vec3(0.002, 0.010, 0.003), vec3(0.20, 0.62, 0.14), v);
+	vec3 rel = vWorld - uFeedO;
+	vec2 t = vec2(dot(rel, uFeedE), dot(rel, uFeedS));
+	float d = length(t);
+	float fw = max(fwidth(d), 1e-4);
+	if (uFeedPing >= 0.0 && max(abs(t.x), abs(t.y)) < 9.5)
+	{
+		// it fizzles where it meets the edge of the range: first the sides, the corners last
+		float fizz = 1.0 - 0.75 * smoothstep(8.5, 13.6, uFeedPing);
+		float band = 1.0 - smoothstep(0.0, max(0.35, fw * 1.5), abs(d - uFeedPing));
+		float wake = d < uFeedPing ? exp(-(uFeedPing - d) * 1.2) * 0.2 : 0.0;
+		g += vec3(0.30, 0.95, 0.40) * (band + wake) * fizz;
+	}
+	for (int i = 0; i < 24; ++i)
+	{
+		if (i >= uFeedN) break;
+		vec4 k = uFeedC[i];
+		if (k.w <= 0.0) continue;
+		float r = length(t - k.xy);
+		float rw = max(fwidth(r), 1e-4);
+		float ring = 1.0 - smoothstep(0.0, max(0.07, rw * 1.2), abs(r - k.z));
+		float fill = (1.0 - smoothstep(k.z * 0.5, k.z, r)) * 0.3;
+		g = mix(g, vec3(1.0, 0.62, 0.10) * min(k.w, 1.6), clamp((ring + fill) * min(k.w, 1.0), 0.0, 1.0));
+	}
+	return g;
+}
+
+void sceneMain()
 {
 	if (uClip.x <= uClip.z && (vWorld.x < uClip.x || vWorld.x > uClip.z || vWorld.z < uClip.y || vWorld.z > uClip.w)) discard;
 	if (uHoleCount > 0 && vWorld.y > uHoleY.x && vWorld.y < uHoleY.y)
@@ -505,6 +547,12 @@ void main()
 	if (vMat == 1 || vMat == 2 || vMat == 5) base *= roomOcclusion(vWorld);
 	vec3 col = lighting(base, n, spec, rough) + emissive;
 	fragColor = vec4(col * uTint.rgb, vColor.a * uTint.a);
+}
+
+void main()
+{
+	sceneMain();
+	if (uFeed == 1) fragColor.rgb = feedColor(fragColor.rgb);
 }
 )GLSL";
 

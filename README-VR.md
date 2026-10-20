@@ -225,16 +225,22 @@ stand) in an X-COM command center at a holographic war table:
   Forced weather and a turned sun carry on into the next battles until you
   press AUTO / REAL.
 - **The motion scanner in your hand (scanner branch).** When a soldier uses a
-  motion scanner (the time units are spent as usual), a handheld scanner
-  appears in your right hand: a voxel model of the game's own scanner item,
-  held by its grip, with the game's scanner picture live on its screen. The
-  picture turns with the device like a motion tracker: the part of the map it
-  points at is at the top of the screen (a small mark there shows the way it
-  points). The scan itself is the game's: centred on the soldier who used it,
-  the same 19 x 19 tiles and blips, all of the square kept in view at any
-  angle. Close it with the orange button on its left side, pressed with your
-  other hand's index finger; letting go never closes it. The wall screen
-  shows the game's scanner screen as before.
+  motion scanner (the time units are spent as usual), the scanner from the
+  game's scanner screen appears in your right hand, about 21 x 14 cm, held by
+  its right edge. Its big screen is a camera looking out of the back: point it
+  at the table and it shows that part of the map in the radar's green. Every
+  2.5 seconds a ping spreads from the soldier who used it to the edge of the
+  game's range (the same 19 x 19 tiles), and each movement contact lights up
+  as a ring on its tile when the wave passes (on whatever is there; like the
+  game, it doesn't say which floor), with a tick in your hand; then the
+  picture fades before the next ping. Contacts out of view get an arrow at the
+  screen's edge. The bar at the top of the side panel is a compass showing
+  where the camera points; the side display has the game's own radar picture
+  (with the camera's view on it) and how many contacts there are and how far
+  and which way the nearest is. Press its buttons with your other hand's index
+  finger: blue zooms the camera in, yellow out, green turns the side radar
+  with the device (or back to north up), red closes it. Letting go never
+  closes it. The wall screen shows the game's scanner screen as before.
 - **Shots light up the night.** Lasers, plasma, rockets (their exhaust),
   incendiary rounds and blaster bombs light the ground and figures around them
   in their colour as they fly, stronger weapons brighter and further; their
