@@ -40,7 +40,11 @@ struct SkyLight
 	glm::vec3 sky{0.f};              // light from the whole sky
 	float cloud = 0.f;               // cloud shadows: how dark (0 clear sky)
 	glm::vec2 cloudOffset{0.f};      // their drift (map voxels)
+	glm::vec2 wind{1.f, 0.f};        // the way they drift (map xz, unit)
+	float wet = 0.f;                 // rain: the ground glistens
+	float boost = 1.f;               // the map's sunlit part: how much brighter than the game's darkness (glow)
 	float flash = 0.f;               // lightning right now (0..1)
+	float moonFloor = 0.f;           // moonlit night: how bright the unlit ground shows (a tile brightness factor)
 };
 
 /// What the weather needs to know about the table each frame (map voxels).
@@ -58,24 +62,75 @@ struct WeatherView
 	std::function<bool(int, int)> open;  // a tile column: explored ground under the open sky (the mist lies there)
 };
 
+/// Everything the left-wrist debug panel shows about the sky (VrDebug).
+struct SkyInfo
+{
+	bool active = false, outdoor = false;
+	std::string mission, terrain, sets, indoorWhy;
+	bool site = false;
+	double lon = 0.0, lat = 0.0;                 // degrees, east and north positive
+	int gmtH = 0, gmtM = 0;                      // the game clock
+	float localH = 0.f;                          // solar time at the site (hours)
+	int shadeGame = 0, shade = 0;                // the game's darkness / what the table shows
+	std::string shadeFrom;                       // where the game's darkness came from
+	std::string sky;                             // day, dawn, dusk, night, indoor
+	float sunAz = 0.f, sunElev = 0.f;            // the table's sun (degrees; azimuth from north, clockwise)
+	float realElev = 0.f, realAz = 0.f;          // the real sun at the site (height, direction)
+	bool realKnown = false;
+	std::string sunFrom;
+	glm::vec3 sunCol{1.f}, skyCol{0.f};
+	std::string weather, forced;
+	std::string rollKind, rollClouds, rollMist;  // how each roll went
+	std::string rollStrength;                    // rain/snow: how strong (drizzle .. thunderstorm, flurries .. blizzard)
+	float cloud = 0.f;
+	bool mist = false;
+	int drawn = 0, strikes = 0;
+	float nextStrike = -1.f;
+	uint32_t seed = 0;
+	bool vanilla = false;                        // vrVanillaSky: the pre-0.13 table
+	bool moonKnown = false;                      // worked out from the date, time and site
+	float moonIllum = 0.f, moonAlt = 0.f, moonAz = 0.f;
+	bool moonWaxing = false;
+	bool starlit = false;                        // (no longer used: a moon under the horizon is mirrored above it)
+	bool moonMirrored = false;                   // night: the moon is down, the table uses it mirrored above the horizon
+	float tableMoonAlt = 0.f;                    // night: how high the table's moon stands
+	float moonLight = 0.f;                       // night: its light (the phase, never below 0.4)
+	std::string skyClock;                        // the date and time the sun and moon are worked out for
+	double skyShift = 0.0;                       // the debug panel's shift of that clock from the game's (days)
+};
+
 class Weather
 {
 public:
 	Weather();
 	~Weather();
-	/// A new battle: works out the sun and rolls the weather for it.
-	void begin(Game *game, SavedBattleGame *battle);
+	/// A new battle: works out the sun and rolls the weather for it. shadeOffset: the debug panel's
+	/// darkness change (the table only; the rolls keep the game's own darkness).
+	void begin(Game *game, SavedBattleGame *battle, int shadeOffset = 0);
 	void end();
 	void update(float dt, const WeatherView &view);
 	/// Rain, snow, dust and mist (board matrix: map voxels -> world). Mist needs uMapInv set.
 	void draw(const Shader &sh, const glm::mat4 &M) const;
 	const SkyLight &sky() const;
 	std::string status() const;
+	SkyInfo info() const;
+	/// The forced weather ("auto" when none) and sun direction (< 0 when none).
+	static std::string forcedWeather();
+	static int forcedWeatherStrength();          // rain/snow strength when forced (-1 rolled)
+	static float forcedSun();
 	/// Tests: the weather of the next battle (and the current one, re-rolled): "rain", "snow",
-	/// "dust", "sand", "mist", "clear" or "auto" (back to normal).
+	/// "dust", "sand", "mist", "clear" or "auto" (back to normal). Rain and snow come steady; forcing the
+	/// same again steps through light / steady / heavy; "rain:2" picks one.
 	static void force(const std::string &kind);
 	/// Tests: the sun's direction (degrees from north, clockwise) for the next battles; < 0 back to normal.
 	static void forceSun(float azimuth);
+	/// Tests: the date and time the sun and moon are worked out for (day of month, hour, minute; day < 0 =
+	/// the game's own clock). The weather roll keeps the game's clock.
+	static void forceClock(int day, int hour, int minute);
+	/// The debug panel: move the sky's clock (sun and moon only) by this many days from now on (0 = back
+	/// to the game's clock); the game's own clock and darkness are untouched.
+	static void shiftClock(double days, bool reset = false);
+	static double clockShift();
 	/// Tests: a lightning strike now (rain only).
 	void strike();
 	struct Impl;

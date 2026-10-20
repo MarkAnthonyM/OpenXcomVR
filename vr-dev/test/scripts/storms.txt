@@ -1,0 +1,30 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -42
+waitframes 2
+weather rain:0
+wait 2500
+status
+shot shots/storms_drizzle.png
+weather rain:2
+wait 2500
+status
+strike
+waitframes 2
+shot shots/storms_thunder.png
+wait 2500
+status
+weather snow:0
+wait 2500
+status
+shot shots/storms_flurries.png
+weather snow:2
+wait 3000
+status
+shot shots/storms_blizzard.png
+weather snow
+weather snow
+weather snow
+wait 500
+status
+weather auto
+quit

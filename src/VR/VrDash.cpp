@@ -27,73 +27,64 @@ namespace VR
 namespace Dash
 {
 
+Canvas::Canvas(Game *game, std::vector<uint32_t> &out, int w, int h) : g(game), W(w), H(h), px(out)
+{
+	px.assign((size_t)W * H, BG);
+	big = g->getMod()->getFont("FONT_BIG", false);
+	small = g->getMod()->getFont("FONT_SMALL", false);
+	if (Palette *p = g->getMod()->getPalette("PAL_GEOSCAPE", false)) pal = p->getColors();
+}
+
+std::string Canvas::tr(const std::string &id) const { return g->getLanguage()->getString(id); }
+
+void Canvas::rect(int x, int y, int w, int h, uint32_t c)
+{
+	for (int yy = std::max(0, y); yy < std::min(H, y + h); ++yy)
+		for (int xx = std::max(0, x); xx < std::min(W, x + w); ++xx) px[(size_t)yy * W + xx] = c;
+}
+
+void Canvas::frame(int x, int y, int w, int h, uint32_t c)
+{
+	rect(x, y, w, 1, c); rect(x, y + h - 1, w, 1, c);
+	rect(x, y, 1, h, c); rect(x + w - 1, y, 1, h, c);
+}
+
+void Canvas::text(int x, int y, int w, const std::string &s, uint32_t color, bool isBig, int align)
+{
+	if (!ok() || w <= 0 || s.empty()) return;
+	int h = isBig ? 16 : 9;
+	Text t(w, h, 0, 0);
+	t.initText(big, small, g->getLanguage());
+	if (pal) t.setPalette((SDL_Color*)pal);
+	if (isBig) t.setBig(); else t.setSmall();
+	t.setAlign(align == 1 ? ALIGN_CENTER : align == 2 ? ALIGN_RIGHT : ALIGN_LEFT);
+	t.setColor(1);
+	t.setText(s);
+	t.draw();
+	for (int yy = 0; yy < h; ++yy)
+		for (int xx = 0; xx < w; ++xx)
+		{
+			int v = t.getPixel(xx, yy);
+			if (!v || x + xx < 0 || y + yy < 0 || x + xx >= W || y + yy >= H) continue;
+			px[(size_t)(y + yy) * W + x + xx] = v <= 2 ? color : 0xFF000000u;
+		}
+}
+
+void Canvas::title(const std::string &s)
+{
+	rect(0, 0, W, 19, BAND);
+	rect(0, 19, W, 1, LINE);
+	text(6, 2, W - 12, s, GOLD, true);
+}
+
+void Canvas::bar(int x, int y, int w, int h, int value, int max, uint32_t color)
+{
+	rect(x, y, w, h, C(18, 24, 44));
+	if (max > 0) rect(x, y, w * std::max(0, std::min(value, max)) / max, h, color);
+}
+
 namespace
 {
-
-inline uint32_t C(int r, int g, int b) { return 0xFF000000u | ((uint32_t)b << 16) | ((uint32_t)g << 8) | (uint32_t)r; }
-
-// the geoscape's look: deep blue panels, gold headings, pale text
-const uint32_t BG = C(8, 14, 34), BAND = C(20, 34, 72), LINE = C(40, 70, 120);
-const uint32_t GOLD = C(255, 214, 90), TEXT = C(220, 228, 240), DIM = C(130, 150, 180);
-const uint32_t GREEN = C(70, 220, 90), CYAN = C(90, 220, 255), AMBER = C(255, 170, 50), RED = C(240, 70, 60);
-
-/// A picture to draw on with the game's fonts.
-struct Canvas
-{
-	Game *g;
-	int W, H;
-	std::vector<uint32_t> &px;
-	Font *big = nullptr, *small = nullptr;
-	SDL_Color *pal = nullptr;
-
-	Canvas(Game *game, std::vector<uint32_t> &out, int w, int h) : g(game), W(w), H(h), px(out)
-	{
-		px.assign((size_t)W * H, BG);
-		big = g->getMod()->getFont("FONT_BIG", false);
-		small = g->getMod()->getFont("FONT_SMALL", false);
-		if (Palette *p = g->getMod()->getPalette("PAL_GEOSCAPE", false)) pal = p->getColors();
-	}
-	bool ok() const { return big && small; }
-	std::string tr(const std::string &id) const { return g->getLanguage()->getString(id); }
-	void rect(int x, int y, int w, int h, uint32_t c)
-	{
-		for (int yy = std::max(0, y); yy < std::min(H, y + h); ++yy)
-			for (int xx = std::max(0, x); xx < std::min(W, x + w); ++xx) px[(size_t)yy * W + xx] = c;
-	}
-	/// Text in a box w wide starting at x (cut off at its edge); align 0 left, 1 centre, 2 right.
-	void text(int x, int y, int w, const std::string &s, uint32_t color, bool isBig = false, int align = 0)
-	{
-		if (!ok() || w <= 0 || s.empty()) return;
-		int h = isBig ? 16 : 9;
-		Text t(w, h, 0, 0);
-		t.initText(big, small, g->getLanguage());
-		if (pal) t.setPalette(pal);
-		if (isBig) t.setBig(); else t.setSmall();
-		t.setAlign(align == 1 ? ALIGN_CENTER : align == 2 ? ALIGN_RIGHT : ALIGN_LEFT);
-		t.setColor(1);
-		t.setText(s);
-		t.draw();
-		for (int yy = 0; yy < h; ++yy)
-			for (int xx = 0; xx < w; ++xx)
-			{
-				int v = t.getPixel(xx, yy);
-				if (!v || x + xx < 0 || y + yy < 0 || x + xx >= W || y + yy >= H) continue;
-				px[(size_t)(y + yy) * W + x + xx] = v <= 2 ? color : 0xFF000000u;
-			}
-	}
-	void title(const std::string &s)
-	{
-		rect(0, 0, W, 19, BAND);
-		rect(0, 19, W, 1, LINE);
-		text(6, 2, W - 12, s, GOLD, true);
-	}
-	/// A bar: value of max, filled in color over a dark track.
-	void bar(int x, int y, int w, int h, int value, int max, uint32_t color)
-	{
-		rect(x, y, w, h, C(18, 24, 44));
-		if (max > 0) rect(x, y, w * std::max(0, std::min(value, max)) / max, h, color);
-	}
-};
 
 std::string num(int v) { return std::to_string(v); }
 

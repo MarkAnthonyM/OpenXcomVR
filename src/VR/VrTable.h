@@ -61,6 +61,8 @@ public:
 	glm::vec4 mapRect() const;
 	/// Runs button physics, item pinching and finger taps. Call after the hands were solved.
 	void update(TableContext &ctx, const Hands &hands, float dt);
+	/// The sky debug panel on the left wrist.
+	class WristDebug &debugPanel();
 	/// Solid parts of the table (with holes where the bay is open) and the button caps.
 	void colliders(std::vector<Collider> &out) const;
 	/// Open hatches the table glass must not cover (world xz rects).

@@ -110,6 +110,9 @@ Script commands (one per line; numbers are optional with defaults):
 | `boardpan dx dz`, `boardrotate r`, `boardzoom f`, `minimaptap u v`, `gamecam x y z` | move the table view / the game camera |
 | `hand ...`, `handmove ...`, `handcurl ...`, `handoff` | a scripted right hand (grip pose and finger curls) |
 | `testburst dx dy big` | an explosion effect next to the selected soldier |
+| `skyshift days` | move the sky clock like the panel's SKY CLOCK keys (no argument: back to the game's clock); re-rolls the sky at once |
+| `skyclock day hour minute` | the date and time the sun and moon are worked out for (`skyclock -1` = the game's clock); takes effect at the next re-roll (`weather`, `shade`) |
+| `dbgpin on [dist]`, `dbgpage n`, `dbgpress ID` | the wrist debug panel (needs `-vrDebugPanel true`): hold it in front of the eye (the preview has no left hand to turn), show page 0 info / 1 controls, press a control (`RAIN`, `DARKER`, `TURNR`, `REAL`, `STRIKE`...) |
 | `weather kind`, `strike`, `shade n`, `sunaz deg` | the battle's weather (`rain`, `snow`, `dust`, `sand`, `mist`, `clouds`, `clear`, `auto`), a lightning strike now, the mission's darkness (global shade, relit and rebuilt), the sun's direction for the following re-rolls (`-1` normal); `weather`/`shade` re-roll the sky, so set `sunaz` first |
 | `boardinfo`, `status` | log the table view (focus, where the soldier sits, level) / the table state |
 | `log text`, `quit` | |
@@ -136,6 +139,13 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   but untested until someone has tried them. The zip includes `LICENSE.txt`,
   `THIRD-PARTY-NOTICES.txt`, `licenses/` and `BUILD-INFO.txt` (package.sh
   does this).
+- Branch `vr-prototype-weather` (from vr-prototype 0.13.0): the weather and
+  time of day, builds `0.13.0-weather.1` ... `.13`, merged into vr-prototype as
+  0.14.0. It brought the sky debug panel on the left wrist (`vrDebugPanel`,
+  `VrDebug.cpp`), the moon, the sky visuals and vanilla mode (`vrVanillaSky`).
+- Branch `vr-prototype-scanner` (from vr-prototype 0.13.0): the motion scanner
+  in the hand (`VrScanner.cpp`), builds `0.13.0-scanner.<n>`. Merge
+  vr-prototype (0.14.0) into it before its next build.
 - Released so far: 0.12.2 (the first published release; 0.9.1 was prepared but never published). The
   tags proto-0.1.0 ... proto-0.8.0 on the fork are from before the tag-only-releases rule.
 
@@ -277,13 +287,133 @@ Room and rendering
 - Weather is cosmetic and rolled per mission from a hash of the mission
   (type, site, time, shade, map size): snow polar/mountain 50%, rain
   jungle/forest/farm/city 35% (always with lightning), dust desert 40%, red
-  sand Mars 60%, clouds on 70% of missions with shade <= 7, mist on 50% of
+  sand Mars 60%, clouds on 40% (70% before weather.8) of missions with shade <= 7, mist on 30% (was 50%) of
   dawn missions (shade 3-10, sun in the east). Indoors (base defence, UBASE /
   XBASE datasets): no sun, no weather. Rain and snow stop at the highest
   floor or object in a column (the fog top over unexplored ground), never
   fall under a roof that the view level hides, and thin out near hands and
   the cursor. Lightning lights only what is drawn on the table.
   `vrWeather` off removes the weather, not the sun.
+- 0.13.0-weather.2: the moon is computed (low-precision orbit from the game
+  date/time and the site; phase from the sun-moon elongation), starlit when
+  below the horizon; darkness 10-11 is a twilight blend. Under the sun/moon a
+  map tile's brightness is split in the shader (mode 3): min(tile, map shade)
+  is lit by sun/moon + sky, the rest is the game's own light, lit by uLampCol
+  (scaled like the old night key so brightness matches); point lights other
+  than the key stay off map surfaces (gMap). The owner turned down a visible
+  sun or moon (a voxel disc with puffy clouds, stars, light shafts looked
+  cartoony and took the menace away; weather.3): they show only through
+  light. A coloured room light low on the light's
+  side, cloud shadows at night too (moonlit nights roll clouds 60%), and on a
+  moonlit night the unlit ground's brightness is at least uMoonFloor (up to
+  0.05 for a full, high moon) times the cloud shadow. Weather and the (now
+  empty) sky are drawn after the room's solid parts (Board::drawWeather): the
+  back-wall screens drawn later would cover them. `vrVanillaSky` = the
+  pre-0.13 table (Weather treats it like indoors).
+- 0.13.0-weather.4: the rim light on backlit standees was removed (the owner
+  found it didn't help), with the dead sky-object code (Weather::drawSky,
+  shader mode 7). The moon is worked out for every outdoor mission (not only
+  at night) so the panel and marker can show it. With `vrDebugPanel` on,
+  Board::Impl::drawSkyMarker draws over the map (no depth test, after the
+  weather): a compass ring, the real sun and moon (SkyInfo realAz/realElev,
+  moonAz/moonAlt, phase disc) with labels, the table's key light (sunAz/
+  sunElev, colour, darkness) and the sky clock; the status line gets
+  `mark=sun+90,moon-69` (test `mark`, script skymark). Board labels can be
+  256 px wide now. The `skyclock` script op re-runs the sky at once.
+- 0.13.0-weather.5: a moon under the horizon is mirrored above it (same
+  azimuth, |altitude|; SkyInfo moonMirrored/tableMoonAlt), its light the phase
+  but at least 0.4 (moonLight); no starlit nights any more. Warmer SUN_COL
+  ending red-orange at darkness 11, a pinker DAWN_COL for mornings, and the
+  sky fill going from DAY_FILL to a blue-violet DUSK_FILL / lavender
+  DAWN_FILL. Soldiers' light pools take the sky light's hue (uPoolSkyCol:
+  sky.col scaled to the lamp's luminance, no channel above 1.4); fires and
+  lit items keep uLampCol. Per tile, Board::Impl::poolWarm (LL_FIRE/LL_ITEMS
+  vs LL_UNITS) goes in the chunk vertex alpha (and the chunk hash), units get
+  it as uPoolWarm; mode 3 mixes the two colours by vColor.a * uPoolWarm.
+  Cloud shadows (shader cloudCover): 3-octave value noise at 1/70 per map
+  voxel, a narrow threshold (0.545-0.585) for crisp edges and ~35% cover;
+  under a cloud the sun is cut by uCloud.x (day 0.60-0.75, night 0.65-0.85,
+  forced 0.68/0.75), the sky fill by 30% of that and mode 3's base term dims
+  toward a cool blue; drift 16 map voxels/s (22 in rain).
+  test/run.sh copies the test options.cfg before every run (the game saved
+  -vrDebugPanel true into it, so later tests ran with the panel on).
+- 0.13.0-weather.6: SUN_ELEV lowered (50..40 day, 35..20 golden hour,
+  16/12/8 at 9-11) so shadows show from any seat (the owner saw them only
+  with the sun across the table: with the light behind you, short shadows
+  hide behind what casts them). The evening's golden hour (darkness 4-8, not
+  mornings) is a deeper gold and 25% stronger. In mode 3 the base term is
+  dimmed to 60% where the sun is blocked (gSunVis: shadow x cloud). Terrain
+  (uTerrain, set around the chunk draws) has no sun/moon highlight unless
+  raining (uWet: a small, sharper sheen); figures keep theirs. Clouds:
+  cloudCover() projects the fragment along the sun to a layer 200 map voxels
+  up, snaps to a 4-voxel grid moving with the drift (uCloud2.z), turns into
+  the wind's frame stretched 1.5 : 1 (uCloud2.xy, .w), domain-warped 4-octave
+  noise with a clumping threshold (0.50 +- 0.07): about a fifth of the sky.
+- 0.13.0-weather.7: one shade model (shader sunShadow/sunOpen): sunShadow
+  is the shadow map (0 blocked .. 1 lit), sunOpen adds clouds but only where
+  the sun reaches (no cloud pattern indoors); in any shade the sky fill drops
+  to 70% and mode 3's base term to a cool ~45%; the moonlit floor is shaded
+  the same way. uSunBoost (SkyLight.boost, status glow=): the direct sun on
+  the battle map is multiplied by shadeLight(shade - lift) / shadeLight(shade),
+  lift 3 at darkness 4-8, 2 at 9-10, 1 at 11; the shade keeps the game's
+  darkness. The shadow pass draws every level (and units above the view
+  level), so roofs the view cuts away still shade the rooms below. (Standees
+  already face the light in the shadow pass: setShadowPass swaps the viewer.)
+- 0.13.0-weather.8: soldiers' light (LL_UNITS share of a tile's own light,
+  poolWarm) on tiles open to the sky is drawn as the sun/moon itself (mode 3
+  skyLit: uPoolSkyCol x direction factor x shadow x cloud x 0.85, plus
+  uPoolFillCol x shade); terrain gets ndl / max(sun.y, 0.2) (flat ground full,
+  capped 1.6), figures a wrapped 0.55-1.0. Under a roof (Board::Impl::roofed:
+  a floor on any level above; chunk vertex alpha + 2, uPoolRoofed for figures)
+  it stays the flat uPoolSkyCol light. Fires and lit items keep uLampCol.
+  Cloud drift per mission from the wind roll (Weather cloudSpeed): normal
+  16 x 0.4-1.0, storms (rain, dust, sand) 22 x 0.7-1.0 map voxels/s, gusting
+  +-15%; status cloudspeed=.
+- 0.13.0-weather.9: roofed() counts only a floor on the level right above
+  (a Skyranger's wings two levels up had made the ground under them
+  "indoors", so the soft light filled the soldiers' shadows there). SUN_ELEV
+  sunset end raised (... 26, 23, 20, 17, 15 at darkness 7-11; was 23, 20,
+  16, 12, 8); the moon's table height is at least 20 degrees (was 12).
+- 0.13.0-weather.10: standee self-shadow fix (the owner saw half a figure
+  shaded when the sun came from the side: the visible card, turned to the
+  viewer, was tested against its own light-facing copy in the shadow map).
+  In the main pass each standee passes uFigShadow/uFigAxis/RV/RL/NL/Up and
+  sunShadow() samples shadowAt() at the matching point of the light-facing
+  copy (same height, same offset from the middle; Board::Impl::shadowLight
+  is where setShadowPass turned them), so a card never shades itself while
+  walls, roofs and other figures still shade the parts they cover. Mist 30%.
+  Rain/snow strength (Impl::strength, rolled r5: 40/40/20; forced "rain" is
+  steady, forcing it again steps 0-1-2, "rain:2" picks): sun dimming, cloud
+  floor, wind (drizzle x0.5, storm x1.6; flurries x0.6, blizzard x2.4),
+  particle count (x0.35 / 1 / 1.8) and drop speed; blizzard haze uses the
+  mist sheets (Impl::haze, whitish, alpha 0.09). Gusts: Impl::gust() 1 +-0.4
+  over ~55 s on steady/heavy, scaling count and wind. Lightning by strength
+  (none / far only every 15-35 s / every 4-10 s, half near): near = full
+  flash, thunder after 0.15-0.7 s at full volume; far = 0.28-0.45 flash,
+  2-5 s, 30-45% volume. Status strength=, panel "Strength:" line, test storms.
+- 0.13.0-weather.11: a roofed tile only counts as indoors (soft soldier
+  light) when the sun can't reach its floor: Board::Impl::sunReachesFloor
+  traces four floor points toward the sun through TileEngine::voxelCheck
+  (terrain only); at least two must get out. Cached per tile (reachCache),
+  cleared when the sun moves or a chunk is rebuilt; chunks under a roof hash
+  the sun direction. Under the Skyranger's cabin the low sun got in from the
+  side, but the soft light filled the soldiers' shadows there.
+- 0.13.0-weather.12: the sun-reach cache is only cleared when the terrain
+  changes (Chunk::terrain: a hash of the parts and UFO doors, worked out with
+  the chunk hash) or the sun moves; before, every chunk rebuild cleared it
+  (shade changes as soldiers move at night). Measured on the preview machine:
+  474 roofed tiles traced in 2.2 ms (Skyranger save), 202 in 0.4 ms (farm).
+- 0.13.0-weather.13: the sun-reach trace skips the tile's own object
+  (V_OBJECT on the starting tile). The trace starts just above the floor,
+  which is inside a craft's fittings on some cabin-edge tiles, so those tiles
+  were called indoors and filled in. On the owner's Shadow_blocked_2 save,
+  24,35 is now sunlit; 25,35 stays indoors because the object on 24,35 really
+  blocks its sun (neighbour shading). Still left: a tile half in the sun (e.g.
+  24,29) is all or nothing; the proper fix is a terrain-only shadow map.
+- The wrist debug panel's darkness buttons are a table-only offset
+  (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
+  and the sky worked out again); the game's global shade is never touched.
+  The weather roll keeps using the game's darkness for its seed.
 - Scanner branch (`vr-prototype-scanner`, builds 0.13.0-scanner.N): when the
   game's ScannerState is the top state, VrScanner shows a handheld scanner in
   the right hand (left if only it is tracked). Owner's choices: a voxel model

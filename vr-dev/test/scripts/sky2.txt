@@ -1,0 +1,20 @@
+wait 9000
+cam 0.0 1.30 0.10 0 -42
+waitframes 2
+skyclock 2 0 0
+weather clear
+wait 2500
+status
+shot shots/sky2_night_a.png
+boardrotate 1.2
+wait 1500
+shot shots/sky2_night_b.png
+boardrotate -1.2
+dbgpress VANILLA
+wait 1500
+status
+shot shots/sky2_vanilla.png
+dbgpress VANILLA
+skyclock -1
+weather auto
+quit
