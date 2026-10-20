@@ -109,7 +109,7 @@ TESTS = [  # script, save, check, what it covers
      "soldiers' light in the sky light's colour: full moon, mirrored moon, dusk, pink dawn (shots/pools_*.png)"),
     ("clouds", "outside.asav", has("sky=day sun=137,50 weather=none clouds=68", "sky=dusk"),
      "cloud shadows: separate clouds with crisp, cool edges, by day and at dusk (shots/clouds_*.png)"),
-    ("storms", "outside.asav", has("weather=rain clouds=30", "strength=0", "clouds=75", "strikes=1", "weather=snow clouds=70", "strength=2"),
+    ("storms", "outside.asav", has("weather=rain clouds=30", "strength=0", "clouds=75", "strikes=1", "lightning: ", "thunder variant", "weather=snow clouds=70", "strength=2"),
      "rain and snow strengths: drizzle, thunderstorm with a strike, flurries, blizzard (shots/storms_*.png)"),
     ("scan", "outside.asav", has("scanner: open in the right hand", "table centred on the soldier", "contacts=5 nearest=1,W feed=on", "blue button (zoom in) fov=35",
                                  "green button (radar turns)", "radar=turning", "red button (close)", "scanner: closed"),

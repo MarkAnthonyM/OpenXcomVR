@@ -1910,6 +1910,7 @@ static void runScript()
 				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch << " | " << S->floatWin.status()
 				<< " | " << S->board.baseStatus() << " | " << S->board.weatherStatus() << " | " << S->table.debugPanel().status() << " | " << S->scanner.status();
 		}
+		else if (c.op == "thunderwav") { writeThunderWav(c.args.size() > 0 ? c.args[0] : "thunder.wav", num(1, 1) > 0.5, (int)num(2, 0)); }
 		else if (c.op == "shot") { S->pendingShot = c.args.empty() ? "vr_shot.png" : c.args[0]; return; }
 		else if (c.op == "gameshot" && !S->pixels.empty())
 		{
@@ -1953,6 +1954,7 @@ static void previewFrame()
 	}
 	S->head = previewHead();
 	S->board.setViewer(S->head.pos);
+	S->board.setListener(S->head.forward());
 	{
 		GLStateGuard guard;
 		static Uint32 lastSim = now;
@@ -2021,6 +2023,7 @@ static void headsetFrame(float dt)
 	S->head.rot = S->views[0].pose.rot;
 	if (!S->recentered && render) recenter();
 	S->board.setViewer(xfPoint(S->rig, S->head.pos));
+	S->board.setListener(xfDir(S->rig, S->head.forward()));
 	updateHeadsetInput(dt);
 	{
 		GLStateGuard guard;

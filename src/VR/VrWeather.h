@@ -56,6 +56,7 @@ struct WeatherView
 	glm::vec2 center{0.f};               // the middle of what the table shows (xz)...
 	float radius = 0.f;                  // ...and how far it reaches
 	glm::vec3 viewer{0.f};               // the player's head
+	glm::vec3 viewerFwd{0.f, 0.f, -1.f}; // ...and where it faces (thunder comes from where its strike was)
 	std::vector<glm::vec4> fade;         // hands and the cursor (xyz, radius): the weather thins out there
 	float light = 1.f;                   // how bright the map is (the game's darkness, 0..1)
 	std::function<float(int, int)> stop; // a tile column: the height rain and snow stop at (a roof, the ground)
@@ -98,6 +99,9 @@ struct SkyInfo
 	std::string skyClock;                        // the date and time the sun and moon are worked out for
 	double skyShift = 0.0;                       // the debug panel's shift of that clock from the game's (days)
 };
+
+/// Tests: a thunder variant (near or far) as a WAV file.
+bool writeThunderWav(const std::string &path, bool nearStrike, int variant);
 
 class Weather
 {

@@ -557,6 +557,7 @@ set ( vr_src
   VR/VrScanner.cpp
   VR/VrDash.cpp
   VR/VrWeather.cpp
+  VR/VrAudio.cpp
   VR/VrDebug.cpp
   VR/VrBase.cpp
   VR/VrRoom.cpp
