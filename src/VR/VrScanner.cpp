@@ -18,6 +18,7 @@
 #include "../Savegame/BattleUnit.h"
 #include "../Savegame/Tile.h"
 #include "../Battlescape/Position.h"
+#include "../Battlescape/TileEngine.h"
 #include "../Battlescape/ScannerState.h"
 #include "../Battlescape/ScannerView.h"
 #include "../lodepng.h"
@@ -66,12 +67,11 @@ const float LIFE = 1.8f, LIFE_JITTER = 0.4f; // ...each point stays this long, t
 // the next ping starts just as the edge of the range begins to go out, so every spot is dark for about the
 // time the wave takes to cross the range (about a second) before the next wave lights it again
 const float PING_CYCLE = CORNER / PING_SPEED + LIFE; // 3 s
-// coming out: a beam from the table's edge reaches the hand, the device forms behind a scan line rising from
-// the hand, the beam fades and the screens turn on like a tube (the power-on chirp); then the first ping
-const float BEAM_IN = 0.15f, BUILD_END = 0.65f, OPEN_T = 1.0f;
-// going away: the screens collapse to a line and a dot (the power-off chirp), the device dissolves downward
-// into the beam, the beam pulls back into the table
-const float CRT_OFF = 0.25f, DISSOLVE_END = 0.65f, CLOSE_T = 0.8f;
+// coming out: the device forms behind a scan line rising from the hand, then the screens turn on like a
+// tube (the power-on sound); then the first ping
+const float BUILD_END = 0.5f, OPEN_T = 0.85f;
+// going away: the screens collapse to a line and a dot (the power-off sound), the device dissolves downward
+const float CRT_OFF = 0.25f, CLOSE_T = 0.65f;
 const glm::vec3 HOLO(0.35f, 1.f, 0.5f);
 const float FOVS[] = {25.f, 35.f, 45.f, 60.f, 75.f};
 const int FOV_N = 5, FOV_DEFAULT = 2;
@@ -104,8 +104,27 @@ int dir8(float dx, float dy)
 enum ScanSound { SND_ON, SND_OFF, SND_PING, SND_CLICK, SND_CLICK_RED, SND_BLIP0, SND_BLIPS = 8, SND_COUNT = SND_BLIP0 + SND_BLIPS };
 const char *SND_NAME[SND_COUNT] = {"on", "off", "ping", "click", "click-red", "blip-1", "blip-2", "blip-3", "blip-4", "blip-5", "blip-6", "blip-7", "blip-8"};
 
-/// One of the scanner's sounds (mono, -1..1) at a sample rate. Blips: 0 = a contact right by the soldier
-/// (high), 7 = at the far corner of the range (low).
+/// The scanner's sounds share one dark little space: the highs rolled off, then two short filtered echoes
+/// feeding back (a tail of `tail` seconds is added).
+static std::vector<float> darkSpace(const std::vector<float> &x, int freq, float tail)
+{
+	const float k = 44100.f / (float)freq;          // the filters are tuned at 44.1 kHz
+	std::vector<float> y(x.size() + (size_t)(tail * freq), 0.f);
+	const size_t d1 = (size_t)(0.083f * freq), d2 = (size_t)(0.131f * freq);
+	float hc = 0.f, l1 = 0.f, l2 = 0.f;
+	for (size_t n = 0; n < y.size(); ++n)
+	{
+		float v = n < x.size() ? x[n] : 0.f;
+		hc += (v - hc) * std::min(1.f, 0.28f * k);      // highs off (about 2 kHz)
+		if (n >= d1) l1 += (y[n - d1] - l1) * std::min(1.f, 0.18f * k);
+		if (n >= d2) l2 += (y[n - d2] - l2) * std::min(1.f, 0.12f * k);
+		y[n] = hc + 0.36f * l1 + 0.26f * l2;
+	}
+	return y;
+}
+
+/// One of the scanner's sounds (mono, -1..1) at a sample rate: low, slow and uneasy. Blips: 0 = a contact
+/// right by the soldier (louder, higher, harsher), 7 = at the far corner of the range (a faint low thump).
 std::vector<float> synthScan(int which, int freq)
 {
 	const float TAU = 6.2831853f;
@@ -117,87 +136,109 @@ std::vector<float> synthScan(int which, int freq)
 	};
 	uint32_t seed = 0x51c4u + (uint32_t)which * 977u;
 	auto noise = [&]() { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return (seed >> 8) / 8388608.f - 1.f; };
+	const float k44 = 44100.f / (float)freq;
 	std::vector<float> v;
 	if (which == SND_PING)
 	{
-		// a sonar ping: a clear tone sinking a little, with two fading echoes
-		v = make(1.1f);
-		std::vector<float> dry = v;
-		float ph = 0.f;
-		for (size_t i = 0; i < dry.size(); ++i)
+		// a low sonar boom: two tones a little apart (they throb), an octave under them, a breath of noise;
+		// a slow swell and a long fall
+		v = make(2.2f);
+		float p1 = 0.f, p2 = 0.f, p3 = 0.f, br = 0.f;
+		for (size_t i = 0; i < v.size(); ++i)
 		{
 			float t = (float)i / freq;
-			ph += TAU * (1080.f - 120.f * std::min(t / 0.5f, 1.f)) / freq;
-			float env = std::min(t / 0.005f, 1.f) * std::exp(-t / 0.22f);
-			dry[i] = (std::sin(ph) + 0.12f * std::sin(2.f * ph)) * env;
+			float f = 165.f - 18.f * std::min(t / 1.6f, 1.f);
+			p1 += TAU * f / freq; p2 += TAU * (f + 2.3f) / freq; p3 += TAU * f * 0.5f / freq;
+			float env = std::min(t / 0.06f, 1.f) * std::exp(-t / 0.65f);
+			br += (noise() - br) * 0.02f * k44;
+			float breath = br * 6.f * std::exp(-t / 0.25f);
+			v[i] = (std::sin(p1) + 0.8f * std::sin(p2) + 0.45f * std::sin(p3) + 0.12f * std::sin(3.f * p1)) * env + breath * 0.3f;
 		}
-		const struct { float at, gain; } echo[3] = {{0.f, 1.f}, {0.2f, 0.35f}, {0.4f, 0.15f}};
-		for (const auto &e : echo)
-		{
-			size_t off = (size_t)(e.at * freq);
-			float lp = 0.f;
-			for (size_t i = 0; i + off < v.size(); ++i)
-			{
-				lp += (dry[i] - lp) * (e.at > 0.f ? 0.35f : 1.f); // the echoes duller
-				v[i + off] += lp * e.gain;
-			}
-		}
-		normalize(v, 0.7f);
+		v = darkSpace(v, freq, 1.0f);
+		normalize(v, 0.75f);
 	}
 	else if (which >= SND_BLIP0)
 	{
-		// a contact's return: a short blip, higher the closer it is
+		// a contact: a muffled heartbeat thump (and a softer second one); the nearer, the louder, the higher,
+		// and the more a sour overtone and some grit come in
 		int k = which - SND_BLIP0;
-		float f = 1500.f * std::pow(0.5f, k / (float)(SND_BLIPS - 1));
-		v = make(0.13f);
-		float ph = 0.f;
+		float nearK = 1.f - k / (float)(SND_BLIPS - 1);   // 1 right by the soldier .. 0 at the far corner
+		float f0 = 58.f * std::pow(2.f, nearK);            // 58 .. 116 Hz
+		v = make(0.5f);
+		for (int beat = 0; beat < 2; ++beat)
+		{
+			float at = beat == 0 ? 0.f : 0.16f, g = beat == 0 ? 1.f : 0.55f;
+			float ph = 0.f, ph2 = 0.f;
+			for (size_t i = (size_t)(at * freq); i < v.size(); ++i)
+			{
+				float t = (float)i / freq - at;
+				float f = f0 * (1.f + 0.8f * std::exp(-t / 0.025f));
+				ph += TAU * f / freq;
+				ph2 += TAU * f * 2.83f / freq;              // a tritone over the octave: wrong-sounding
+				float env = std::min(t / 0.004f, 1.f) * std::exp(-t / 0.09f);
+				float x = std::sin(ph) + 0.35f * nearK * std::sin(ph2) * std::exp(-t / 0.05f);
+				x = std::tanh(x * (1.f + 2.5f * nearK)) / std::tanh(1.f + 2.5f * nearK);
+				v[i] += x * env * g;
+			}
+		}
+		v = darkSpace(v, freq, 0.5f);
+		normalize(v, 0.45f + 0.4f * nearK);
+	}
+	else if (which == SND_ON)
+	{
+		// power: a low electrical swell with a little crackle
+		v = make(0.9f);
+		float ph = 0.f, lp = 0.f;
 		for (size_t i = 0; i < v.size(); ++i)
 		{
 			float t = (float)i / freq;
-			ph += TAU * f / freq;
-			float env = std::min(t / 0.003f, 1.f) * std::exp(-t / 0.035f);
-			v[i] = (std::sin(ph) + 0.25f * std::sin(2.f * ph)) * env;
+			ph += TAU * (50.f + 12.f * t) / freq;
+			float saw = std::fmod(ph / TAU, 1.f) * 2.f - 1.f;
+			float cut = (0.004f + 0.05f * std::min(t / 0.7f, 1.f)) * k44;   // it opens up as it swells
+			lp += (saw - lp) * std::min(1.f, cut);
+			float env = glm::smoothstep(0.f, 0.55f, t) * std::min((0.9f - t) / 0.2f, 1.f);
+			float crackle = (noise() > 0.995f ? noise() : 0.f) * std::min(t / 0.5f, 1.f);
+			v[i] = lp * env * 2.f + crackle * 0.6f;
 		}
-		normalize(v, 0.7f);
+		v = darkSpace(v, freq, 0.4f);
+		normalize(v, 0.55f);
 	}
-	else if (which == SND_ON || which == SND_OFF)
+	else if (which == SND_OFF)
 	{
-		// power: a quick chirp up (on) or down (off), slightly buzzy
-		bool on = which == SND_ON;
-		float len = on ? 0.4f : 0.35f;
-		v = make(len);
-		float ph = 0.f;
-		for (size_t i = 0; i < v.size(); ++i)
-		{
-			float t = (float)i / freq, x = t / len;
-			float f = on ? 300.f * std::pow(1300.f / 300.f, x) : 1300.f * std::pow(220.f / 1300.f, x);
-			ph += TAU * f * (1.f + 0.02f * std::sin(TAU * 30.f * t)) / freq;
-			float env = std::min(t / 0.01f, 1.f) * std::min((len - t) / 0.08f, 1.f);
-			v[i] = (std::sin(ph) + 0.3f * std::sin(3.f * ph)) * env;
-		}
-		normalize(v, 0.6f);
-	}
-	else if (which == SND_CLICK)
-	{
-		// a button: a small, bright click
-		v = make(0.03f);
+		// power off: a falling sub drop, with static fading out
+		v = make(1.0f);
+		float ph = 0.f, st = 0.f;
 		for (size_t i = 0; i < v.size(); ++i)
 		{
 			float t = (float)i / freq;
-			v[i] = noise() * std::exp(-t / 0.004f) + 0.6f * std::sin(TAU * 2400.f * t) * std::exp(-t / 0.006f);
+			ph += TAU * (90.f * std::pow(30.f / 90.f, std::min(t / 0.6f, 1.f))) / freq;
+			st += (noise() - st) * 0.08f * k44;
+			float env = std::min(t / 0.01f, 1.f) * std::exp(-t / 0.35f);
+			v[i] = std::sin(ph) * env + st * 0.45f * std::exp(-t / 0.3f);
 		}
-		normalize(v, 0.7f);
+		v = darkSpace(v, freq, 0.4f);
+		normalize(v, 0.55f);
 	}
 	else
 	{
-		// the red button: a lower, heavier click
-		v = make(0.06f);
-		for (size_t i = 0; i < v.size(); ++i)
+		// a button: a heavy relay clunk (red: lower and heavier, with a second clack)
+		bool red = which == SND_CLICK_RED;
+		v = make(red ? 0.25f : 0.15f);
+		float lp = 0.f;
+		for (int hit = 0; hit < (red ? 2 : 1); ++hit)
 		{
-			float t = (float)i / freq;
-			v[i] = std::sin(TAU * 900.f * t) * std::exp(-t / 0.015f) + 0.5f * noise() * std::exp(-t / 0.004f);
+			float at = hit == 0 ? 0.f : 0.07f, g = hit == 0 ? 1.f : 0.6f;
+			float f = red ? 62.f : 90.f;
+			for (size_t i = (size_t)(at * freq); i < v.size(); ++i)
+			{
+				float t = (float)i / freq - at;
+				lp += (noise() - lp) * 0.07f * k44;
+				v[i] += g * (std::sin(TAU * f * t) * std::exp(-t / 0.04f) + lp * 3.f * std::exp(-t / 0.006f)
+					+ 0.3f * std::sin(TAU * (red ? 310.f : 420.f) * t) * std::exp(-t / 0.03f));
+			}
 		}
-		normalize(v, 0.7f);
+		v = darkSpace(v, freq, 0.3f);
+		normalize(v, 0.6f);
 	}
 	return v;
 }
@@ -225,8 +266,6 @@ struct HandScanner::Impl
 	Texture bodyTex, feedTex, barTex, sideTex;
 	Mesh frontMesh, wallMesh, feedMesh, barMesh, sideMesh, btnTop[4], btnWall[4];
 	mutable Mesh arrow;             // the camera picture's arrows to contacts out of view
-	mutable Mesh beamMesh;          // the beam from the table: two crossed glowing strips along +y
-	glm::vec3 beamFrom{0.f};        // where it leaves the table
 	float freezeT = -1.f;
 	RenderTarget feedRT;
 	bool feedOk = false, feedFailed = false, feedFresh = false;
@@ -236,7 +275,20 @@ struct HandScanner::Impl
 	glm::vec2 grip = GRIP_R;
 	float heading = 0.f;            // where the camera points: degrees from the map's north, clockwise
 	int fovIdx = FOV_DEFAULT;
-	bool radarTurns = false;        // the side radar: north up, or turning with the device
+	// the views: commander (the camera in the hand) or soldier (the camera at the soldier's eyes, turned by
+	// pointing the device; yellow / blue raise and lower it a floor at a time)
+	bool soldierView = false;
+	int eyeStep = 0;                // 0 the soldier's eye height, 1 and 2 floors above
+	BattleUnit *me = nullptr;       // the soldier who used the scanner
+	glm::vec3 eyeWorld{0.f};
+	bool haveEye = false;
+	// this frame's camera (world) and its footprint on the soldier's floor (tiles from the soldier), for the
+	// side radar
+	glm::vec3 camPos{0.f}, camDir{0.f, 0.f, -1.f}, camUp{0.f, 1.f, 0.f};
+	glm::vec2 foot[4], camTile{0.f};
+	bool footOk = false;
+	float radarRot = 0.f;           // the side radar's up: degrees clockwise from the map's north
+	void camera(const ScannerContext &ctx);
 	glm::mat4 feedVP{1.f};
 	// buttons
 	float pressT[4] = {9.f, 9.f, 9.f, 9.f};
@@ -537,29 +589,29 @@ void HandScanner::Impl::place(const Hands &hands, float dt)
 	}
 }
 
-/// The game's scanner picture: the scanner view's own area of the game frame.
+/// The game's scanner picture, put together from the two surfaces the game draws it from: the rings
+/// (DETBORD2.PCK, where the ScannerView sits on it) and the ScannerView's own blips and arrow. Not cut out of
+/// the finished frame, so the game's mouse cursor (moved by the laser over the wall screen) never shows.
 void HandScanner::Impl::cropRadar(const ScannerContext &ctx)
 {
-	if (!src || !ctx.pixels || ctx.pixels->empty() || ctx.surfW <= 0) return;
+	if (!src || !ctx.game) return;
+	Surface *rings = ctx.game->getMod()->getSurface("DETBORD2.PCK", false);
 	for (Surface *sf : src->vrSurfaces())
 	{
 		ScannerView *v = dynamic_cast<ScannerView*>(sf);
 		if (!v) continue;
-		int x0 = v->getX(), y0 = v->getY(), w = v->getWidth(), h = v->getHeight();
-		if (w <= 0 || h <= 0) return;
+		int w = v->getWidth(), h = v->getHeight();
+		SDL_Color *pal = v->getPalette();
+		if (w <= 0 || h <= 0 || !pal) return;
 		radarW = w; radarH = h;
 		radar.assign((size_t)w * h, 0xFF000000u);
 		for (int y = 0; y < h; ++y)
-		{
-			int sy = y0 + y;
-			if (sy < 0 || sy >= ctx.surfH) continue;
 			for (int x = 0; x < w; ++x)
 			{
-				int sx = x0 + x;
-				if (sx < 0 || sx >= ctx.surfW) continue;
-				radar[(size_t)y * w + x] = (*ctx.pixels)[(size_t)sy * ctx.surfW + sx];
+				Uint8 i = v->getPixel(x, y);
+				if (!i && rings) i = rings->getPixel(FEED.x0 + x, FEED.y0 + y); // the ScannerView's spot on the rings
+				radar[(size_t)y * w + x] = rgba(pal[i].r, pal[i].g, pal[i].b);
 			}
-		}
 		return;
 	}
 }
@@ -571,7 +623,7 @@ void HandScanner::Impl::scan(const ScannerContext &ctx)
 	contacts.clear();
 	haveScan = false;
 	SavedBattleGame *battle = (ctx.game && ctx.game->getSavedGame()) ? ctx.game->getSavedGame()->getSavedBattle() : nullptr;
-	BattleUnit *me = battle ? battle->getSelectedUnit() : nullptr;
+	me = battle ? battle->getSelectedUnit() : nullptr;
 	if (!me || !ctx.tileCenter) return;
 	Position p = me->getPosition();
 	origin = ctx.tileCenter(p.x, p.y, p.z);
@@ -644,14 +696,35 @@ void HandScanner::Impl::composeSide()
 	for (int y = 0; y < H; ++y)
 		for (int x = 0; x < W; ++x)
 			side[(size_t)y * W + x] = scalec(art[(size_t)(SIDE.y0 + y / TS) * 320 + SIDE.x0 + x / TS], 0.45f);
-	// the radar: a square of 45 art pixels near the top
+	// the radar: a circle of 45 art pixels near the top, the game's picture turned (radarRot up), the whole
+	// square kept in it
 	const int S0 = 2 * TS, SN = 45 * TS;
 	const float cx = S0 + SN * 0.5f, cy = S0 + SN * 0.5f, Rr = SN * 0.5f;
 	const float fov = FOVS[fovIdx];
-	const float viewA = radarTurns ? 0.f : heading;   // the camera's direction on the radar (degrees clockwise from up)
-	const float th = glm::radians(heading);
+	const float th = glm::radians(radarRot);
 	const glm::vec2 rr(std::cos(th), std::sin(th)), uu(std::sin(th), -std::cos(th));
-	const float k = radarTurns ? (float)radarW / (SN / std::sqrt(2.f)) : (float)radarW / SN;
+	const float k = (float)radarW / (SN / std::sqrt(2.f));
+	const float pxPerTile = radarW / 19.f;
+	// tiles from the soldier -> a texel of the side display
+	auto toTex = [&](const glm::vec2 &tiles) { glm::vec2 g = tiles * pxPerTile / k; return glm::vec2(cx + glm::dot(g, rr), cy - glm::dot(g, uu)); };
+	glm::vec2 q[4];
+	if (footOk) for (int i = 0; i < 4; ++i) q[i] = toTex(foot[i]);
+	auto inQuad = [&](const glm::vec2 &pt) {
+		int sgn = 0;
+		for (int i = 0; i < 4; ++i)
+		{
+			glm::vec2 a = q[i], b = q[(i + 1) % 4];
+			float c = (b.x - a.x) * (pt.y - a.y) - (b.y - a.y) * (pt.x - a.x);
+			int sc = c > 0.f ? 1 : -1;
+			if (sgn == 0) sgn = sc; else if (sc != sgn) return false;
+		}
+		return true;
+	};
+	auto segDist = [](const glm::vec2 &pt, const glm::vec2 &a, const glm::vec2 &b) {
+		glm::vec2 ab = b - a;
+		float t = glm::clamp(glm::dot(pt - a, ab) / std::max(glm::dot(ab, ab), 1e-6f), 0.f, 1.f);
+		return glm::length(pt - (a + ab * t));
+	};
 	auto sample = [&](float fx, float fy) -> uint32_t {
 		// bilinear from the game's picture
 		if (radar.empty() || fx < 0.f || fy < 0.f || fx > radarW - 1.f || fy > radarH - 1.f) return rgba(3, 14, 4);
@@ -661,27 +734,38 @@ void HandScanner::Impl::composeSide()
 		uint32_t b = mixc(radar[(size_t)y1 * radarW + x0], radar[(size_t)y1 * radarW + x1], ax);
 		return mixc(a, b, ay);
 	};
+	glm::vec2 camT = toTex(camTile);
+	const uint32_t lit = rgba(190, 255, 150);
 	for (int y = S0; y < S0 + SN; ++y)
 		for (int x = S0; x < S0 + SN; ++x)
 		{
 			float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
 			uint32_t &o = side[(size_t)y * W + x];
-			if (radarTurns)
+			float d2 = dx * dx + dy * dy;
+			if (d2 > Rr * Rr) { if (d2 < (Rr + 3.f) * (Rr + 3.f)) o = rgba(42, 90, 52); continue; }
+			glm::vec2 g = rr * dx - uu * dy;
+			o = sample(radarW * 0.5f + g.x * k - 0.5f, radarH * 0.5f + g.y * k - 0.5f);
+			glm::vec2 pt(x + 0.5f, y + 0.5f);
+			if (soldierView)
 			{
-				float d2 = dx * dx + dy * dy;
-				if (d2 > Rr * Rr) { if (d2 < (Rr + 3.f) * (Rr + 3.f)) o = rgba(42, 90, 52); continue; }
-				glm::vec2 g = rr * dx - uu * dy;
-				o = sample(radarW * 0.5f + g.x * k - 0.5f, radarH * 0.5f + g.y * k - 0.5f);
+				// the soldier's view: a cone up from the middle
+				float r = std::sqrt(d2);
+				if (r > 3.f)
+				{
+					float rel = std::fabs(std::atan2(dx, -dy) * 57.29578f);
+					if (rel <= fov * 0.5f) o = mixc(o, rgba(170, 255, 140), 0.16f);
+					if (std::fabs(rel - fov * 0.5f) * 0.01745f * r < 1.6f) o = mixc(o, lit, 0.55f);
+				}
 			}
-			else o = sample((x - S0 + 0.5f) * k - 0.5f, (y - S0 + 0.5f) * k - 0.5f);
-			// the camera's view: a light wedge
-			float r = std::sqrt(dx * dx + dy * dy);
-			if (r > 3.f)
+			else if (footOk)
 			{
-				float a = std::atan2(dx, -dy) * 57.29578f;
-				float rel = std::fabs(std::remainder(a - viewA, 360.f));
-				if (rel <= fov * 0.5f) o = mixc(o, rgba(170, 255, 140), 0.16f);
-				if (std::fabs(rel - fov * 0.5f) * 0.01745f * r < 1.6f) o = mixc(o, rgba(190, 255, 150), 0.55f);
+				// the commander's camera: the patch of map it films, and where the scanner itself is
+				if (inQuad(pt)) o = mixc(o, rgba(170, 255, 140), 0.16f);
+				float e = 1e9f;
+				for (int i = 0; i < 4; ++i) e = std::min(e, segDist(pt, q[i], q[(i + 1) % 4]));
+				if (e < 1.6f) o = mixc(o, lit, 0.55f);
+				float rc = glm::length(pt - camT);
+				if (std::fabs(rc - 7.f) < 1.6f) o = mixc(o, rgba(255, 200, 80), 0.8f);
 			}
 		}
 	// the readout
@@ -774,6 +858,8 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		p.lastTc = 0.f;
 		p.lastCycle = -1;
 		p.feedFresh = false;
+		p.soldierView = false;      // it always comes out in the commander view
+		p.eyeStep = 0;
 		p.last = "open";
 		p.soundOn = true;
 		if (ctx.haptic) ctx.haptic(p.hand, 0.35f, 0.08f);
@@ -795,16 +881,6 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 	p.place(hands, dt);
 	// the screens turn on: the chirp
 	if (p.soundOn && (p.phase != Impl::OPENING || p.t >= BUILD_END)) { p.soundOn = false; p.sound(SND_ON, AUDIO_SCANNER_UI, 0.45f, ctx); }
-	// the beam leaves the table at the edge nearest the hand
-	{
-		glm::vec3 a = glm::vec3(p.xf[3]);
-		const glm::vec4 &R = ctx.tableRect;
-		glm::vec2 q(glm::clamp(a.x, R.x, R.z), glm::clamp(a.z, R.y, R.w));
-		float dl = q.x - R.x, dr = R.z - q.x, dn = q.y - R.y, df = R.w - q.y;
-		float m = std::min(std::min(dl, dr), std::min(dn, df));
-		if (m == dl) q.x = R.x; else if (m == dr) q.x = R.z; else if (m == dn) q.y = R.y; else q.y = R.w;
-		p.beamFrom = glm::vec3(q.x, ctx.tableY, q.y);
-	}
 	// where the camera points, on the map: out of the back of the device, laid flat (pointed straight
 	// down, the top of the screen decides)
 	glm::vec3 fwd = -glm::vec3(p.xf[2]), up = glm::vec3(p.xf[1]);
@@ -817,6 +893,7 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		p.heading = std::fmod(p.heading + diff * (1.f - std::exp(-dt * 20.f)) + 360.f, 360.f);
 	}
 	if (p.src) { p.cropRadar(ctx); p.scan(ctx); }
+	p.camera(ctx);
 
 	// the ping (once the screens are on): a tick in the holding hand as the wave passes each contact
 	if (p.phase == Impl::OPEN)
@@ -886,11 +963,13 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 			p.armed = -1e9f;
 			what = "close";
 		}
+		else if (b == B_BLUE && p.soldierView) { p.eyeStep = std::max(0, p.eyeStep - 1); what = "view lower"; }
+		else if (b == B_YELLOW && p.soldierView) { p.eyeStep = std::min(2, p.eyeStep + 1); what = "view higher"; }
 		else if (b == B_BLUE) { p.fovIdx = std::max(0, p.fovIdx - 1); what = "zoom in"; }
 		else if (b == B_YELLOW) { p.fovIdx = std::min(FOV_N - 1, p.fovIdx + 1); what = "zoom out"; }
-		else { p.radarTurns = !p.radarTurns; what = p.radarTurns ? "radar turns" : "radar north up"; }
+		else { p.soldierView = !p.soldierView; what = p.soldierView ? "soldier view" : "commander view"; }
 		p.last = BTN_NAME[b];
-		Log(LOG_INFO) << "[VR] scanner: " << BTN_NAME[b] << " button (" << what << ") fov=" << (int)FOVS[p.fovIdx];
+		Log(LOG_INFO) << "[VR] scanner: " << BTN_NAME[b] << " button (" << what << ") fov=" << (int)FOVS[p.fovIdx] << " step=" << p.eyeStep;
 	}
 	else p.pending = -1;
 }
@@ -910,13 +989,79 @@ bool HandScanner::feedCamera(glm::mat4 &view, glm::mat4 &proj, glm::vec3 &eye)
 	if (!p.artOk || !p.xfKnown || !p.haveScan || (p.phase != Impl::OPEN && p.phase != Impl::OPENING)) return false;
 	// half the frame rate is plenty for the little screen
 	if (p.feedFresh && (++p.feedSkip & 1)) return false;
-	glm::vec3 pos = glm::vec3(p.xf * glm::vec4(p.artToDevice((FEED.x0 + FEED.x1 + 1) * 0.5f, (FEED.y0 + FEED.y1 + 1) * 0.5f, -F - 0.001f), 1.f));
-	glm::vec3 dir = -glm::vec3(p.xf[2]), up = glm::vec3(p.xf[1]);
-	view = glm::lookAt(pos, pos + dir, up);
-	proj = glm::perspective(glm::radians(FOVS[p.fovIdx]), 1.f, 0.01f, 20.f);
-	eye = pos;
+	view = glm::lookAt(p.camPos, p.camPos + p.camDir, p.camUp);
+	// the soldier view is down among the figures: a much nearer near plane
+	proj = glm::perspective(glm::radians(FOVS[p.fovIdx]), 1.f, p.soldierView ? 0.0008f : 0.01f, 20.f);
+	eye = p.camPos;
 	p.feedVP = proj * view;
 	return true;
+}
+
+BattleUnit *HandScanner::feedHides() const
+{
+	const Impl &p = *_p;
+	return p.soldierView && isOpen() ? p.me : nullptr;
+}
+
+/// This frame's camera. Commander view: out of the back of the device in the hand. Soldier view: at the
+/// soldier's eyes on the table (a floor higher per step), looking where the hand points, the horizon level.
+/// Also what the side radar shows: its turn, and the camera's footprint on the soldier's floor.
+void HandScanner::Impl::camera(const ScannerContext &ctx)
+{
+	glm::vec3 dev = -glm::vec3(xf[2]), devUp = glm::vec3(xf[1]);
+	haveEye = false;
+	if (soldierView && me && ctx.voxelToWorld && ctx.game && ctx.game->getSavedGame()->getSavedBattle())
+	{
+		Position e = ctx.game->getSavedGame()->getSavedBattle()->getTileEngine()->getSightOriginVoxel(me);
+		eyeWorld = ctx.voxelToWorld(glm::vec3((float)e.x, (float)e.y, (float)e.z + 24.f * eyeStep));
+		haveEye = true;
+	}
+	if (soldierView && haveEye)
+	{
+		// the compass heading of the commander's camera, and its pitch raised by the device's tilt (so a
+		// level hand looks level), the horizon kept level
+		camPos = eyeWorld;
+		glm::vec2 hz(dev.x + devUp.x * 0.f, dev.z);
+		if (glm::length(hz) < 0.15f) hz += glm::vec2(devUp.x, devUp.z); // pointed straight down: the screen's top
+		hz = glm::length(hz) > 1e-4f ? glm::normalize(hz) : glm::vec2(0.f, -1.f);
+		float pitch = glm::clamp(std::asin(glm::clamp(dev.y, -1.f, 1.f)) + glm::radians(TILT), glm::radians(-80.f), glm::radians(80.f));
+		camDir = glm::vec3(hz.x * std::cos(pitch), std::sin(pitch), hz.y * std::cos(pitch));
+		camUp = glm::vec3(0.f, 1.f, 0.f);
+	}
+	else
+	{
+		camPos = glm::vec3(xf * glm::vec4(artToDevice((FEED.x0 + FEED.x1 + 1) * 0.5f, (FEED.y0 + FEED.y1 + 1) * 0.5f, -F - 0.001f), 1.f));
+		camDir = dev;
+		camUp = devUp;
+	}
+	// the side radar: in the soldier view its up is where the soldier looks; in the commander view, the
+	// table's far side (the radar lies as the table does in front of you)
+	if (soldierView) radarRot = heading;
+	else
+	{
+		glm::vec2 away(0.f, -1.f);
+		radarRot = glm::degrees(std::atan2(glm::dot(away, ctx.east), glm::dot(away, ctx.north)));
+	}
+	// where the camera's view meets the soldier's floor (the corner rays; ones above the horizon are cut
+	// off 30 tiles out)
+	footOk = false;
+	if (!haveScan) return;
+	auto toTiles = [&](const glm::vec3 &w) { glm::vec3 r = w - origin; return glm::vec2(glm::dot(r, eastT), glm::dot(r, southT)); };
+	glm::vec3 right = glm::normalize(glm::cross(camDir, camUp)), up2 = glm::cross(right, camDir);
+	float tn = std::tan(glm::radians(FOVS[fovIdx]) * 0.5f);
+	const float far = 30.f / std::max(1e-4f, std::sqrt(glm::dot(eastT, eastT))); // 30 tiles (world)
+	const float cx[4] = {-1.f, 1.f, 1.f, -1.f}, cy[4] = {-1.f, -1.f, 1.f, 1.f};
+	for (int i = 0; i < 4; ++i)
+	{
+		glm::vec3 d = glm::normalize(camDir + right * (tn * cx[i]) + up2 * (tn * cy[i]));
+		glm::vec3 hit;
+		float hor = std::sqrt(d.x * d.x + d.z * d.z);
+		if (d.y < -1e-4f && (origin.y - camPos.y) / d.y * hor < far) hit = camPos + d * ((origin.y - camPos.y) / d.y);
+		else hit = camPos + glm::vec3(d.x, 0.f, d.z) / std::max(hor, 1e-4f) * far;
+		foot[i] = toTiles(hit);
+	}
+	camTile = toTiles(camPos);
+	footOk = true;
 }
 
 bool HandScanner::beginFeed()
@@ -1011,20 +1156,10 @@ void HandScanner::draw(const Shader &sh) const
 	if (p.phase == Impl::CLOSED || !p.xfKnown || !p.artOk) return;
 	const bool opening = p.phase == Impl::OPENING, closing = p.phase == Impl::CLOSING;
 	const float t = p.t;
-	// how much of the device is there (0..1, from the bottom up), the beam (how far it reaches, how bright)
-	float built = 1.f, reach = 0.f, beam = 0.f;
-	if (opening)
-	{
-		built = glm::smoothstep(0.f, 1.f, (t - BEAM_IN) / (BUILD_END - BEAM_IN));
-		reach = glm::clamp(t / BEAM_IN, 0.f, 1.f);
-		beam = 1.f - glm::smoothstep(BUILD_END, BUILD_END + 0.2f, t);
-	}
-	else if (closing)
-	{
-		built = 1.f - glm::smoothstep(0.f, 1.f, (t - CRT_OFF) / (DISSOLVE_END - CRT_OFF));
-		reach = 1.f - glm::clamp((t - DISSOLVE_END) / (CLOSE_T - DISSOLVE_END), 0.f, 1.f);
-		beam = glm::smoothstep(CRT_OFF - 0.05f, CRT_OFF + 0.1f, t);
-	}
+	// how much of the device is there (0..1, from the bottom up)
+	float built = 1.f;
+	if (opening) built = glm::smoothstep(0.f, 1.f, t / BUILD_END);
+	else if (closing) built = 1.f - glm::smoothstep(0.f, 1.f, (t - CRT_OFF) / (CLOSE_T - CRT_OFF));
 	const glm::mat4 M = p.xf;
 	if (built > 0.001f)
 	{
@@ -1099,56 +1234,6 @@ void HandScanner::draw(const Shader &sh) const
 		sh.set("uVignette", 0.f);
 		sh.set("uBuild", 0);
 	}
-	// the beam: from the table's edge to the hand
-	if (beam > 0.01f && reach > 0.01f)
-	{
-		Mesh &bm = p.beamMesh;
-		if (bm.empty())
-		{
-			// two crossed strips, bright along the middle, fading to the sides
-			MeshData m;
-			for (int k = 0; k < 2; ++k)
-			{
-				glm::vec3 side = k == 0 ? glm::vec3(1.f, 0.f, 0.f) : glm::vec3(0.f, 0.f, 1.f);
-				for (int h = 0; h < 2; ++h)
-				{
-					float s0 = h == 0 ? -0.5f : 0.f, s1 = h == 0 ? 0.f : 0.5f;
-					float a0 = h == 0 ? 0.f : 1.f, a1 = h == 0 ? 1.f : 0.f;
-					Vertex v[4] = {};
-					v[0].pos = side * s0; v[1].pos = side * s1; v[2].pos = side * s1 + glm::vec3(0.f, 1.f, 0.f); v[3].pos = side * s0 + glm::vec3(0.f, 1.f, 0.f);
-					v[0].color = v[3].color = glm::vec4(1.f, 1.f, 1.f, a0);
-					v[1].color = v[2].color = glm::vec4(1.f, 1.f, 1.f, a1);
-					uint32_t i0 = m.addVertex(v[0]), i1 = m.addVertex(v[1]), i2 = m.addVertex(v[2]), i3 = m.addVertex(v[3]);
-					m.indices.insert(m.indices.end(), {i0, i1, i2, i0, i2, i3});
-				}
-			}
-			bm.upload(m);
-		}
-		glm::vec3 to = glm::vec3(p.xf[3]);
-		glm::vec3 d = (to - p.beamFrom) * reach;
-		float len = glm::length(d);
-		if (len > 1e-3f)
-		{
-			glm::vec3 y = d / len;
-			glm::vec3 x = glm::normalize(glm::cross(y, std::fabs(y.y) < 0.9f ? glm::vec3(0.f, 1.f, 0.f) : glm::vec3(1.f, 0.f, 0.f)));
-			glm::vec3 z = glm::cross(x, y);
-			const float w = 0.022f;
-			glm::mat4 B(glm::vec4(x * w, 0.f), glm::vec4(d, 0.f), glm::vec4(z * w, 0.f), glm::vec4(p.beamFrom, 1.f));
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-			glDepthMask(GL_FALSE);
-			sh.set("uMode", 2);
-			sh.set("uModel", B);
-			sh.set("uTint", glm::vec4(HOLO * 2.2f, beam));
-			bm.draw();
-			// a brighter core
-			sh.set("uModel", B * glm::scale(glm::mat4(1.f), glm::vec3(0.25f, 1.f, 0.25f)));
-			sh.set("uTint", glm::vec4(glm::vec3(0.85f, 1.f, 0.9f) * 3.f, beam));
-			bm.draw();
-			glDepthMask(GL_TRUE);
-			glDisable(GL_BLEND);
-		}
-	}
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uModel", glm::mat4(1.f));
 	sh.set("uMode", 0);
@@ -1199,14 +1284,15 @@ std::string HandScanner::status() const
 	{
 		o << " hand=" << (p.hand == 1 ? "right" : "left") << " heading=" << (int)std::lround(p.heading)
 			<< " " << DIRS[((int)std::lround(p.heading / 45.f)) % 8] << " fov=" << (int)FOVS[p.fovIdx]
-			<< " radar=" << (p.radarTurns ? "turning" : "north") << " contacts=" << p.contacts.size();
+			<< " view=" << (p.soldierView ? "soldier" : "commander") << " step=" << p.eyeStep << " radar=" << (int)std::lround(p.radarRot) << " contacts=" << p.contacts.size();
 		if (!p.contacts.empty())
 		{
 			const Impl::Contact *n = &p.contacts[0];
 			for (const Impl::Contact &q : p.contacts) if (q.dist < n->dist) n = &q;
 			o << " nearest=" << (int)std::lround(n->dist) << "," << DIRS[dir8((float)n->dx, (float)n->dy)];
 		}
-		o << " feed=" << (p.feedFresh ? "on" : "off") << " pings=" << p.pings << " blips=" << p.blips;
+		o << " feed=" << (p.feedFresh ? "on" : "off") << " pings=" << p.pings << " blips=" << p.blips
+			<< " look=" << (int)std::lround(glm::degrees(std::asin(glm::clamp(p.camDir.y, -1.f, 1.f)))) << (p.haveEye ? " eye" : "");
 	}
 	o << " presses=" << p.presses << " last=" << p.last;
 	return o.str();

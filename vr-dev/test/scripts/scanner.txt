@@ -24,8 +24,15 @@ scannerpress green
 hand 0.06 1.12 -0.18 60 40 0 0.9 0.9 1
 wait 1200
 status
-scannerdump shots/scanner_turned.png
-shot shots/scanner_turned_view.png
+scannerdump shots/scanner_soldier.png
+shot shots/scanner_soldier_view.png
+scannerpress yellow
+wait 1200
+status
+scannerdump shots/scanner_soldier_up.png
+scannerpress green
+wait 800
+scannerdump shots/scanner_commander.png
 scannerpress red
 wait 4000
 status

@@ -515,6 +515,28 @@ Room and rendering
     retracts. Screens: uScanK 0.3 (scanlines; 0.12 elsewhere), uVignette 0.4.
     Buttons work 0.3 s after it is open. Test op `scannerfreeze <t>` holds
     the animation at t (-1 runs it again).
+  - scanner.6 (owner's test of .5): the beam is gone (build-in 0-0.5 s, tubes
+    on 0.5-0.85 s; closing: tubes off 0-0.25, dissolve to 0.65 s). The side
+    radar is built from DETBORD2 + the ScannerView surface (cropRadar), not
+    cut from the frame, so the game's cursor never shows. Sounds redone dark
+    (owner: "cartoony"; wanted dread): synthScan's ping is a ~165 Hz boom
+    with a detuned partner (beats) and a sub octave, blips are heartbeat
+    double thumps 58-116 Hz (near: louder, a tritone-over-octave overtone,
+    tanh grit), power on a low saw swell opening up with crackle, off a sub
+    drop with static, buttons relay clunks; all through darkSpace (highs off,
+    two filtered feedback echoes). Volumes ping 0.55, blips 0.5, UI 0.45.
+    Green button = soldier view (owner's idea): camera at
+    TileEngine::getSightOriginVoxel + 24 voxels per step (0-2; yellow up,
+    blue down) via Board::voxelToWorld, heading from the commander camera,
+    pitch raised by TILT (so a level hand looks level), level horizon, near
+    plane 0.8 mm; Board::setHiddenUnit hides the soldier's own figure and
+    renderScannerFeed turns the standees to the camera (setViewer). Side
+    radar (owner: the wedge was ambiguous and didn't match the screen):
+    always turned inside a circle; commander view: world -z (the table's far
+    side) up, the camera's footprint on the soldier's floor outlined (corner
+    rays, 30 tiles max) and an orange ring where the scanner is; soldier view:
+    its heading up and the cone from the middle. It always opens in the
+    commander view.
   - Test ops `usescanner` (ScannerState for the selected soldier, no time
     units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
     three screens); test `scan`.

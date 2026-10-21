@@ -35,6 +35,7 @@
 namespace OpenXcom
 {
 class Game;
+class BattleUnit;
 
 namespace VR
 {
@@ -47,9 +48,8 @@ struct ScannerContext
 	glm::vec2 north{0.f, -1.f}, east{1.f, 0.f};     // the battle map's directions on the table (world xz)
 	glm::vec3 eye{0.f, 1.3f, 0.f};
 	glm::vec3 headFwd{0.f, 0.f, -1.f};              // where the head faces (world): sounds come from the device
-	glm::vec4 tableRect{0.f};                      // the table top (world xz rect) and its height: the beam that
-	float tableY = 0.f;                            // brings the scanner comes from its nearest edge
 	std::function<glm::vec3(int, int, int)> tileCenter; // world position of a map tile's floor centre
+	std::function<glm::vec3(const glm::vec3 &)> voxelToWorld; // a map voxel (x, y, height) on the table
 	std::function<void(int, int, int)> clickScreen; // game pixel x, y, SDL button
 	std::function<void(int, float, float)> haptic;  // hand, amplitude, seconds
 };
@@ -70,6 +70,8 @@ public:
 	bool feedCamera(glm::mat4 &view, glm::mat4 &proj, glm::vec3 &eye);
 	/// Binds the camera's picture as the render target; endFeed resolves it into the screen's texture.
 	bool beginFeed();
+	/// The unit whose figure the camera mustn't draw (soldier view: it looks out of its eyes), or null.
+	BattleUnit *feedHides() const;
 	void endFeed();
 	/// The scene shader's uniforms for the camera pass (green picture, ping, contact rings); the overlay
 	/// (arrows to contacts out of view) is drawn after the scene, still into the camera's picture.

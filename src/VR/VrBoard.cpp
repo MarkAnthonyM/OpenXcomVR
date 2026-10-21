@@ -349,6 +349,7 @@ struct Board::Impl
 	Mesh cube;                         // unit cube for voxel effects
 	bool shadowPass = false;           // drawing into the shadow map: terrain and figures only
 	bool feedPass = false;             // drawing for the scanner's camera: no markers
+	BattleUnit *hiddenUnit = nullptr;  // ...and in its soldier view, not the soldier's own figure
 
 	// ---- voxel effects: particles (board voxel space), what spawned them, and lights for the room
 	struct Particle
@@ -1308,6 +1309,7 @@ void Board::Impl::drawUnits(const Shader &sh)
 		if (u->isOut()) continue;
 		if (!(u->getFaction() == FACTION_PLAYER || u->getVisible() || battle->getDebugMode())) continue;
 		if (u->getPosition().z > viewLevel && !shadowPass) continue;
+		if (u == hiddenUnit && !shadowPass) continue;
 		const UnitCard &card = it->second;
 		glm::vec3 p = card.visInit ? card.vis : unitVoxelPos(u);
 		int size = u->getArmor()->getSize();
@@ -2700,6 +2702,8 @@ void Board::update(Game *game, float dt)
 }
 
 void Board::setFeedPass(bool on) { _p->feedPass = on; }
+void Board::setHiddenUnit(BattleUnit *unit) { _p->hiddenUnit = unit; }
+glm::vec3 Board::voxelToWorld(const glm::vec3 &v) const { return glm::vec3(_p->boardMatrix() * glm::vec4(v.x, v.z, v.y, 1.f)); }
 
 void Board::setShadowPass(bool on, const glm::vec3 &light)
 {

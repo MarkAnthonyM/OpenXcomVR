@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.15.0-scanner.5)
+# OpenXcom Extended — VR Tabletop (prototype 0.15.0-scanner.6)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -229,39 +229,50 @@ stand) in an X-COM command center at a holographic war table:
   Forced weather and a turned sun carry on into the next battles until you
   press AUTO / REAL.
 - **The motion scanner in your hand (scanner branch).** When a soldier uses a
-  motion scanner (the time units are spent as usual), a green beam shoots
-  from the nearest edge of the table to your right hand and the scanner from
-  the game's scanner screen forms there behind a rising scan line; then its
-  screens switch on like old tubes (a line, then the picture) with a chirp,
-  and the first ping goes out about a second after you used it. Closing runs
-  it backwards: the screens fold to a line and a dot, the scanner dissolves
-  into the beam and the beam pulls back into the table. It is about 21 x 14
-  cm, held by its right edge, its screen tipped up toward you; its screens
-  have faint scanlines and darker edges, like tubes. Its big screen is a camera
-  looking out of the back, a little below where your hand points: aim it at
-  the table and it shows that part of the map in the radar's green, without
-  the table's markers (cursor, selection, path). The picture only shows where
-  the scanner's ping has been: every 3 seconds a ping spreads from the
-  soldier who used it to the edge of the game's range (the same 19 x 19
-  tiles), the picture fills in behind it as scattered points, and each
-  movement contact lights up as a ring on its tile (on whatever is there; like
-  the game, it doesn't say which floor), with a tick in your hand. The picture
-  then dissolves to black from the middle out, the edge of the range last; as
-  the edge starts to go, the next ping goes out, so each spot is dark for
-  about a second. Beyond the range the screen stays black. When the scanner
-  comes out, the table centres on the soldier and zooms out if needed so the
-  whole range is on the table (it stays that way afterwards). Contacts out of view get an arrow
-  at the screen's edge. The bar at the top of the side panel is a compass showing
-  where the camera points; the side display has the game's own radar picture
-  (with the camera's view on it) and how many contacts there are and how far
-  and which way the nearest is. Press its buttons with your other hand's index
-  finger: blue zooms the camera in, yellow out, green turns the side radar
-  with the device (or back to north up), red closes it. Letting go never
-  closes it, and while it is out the map stays put and nothing else reaches
-  the game: the sticks, trackpads and level/zoom buttons, grabbing the map,
-  the trigger, Back and taps on the table and the wall screen do nothing (any
-  click on the game's scanner screen would close it). The wall screen shows
-  the game's scanner screen as before.
+  motion scanner (the time units are spent as usual), the scanner from the
+  game's scanner screen forms in your right hand behind a rising green scan
+  line; then its screens switch on like old tubes (a line, then the picture)
+  and the first ping goes out, under a second after you used it. Closing runs
+  it backwards: the screens fold to a line and a dot and the scanner
+  dissolves. It is about 21 x 14 cm, held by its right edge, its screen
+  tipped up toward you; its screens have faint scanlines and darker edges.
+  - Its big screen is a camera in the radar's green, without the table's
+    markers (cursor, selection, path). In the **commander view** it looks out
+    of the back of the scanner, a little below where your hand points. In the
+    **soldier view** (green button) it looks out of the soldier's eyes on the
+    table, the way your hand points (a level hand looks level); yellow and
+    blue raise and lower it a floor at a time (eye height, one and two floors
+    up), and the soldier's own figure isn't drawn. It always comes out in the
+    commander view; in it, blue and yellow zoom in and out.
+  - The picture only shows where the scanner's ping has been: every 3 seconds
+    a ping spreads from the soldier to the edge of the game's range (the same
+    19 x 19 tiles), the picture fills in behind it as scattered points, and
+    each movement contact lights up as a ring on its tile (on whatever is
+    there; like the game, it doesn't say which floor). The picture then
+    dissolves to black from the middle out; as the edge starts to go, the next
+    ping goes out. Beyond the range the screen stays black. Contacts out of
+    view get an arrow at the screen's edge.
+  - The bar at the top of the side panel is a compass showing where the camera
+    looks. The side display has the game's own radar picture (built from the
+    game's radar itself, so the mouse cursor never shows on it): in the
+    commander view turned the way the table lies in front of you, with the
+    patch of map the camera films outlined and a mark where the scanner is;
+    in the soldier view turned so the way the soldier looks is up, with its
+    view as a cone. Under it: how many contacts and how far and which way the
+    nearest is.
+  - Sounds, low and uneasy: a deep sonar boom for each ping, a muffled
+    heartbeat thump as the wave reaches contacts (louder, higher and harsher
+    the nearer they are to the soldier, with a tick in your hand), a low
+    electrical swell as it switches on and a falling drop as it goes, heavy
+    relay clunks for the buttons. They come from where the scanner is.
+  - When it comes out, the table centres on the soldier and zooms out if
+    needed so the whole range is on the table (it stays that way afterwards).
+    Press its buttons with your other hand's index finger; red closes it.
+    Letting go never closes it, and while it is out the map stays put and
+    nothing else reaches the game: the sticks, trackpads and level/zoom
+    buttons, grabbing the map, the trigger, Back and taps on the table and the
+    wall screen do nothing (any click on the game's scanner screen would close
+    it). The wall screen shows the game's scanner screen as before.
 - **Shots light up the night.** Lasers, plasma, rockets (their exhaust),
   incendiary rounds and blaster bombs light the ground and figures around them
   in their colour as they fly, stronger weapons brighter and further; their

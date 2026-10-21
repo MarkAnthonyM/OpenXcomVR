@@ -132,6 +132,10 @@ public:
 	/// Drawing for the motion scanner's camera: the map and figures without the table's markers (cursor,
 	/// selection, path, waypoints, readouts).
 	void setFeedPass(bool on);
+	/// The motion scanner's soldier view: this unit's own figure isn't drawn (the camera is at its eyes).
+	void setHiddenUnit(BattleUnit *unit);
+	/// A battle map voxel position (x, y, height) on the table (world).
+	glm::vec3 voxelToWorld(const glm::vec3 &voxel) const;
 	void lights(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const;
 	bool alert() const;
 	float nightLevel() const;

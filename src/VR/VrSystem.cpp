@@ -695,12 +695,6 @@ static void updateHandsAndTable(float dt, bool simulated)
 		sc.surfH = S->surfH;
 		sc.eye = ctx.eye;
 		sc.headFwd = S->mode == MODE_HEADSET ? xfDir(S->rig, S->head.forward()) : S->head.forward();
-		{
-			const RoomLayout &L = S->layout;
-			sc.tableRect = glm::vec4(L.tableCenter.x - L.tableSize.x * 0.5f, L.tableCenter.z - L.tableSize.y * 0.5f,
-				L.tableCenter.x + L.tableSize.x * 0.5f, L.tableCenter.z + L.tableSize.y * 0.5f);
-			sc.tableY = S->table.surfaceY();
-		}
 		if (S->board.battle())
 		{
 			glm::vec3 o = S->board.tileCenter(0, 0, 0), s1 = S->board.tileCenter(0, 1, 0), e1 = S->board.tileCenter(1, 0, 0);
@@ -708,6 +702,7 @@ static void updateHandsAndTable(float dt, bool simulated)
 			if (glm::length(n) > 1e-6f && glm::length(e) > 1e-6f) { sc.north = glm::normalize(n); sc.east = glm::normalize(e); }
 		}
 		sc.tileCenter = [](int x, int y, int z) { return S->board.tileCenter(x, y, z); };
+		sc.voxelToWorld = [](const glm::vec3 &v) { return S->board.voxelToWorld(v); };
 		sc.clickScreen = [](int gx, int gy, int button) { S->scannerOwnClick = true; S->board.clickScreen(gx, gy, button); S->scannerOwnClick = false; };
 		sc.haptic = ctx.haptic;
 		S->scanner.update(sc, S->handsVis, dt);
@@ -1271,8 +1266,13 @@ static void renderScannerFeed()
 	sh.set("uHoleY", glm::vec2(S->table.surfaceY() - 0.002f, S->table.surfaceY() + 0.003f));
 	S->roomMesh.draw();
 	sh.set("uHoleCount", 0);
+	// the figures turn to the camera (not the head), and in the soldier view the soldier's own isn't drawn
 	S->board.setFeedPass(true);
+	S->board.setHiddenUnit(S->scanner.feedHides());
+	S->board.setViewer(eye);
 	S->board.draw(sh, vp, eye, S->time);
+	S->board.setViewer(S->mode == MODE_HEADSET ? xfPoint(S->rig, S->head.pos) : S->head.pos);
+	S->board.setHiddenUnit(nullptr);
 	S->board.setFeedPass(false);
 	sh.use();
 	S->scanner.feedOverlay(sh);
