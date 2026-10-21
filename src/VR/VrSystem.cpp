@@ -695,6 +695,12 @@ static void updateHandsAndTable(float dt, bool simulated)
 		sc.surfH = S->surfH;
 		sc.eye = ctx.eye;
 		sc.headFwd = S->mode == MODE_HEADSET ? xfDir(S->rig, S->head.forward()) : S->head.forward();
+		{
+			const RoomLayout &L = S->layout;
+			sc.tableRect = glm::vec4(L.tableCenter.x - L.tableSize.x * 0.5f, L.tableCenter.z - L.tableSize.y * 0.5f,
+				L.tableCenter.x + L.tableSize.x * 0.5f, L.tableCenter.z + L.tableSize.y * 0.5f);
+			sc.tableY = S->table.surfaceY();
+		}
 		if (S->board.battle())
 		{
 			glm::vec3 o = S->board.tileCenter(0, 0, 0), s1 = S->board.tileCenter(0, 1, 0), e1 = S->board.tileCenter(1, 0, 0);
@@ -1094,6 +1100,10 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uFadeCount", 0);
 	sh.set("uShadowPass", 0);
 	sh.set("uFeed", 0);
+	sh.set("uBuild", 0);
+	sh.set("uCrt", glm::vec3(1.f, 1.f, 0.f));
+	sh.set("uScanK", 0.12f);
+	sh.set("uVignette", 0.f);
 	bool useShadow = S->shadowOn && !shadowPass;
 	sh.set("uShadowOn", useShadow ? 1 : 0);
 	sh.set("uShadowMap", 1);
@@ -1481,6 +1491,7 @@ static void runScript()
 			if (!S->scanner.testPress(c.args.empty() ? "red" : c.args[0])) Log(LOG_INFO) << "[VR] script: the scanner isn't open";
 		}
 		else if (c.op == "scannerwav") { writeScannerSounds(c.args.empty() ? "scanner-" : c.args[0]); }
+		else if (c.op == "scannerfreeze") { S->scanner.freeze((float)num(0, -1)); }
 		else if (c.op == "scannerdump") { S->scanner.dump(c.args.empty() ? "scanner_screens.png" : c.args[0]); }
 		else if (c.op == "camunit")
 		{

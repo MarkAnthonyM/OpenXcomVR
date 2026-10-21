@@ -496,6 +496,25 @@ Room and rendering
     table's edge). The green button (radar north up / turning) stays for now;
     ideas discussed for it: mark the contacts on the table until the end of the
     turn (favoured), ping now, show the range, freeze the picture.
+  - scanner.5 (0.15.0 merged in, with VrAudio): sounds and the animation.
+    Sounds (synthScan, made in code, three more VrAudio slots: ping, blip,
+    UI; from the device's place around the head): a sonar ping per wave, a
+    blip per frame the wave reaches contacts (8 pitches, high = near the
+    soldier, pitched by the nearest; same moment as the haptic tick), a
+    power-on chirp when the screens light, power-off at closing, button
+    clicks (a heavier one for red). No hum (owner). Test op
+    `scannerwav <prefix>` writes them as WAVs.
+    Animation (owner chose the build-in + tube screens, beam from the table):
+    OPENING lasts 1 s: a beam from the nearest point of the table's rim to
+    the fist (0-0.15 s), the device forms behind a plane rising along its
+    up axis (uBuild/uBuildPlane: discard beyond it, glowing band at it;
+    0.15-0.65 s), the beam fades, the screens turn on (uCrt: a line across,
+    then it opens; staggered for the bar and side display; 0.65-1 s) with
+    the chirp; the ping clock only runs once OPEN. CLOSING 0.8 s: screens
+    fold to a line and a dot (0-0.25), dissolve downward (to 0.65), the beam
+    retracts. Screens: uScanK 0.3 (scanlines; 0.12 elsewhere), uVignette 0.4.
+    Buttons work 0.3 s after it is open. Test op `scannerfreeze <t>` holds
+    the animation at t (-1 runs it again).
   - Test ops `usescanner` (ScannerState for the selected soldier, no time
     units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
     three screens); test `scan`.

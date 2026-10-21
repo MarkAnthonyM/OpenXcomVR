@@ -47,6 +47,8 @@ struct ScannerContext
 	glm::vec2 north{0.f, -1.f}, east{1.f, 0.f};     // the battle map's directions on the table (world xz)
 	glm::vec3 eye{0.f, 1.3f, 0.f};
 	glm::vec3 headFwd{0.f, 0.f, -1.f};              // where the head faces (world): sounds come from the device
+	glm::vec4 tableRect{0.f};                      // the table top (world xz rect) and its height: the beam that
+	float tableY = 0.f;                            // brings the scanner comes from its nearest edge
 	std::function<glm::vec3(int, int, int)> tileCenter; // world position of a map tile's floor centre
 	std::function<void(int, int, int)> clickScreen; // game pixel x, y, SDL button
 	std::function<void(int, float, float)> haptic;  // hand, amplitude, seconds
@@ -77,6 +79,8 @@ public:
 	bool testPress(const std::string &button = "red");
 	/// Tests: the three screens side by side as a PNG.
 	bool dump(const std::string &path) const;
+	/// Tests: hold the opening or closing animation at this many seconds (below 0: run again).
+	void freeze(float t);
 	struct Impl;
 private:
 	std::unique_ptr<Impl> _p;

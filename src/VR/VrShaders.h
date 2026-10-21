@@ -107,6 +107,12 @@ uniform float uSunBoost;     // the battle map's sunlit part: how much brighter 
 uniform mat4 uMapInv;        // world -> battle map voxels
 uniform int uFadeCount;      // mode 6 (mist): it parts around these (world xyz, radius)
 uniform vec4 uFade[3];
+uniform vec3 uCrt;           // mode 1: a CRT turning on or off: how far the picture is open (vertically, across), glow
+uniform float uScanK;        // mode 1: how deep the scanlines go (0.12 normally)
+uniform float uVignette;     // mode 1: darker toward the screen's edges (0 none)
+uniform int uBuild;          // the motion scanner forming (or dissolving): nothing beyond this world plane...
+uniform vec4 uBuildPlane;
+uniform vec3 uBuildGlow;     // ...and a glowing band along it
 uniform int uFeed;           // the motion scanner's camera: the picture in the radar's green, with the ping
 uniform vec3 uFeedO;         // ...the soldier's tile (world)
 uniform vec3 uFeedE;         // ...one tile east and south as world vectors over their squared length (dot gives tiles)
@@ -357,8 +363,16 @@ vec3 feedColor(vec3 c)
 	return g;
 }
 
+float gBuildEdge = 0.0;
+
 void sceneMain()
 {
+	if (uBuild == 1)
+	{
+		float b = dot(uBuildPlane.xyz, vWorld) + uBuildPlane.w;
+		if (b > 0.0) discard;
+		gBuildEdge = 1.0 - smoothstep(0.0, 0.006, -b);
+	}
 	if (uClip.x <= uClip.z && (vWorld.x < uClip.x || vWorld.x > uClip.z || vWorld.z < uClip.y || vWorld.z > uClip.w)) discard;
 	if (uHoleCount > 0 && vWorld.y > uHoleY.x && vWorld.y < uHoleY.y)
 	{
@@ -390,7 +404,15 @@ void sceneMain()
 		// prescaled picture filters cleanly when it is small or seen at an angle
 		vec3 c = textureGrad(uTex, uv, dFdx(vUV), dFdy(vUV)).rgb;
 		// faint scanlines, one per game pixel row, only visible up close
-		if (uScan > 0.0) c *= 0.94 + 0.06 * sin(texel.y / uScan * 6.2831853);
+		if (uScan > 0.0) c *= 1.0 - uScanK * (0.5 - 0.5 * sin(texel.y / uScan * 6.2831853));
+		if (uVignette > 0.0) c *= 1.0 - uVignette * smoothstep(0.3, 0.75, length(vUV - 0.5));
+		if (uCrt.x < 0.999 || uCrt.y < 0.999)
+		{
+			// a tube turning on or off: only a band (then a line, a dot) of the picture, glowing
+			vec2 q = abs(vUV - 0.5) * 2.0;
+			if (q.y > max(uCrt.x, 0.012) || q.x > max(uCrt.y, 0.012)) { fragColor = vec4(0.004, 0.007, 0.005, 1.0); return; }
+			c = mix(c, vec3(0.7, 1.0, 0.8), uCrt.z) * (1.0 + 2.0 * uCrt.z);
+		}
 		fragColor = vec4(c * uTint.rgb * 1.15, 1.0);
 		return;
 	}
@@ -569,6 +591,7 @@ void main()
 {
 	sceneMain();
 	if (uFeed == 1) fragColor.rgb = feedColor(fragColor.rgb);
+	if (uBuild == 1) fragColor.rgb += uBuildGlow * gBuildEdge;
 }
 )GLSL";
 

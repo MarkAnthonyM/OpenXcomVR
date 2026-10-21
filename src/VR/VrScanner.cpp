@@ -66,6 +66,13 @@ const float LIFE = 1.8f, LIFE_JITTER = 0.4f; // ...each point stays this long, t
 // the next ping starts just as the edge of the range begins to go out, so every spot is dark for about the
 // time the wave takes to cross the range (about a second) before the next wave lights it again
 const float PING_CYCLE = CORNER / PING_SPEED + LIFE; // 3 s
+// coming out: a beam from the table's edge reaches the hand, the device forms behind a scan line rising from
+// the hand, the beam fades and the screens turn on like a tube (the power-on chirp); then the first ping
+const float BEAM_IN = 0.15f, BUILD_END = 0.65f, OPEN_T = 1.0f;
+// going away: the screens collapse to a line and a dot (the power-off chirp), the device dissolves downward
+// into the beam, the beam pulls back into the table
+const float CRT_OFF = 0.25f, DISSOLVE_END = 0.65f, CLOSE_T = 0.8f;
+const glm::vec3 HOLO(0.35f, 1.f, 0.5f);
 const float FOVS[] = {25.f, 35.f, 45.f, 60.f, 75.f};
 const int FOV_N = 5, FOV_DEFAULT = 2;
 const char *DIRS[8] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
@@ -218,6 +225,9 @@ struct HandScanner::Impl
 	Texture bodyTex, feedTex, barTex, sideTex;
 	Mesh frontMesh, wallMesh, feedMesh, barMesh, sideMesh, btnTop[4], btnWall[4];
 	mutable Mesh arrow;             // the camera picture's arrows to contacts out of view
+	mutable Mesh beamMesh;          // the beam from the table: two crossed glowing strips along +y
+	glm::vec3 beamFrom{0.f};        // where it leaves the table
+	float freezeT = -1.f;
 	RenderTarget feedRT;
 	bool feedOk = false, feedFailed = false, feedFresh = false;
 	int feedSkip = 0;
@@ -699,6 +709,27 @@ void HandScanner::Impl::composeSide()
 	}
 }
 
+void HandScanner::freeze(float t) { _p->freezeT = t; }
+
+/// A screen turning on (k 0..1): a line across first, then it opens to the full picture; returns the
+/// shader's uCrt (open vertically, open across, glow).
+static glm::vec3 crtOn(float k)
+{
+	k = glm::clamp(k, 0.f, 1.f);
+	if (k <= 0.f) return glm::vec3(0.f);
+	if (k < 0.3f) return glm::vec3(0.f, k / 0.3f, 1.f);
+	float v = glm::smoothstep(0.f, 1.f, (k - 0.3f) / 0.7f);
+	return glm::vec3(v, 1.f, 1.f - v);
+}
+/// ...and off (k 0..1): it closes to a line, then to a dot.
+static glm::vec3 crtOff(float k)
+{
+	k = glm::clamp(k, 0.f, 1.f);
+	if (k >= 1.f) return glm::vec3(0.f);
+	if (k < 0.6f) { float v = 1.f - glm::smoothstep(0.f, 1.f, k / 0.6f); return glm::vec3(v, 1.f, 1.f - v); }
+	return glm::vec3(0.f, 1.f - (k - 0.6f) / 0.4f, 1.f);
+}
+
 void HandScanner::Impl::sound(int which, AudioSlot slot, float volume, const ScannerContext &ctx)
 {
 	if (which == SND_PING) ++pings;
@@ -756,12 +787,24 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		p.sound(SND_OFF, AUDIO_SCANNER_UI, 0.45f, ctx);
 		Log(LOG_INFO) << "[VR] scanner: closed";
 	}
-	if (p.phase == Impl::OPENING && p.t > 0.25f) { p.phase = Impl::OPEN; p.t = 0.f; }
-	if (p.phase == Impl::CLOSING && p.t > 0.25f) { p.phase = Impl::CLOSED; p.t = 0.f; }
+	if (p.freezeT >= 0.f && (p.phase == Impl::OPENING || p.phase == Impl::CLOSING)) p.t = p.freezeT;
+	if (p.phase == Impl::OPENING && p.t > OPEN_T) { p.phase = Impl::OPEN; p.t = 0.f; }
+	if (p.phase == Impl::CLOSING && p.t > CLOSE_T) { p.phase = Impl::CLOSED; p.t = 0.f; }
 	if (p.phase == Impl::CLOSED || !p.artOk) return;
 
 	p.place(hands, dt);
-	if (p.soundOn) { p.soundOn = false; p.sound(SND_ON, AUDIO_SCANNER_UI, 0.45f, ctx); }
+	// the screens turn on: the chirp
+	if (p.soundOn && (p.phase != Impl::OPENING || p.t >= BUILD_END)) { p.soundOn = false; p.sound(SND_ON, AUDIO_SCANNER_UI, 0.45f, ctx); }
+	// the beam leaves the table at the edge nearest the hand
+	{
+		glm::vec3 a = glm::vec3(p.xf[3]);
+		const glm::vec4 &R = ctx.tableRect;
+		glm::vec2 q(glm::clamp(a.x, R.x, R.z), glm::clamp(a.z, R.y, R.w));
+		float dl = q.x - R.x, dr = R.z - q.x, dn = q.y - R.y, df = R.w - q.y;
+		float m = std::min(std::min(dl, dr), std::min(dn, df));
+		if (m == dl) q.x = R.x; else if (m == dr) q.x = R.z; else if (m == dn) q.y = R.y; else q.y = R.w;
+		p.beamFrom = glm::vec3(q.x, ctx.tableY, q.y);
+	}
 	// where the camera points, on the map: out of the back of the device, laid flat (pointed straight
 	// down, the top of the screen decides)
 	glm::vec3 fwd = -glm::vec3(p.xf[2]), up = glm::vec3(p.xf[1]);
@@ -775,8 +818,8 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 	}
 	if (p.src) { p.cropRadar(ctx); p.scan(ctx); }
 
-	// the ping: a tick in the holding hand as the wave passes each contact
-	if (p.phase == Impl::OPEN || p.phase == Impl::OPENING)
+	// the ping (once the screens are on): a tick in the holding hand as the wave passes each contact
+	if (p.phase == Impl::OPEN)
 	{
 		p.pingT += dt;
 		float now = p.tc();
@@ -825,7 +868,7 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 			if (d < best) { best = d; which = b; }
 		}
 		if (p.latched && best > 0.025f) p.latched = false;
-		if (!p.latched && p.armed > 0.6f && best < 0.011f) { p.latched = true; p.pending = which; }
+		if (!p.latched && p.armed > 0.3f && best < 0.011f) { p.latched = true; p.pending = which; }
 	}
 	if (p.pending >= 0 && p.phase == Impl::OPEN)
 	{
@@ -966,57 +1009,148 @@ void HandScanner::draw(const Shader &sh) const
 {
 	const Impl &p = *_p;
 	if (p.phase == Impl::CLOSED || !p.xfKnown || !p.artOk) return;
-	// it grows out of the hand, and shrinks back into it
-	float s = 1.f;
-	if (p.phase == Impl::OPENING) s = glm::smoothstep(0.f, 1.f, p.t / 0.25f);
-	if (p.phase == Impl::CLOSING) s = 1.f - glm::smoothstep(0.f, 1.f, p.t / 0.25f);
-	if (s <= 0.01f) return;
-	glm::mat4 M = p.xf * glm::scale(glm::mat4(1.f), glm::vec3(s));
-	sh.set("uMapShade", 0.f); // plain lighting, also over the map (the caller sets it back)
-	sh.set("uModel", M);
-	sh.set("uTint", glm::vec4(1.f));
-	sh.set("uMode", 0);
-	p.wallMesh.draw();
-	sh.set("uMode", 3);
-	p.bodyTex.bind(0);
-	p.frontMesh.draw();
-	for (int b = 0; b < 4; ++b)
+	const bool opening = p.phase == Impl::OPENING, closing = p.phase == Impl::CLOSING;
+	const float t = p.t;
+	// how much of the device is there (0..1, from the bottom up), the beam (how far it reaches, how bright)
+	float built = 1.f, reach = 0.f, beam = 0.f;
+	if (opening)
 	{
-		// a pressed button goes in and lights up for a moment
-		float pt = p.pressT[b];
-		float in = pt < 0.18f ? std::sin(pt / 0.18f * 3.14159f) : 0.f;
-		glm::mat4 Mb = M * glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -BTN_UP * 0.8f * in));
-		sh.set("uModel", Mb);
-		sh.set("uMode", 0);
+		built = glm::smoothstep(0.f, 1.f, (t - BEAM_IN) / (BUILD_END - BEAM_IN));
+		reach = glm::clamp(t / BEAM_IN, 0.f, 1.f);
+		beam = 1.f - glm::smoothstep(BUILD_END, BUILD_END + 0.2f, t);
+	}
+	else if (closing)
+	{
+		built = 1.f - glm::smoothstep(0.f, 1.f, (t - CRT_OFF) / (DISSOLVE_END - CRT_OFF));
+		reach = 1.f - glm::clamp((t - DISSOLVE_END) / (CLOSE_T - DISSOLVE_END), 0.f, 1.f);
+		beam = glm::smoothstep(CRT_OFF - 0.05f, CRT_OFF + 0.1f, t);
+	}
+	const glm::mat4 M = p.xf;
+	if (built > 0.001f)
+	{
+		bool partial = built < 0.999f;
+		if (partial)
+		{
+			// a plane across the device, rising from its bottom edge (the hand) to its top
+			glm::vec3 U = glm::normalize(glm::vec3(p.xf[1]));
+			float y0 = (p.grip.y - 189.f) * PX - 0.004f, y1 = (p.grip.y - 12.f) * PX + 0.004f;
+			glm::vec3 P = glm::vec3(p.xf * glm::vec4(0.f, y0 + (y1 - y0) * built, 0.f, 1.f));
+			sh.set("uBuild", 1);
+			sh.set("uBuildPlane", glm::vec4(U, -glm::dot(U, P)));
+			sh.set("uBuildGlow", HOLO * 2.5f);
+		}
+		sh.set("uMapShade", 0.f); // plain lighting, also over the map (the caller sets it back)
+		sh.set("uModel", M);
 		sh.set("uTint", glm::vec4(1.f));
-		p.btnWall[b].draw();
+		sh.set("uMode", 0);
+		p.wallMesh.draw();
 		sh.set("uMode", 3);
-		sh.set("uTint", glm::vec4(glm::vec3(1.f + 1.2f * in), 1.f));
 		p.bodyTex.bind(0);
-		p.btnTop[b].draw();
+		p.frontMesh.draw();
+		for (int b = 0; b < 4; ++b)
+		{
+			// a pressed button goes in and lights up for a moment
+			float pt = p.pressT[b];
+			float in = pt < 0.18f ? std::sin(pt / 0.18f * 3.14159f) : 0.f;
+			glm::mat4 Mb = M * glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -BTN_UP * 0.8f * in));
+			sh.set("uModel", Mb);
+			sh.set("uMode", 0);
+			sh.set("uTint", glm::vec4(1.f));
+			p.btnWall[b].draw();
+			sh.set("uMode", 3);
+			sh.set("uTint", glm::vec4(glm::vec3(1.f + 1.2f * in), 1.f));
+			p.bodyTex.bind(0);
+			p.btnTop[b].draw();
+		}
+		// the screens: tubes, faintly lined and darker at the edges; they turn on once the device is there
+		auto crt = [&](float start, float len) {
+			if (opening) return crtOn((t - start) / len);
+			if (closing) return crtOff(t / CRT_OFF);
+			return glm::vec3(1.f, 1.f, 0.f);
+		};
+		sh.set("uModel", M);
+		sh.set("uMode", 1);
+		sh.set("uTint", glm::vec4(1.f));
+		sh.set("uScanK", 0.3f);
+		sh.set("uVignette", 0.4f);
+		sh.set("uCrt", crt(BUILD_END, OPEN_T - BUILD_END));
+		sh.set("uTexSize", glm::vec2((float)FEED_N, (float)FEED_N));
+		sh.set("uScan", 1.f);
+		p.feedTex.bind(0);
+		p.feedMesh.draw();
+		if (p.barTex.valid())
+		{
+			sh.set("uCrt", crt(BUILD_END + 0.07f, 0.23f));
+			sh.set("uTexSize", glm::vec2((float)p.barTex.width(), (float)p.barTex.height()));
+			sh.set("uScan", (float)TS);
+			p.barTex.bind(0);
+			p.barMesh.draw();
+		}
+		if (p.sideTex.valid())
+		{
+			sh.set("uCrt", crt(BUILD_END + 0.1f, 0.25f));
+			sh.set("uTexSize", glm::vec2((float)p.sideTex.width(), (float)p.sideTex.height()));
+			sh.set("uScan", (float)TS);
+			p.sideTex.bind(0);
+			p.sideMesh.draw();
+		}
+		sh.set("uCrt", glm::vec3(1.f, 1.f, 0.f));
+		sh.set("uScanK", 0.12f);
+		sh.set("uVignette", 0.f);
+		sh.set("uBuild", 0);
 	}
-	sh.set("uModel", M);
-	sh.set("uMode", 1);
-	sh.set("uTint", glm::vec4(1.f));
-	sh.set("uTexSize", glm::vec2((float)FEED_N, (float)FEED_N));
-	sh.set("uScan", 1.f);
-	p.feedTex.bind(0);
-	p.feedMesh.draw();
-	if (p.barTex.valid())
+	// the beam: from the table's edge to the hand
+	if (beam > 0.01f && reach > 0.01f)
 	{
-		sh.set("uTexSize", glm::vec2((float)p.barTex.width(), (float)p.barTex.height()));
-		sh.set("uScan", (float)TS);
-		p.barTex.bind(0);
-		p.barMesh.draw();
-	}
-	if (p.sideTex.valid())
-	{
-		sh.set("uTexSize", glm::vec2((float)p.sideTex.width(), (float)p.sideTex.height()));
-		sh.set("uScan", (float)TS);
-		p.sideTex.bind(0);
-		p.sideMesh.draw();
+		Mesh &bm = p.beamMesh;
+		if (bm.empty())
+		{
+			// two crossed strips, bright along the middle, fading to the sides
+			MeshData m;
+			for (int k = 0; k < 2; ++k)
+			{
+				glm::vec3 side = k == 0 ? glm::vec3(1.f, 0.f, 0.f) : glm::vec3(0.f, 0.f, 1.f);
+				for (int h = 0; h < 2; ++h)
+				{
+					float s0 = h == 0 ? -0.5f : 0.f, s1 = h == 0 ? 0.f : 0.5f;
+					float a0 = h == 0 ? 0.f : 1.f, a1 = h == 0 ? 1.f : 0.f;
+					Vertex v[4] = {};
+					v[0].pos = side * s0; v[1].pos = side * s1; v[2].pos = side * s1 + glm::vec3(0.f, 1.f, 0.f); v[3].pos = side * s0 + glm::vec3(0.f, 1.f, 0.f);
+					v[0].color = v[3].color = glm::vec4(1.f, 1.f, 1.f, a0);
+					v[1].color = v[2].color = glm::vec4(1.f, 1.f, 1.f, a1);
+					uint32_t i0 = m.addVertex(v[0]), i1 = m.addVertex(v[1]), i2 = m.addVertex(v[2]), i3 = m.addVertex(v[3]);
+					m.indices.insert(m.indices.end(), {i0, i1, i2, i0, i2, i3});
+				}
+			}
+			bm.upload(m);
+		}
+		glm::vec3 to = glm::vec3(p.xf[3]);
+		glm::vec3 d = (to - p.beamFrom) * reach;
+		float len = glm::length(d);
+		if (len > 1e-3f)
+		{
+			glm::vec3 y = d / len;
+			glm::vec3 x = glm::normalize(glm::cross(y, std::fabs(y.y) < 0.9f ? glm::vec3(0.f, 1.f, 0.f) : glm::vec3(1.f, 0.f, 0.f)));
+			glm::vec3 z = glm::cross(x, y);
+			const float w = 0.022f;
+			glm::mat4 B(glm::vec4(x * w, 0.f), glm::vec4(d, 0.f), glm::vec4(z * w, 0.f), glm::vec4(p.beamFrom, 1.f));
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+			glDepthMask(GL_FALSE);
+			sh.set("uMode", 2);
+			sh.set("uModel", B);
+			sh.set("uTint", glm::vec4(HOLO * 2.2f, beam));
+			bm.draw();
+			// a brighter core
+			sh.set("uModel", B * glm::scale(glm::mat4(1.f), glm::vec3(0.25f, 1.f, 0.25f)));
+			sh.set("uTint", glm::vec4(glm::vec3(0.85f, 1.f, 0.9f) * 3.f, beam));
+			bm.draw();
+			glDepthMask(GL_TRUE);
+			glDisable(GL_BLEND);
+		}
 	}
 	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uModel", glm::mat4(1.f));
 	sh.set("uMode", 0);
 }
 

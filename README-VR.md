@@ -229,9 +229,15 @@ stand) in an X-COM command center at a holographic war table:
   Forced weather and a turned sun carry on into the next battles until you
   press AUTO / REAL.
 - **The motion scanner in your hand (scanner branch).** When a soldier uses a
-  motion scanner (the time units are spent as usual), the scanner from the
-  game's scanner screen appears in your right hand, about 21 x 14 cm, held by
-  its right edge, its screen tipped up toward you. Its big screen is a camera
+  motion scanner (the time units are spent as usual), a green beam shoots
+  from the nearest edge of the table to your right hand and the scanner from
+  the game's scanner screen forms there behind a rising scan line; then its
+  screens switch on like old tubes (a line, then the picture) with a chirp,
+  and the first ping goes out about a second after you used it. Closing runs
+  it backwards: the screens fold to a line and a dot, the scanner dissolves
+  into the beam and the beam pulls back into the table. It is about 21 x 14
+  cm, held by its right edge, its screen tipped up toward you; its screens
+  have faint scanlines and darker edges, like tubes. Its big screen is a camera
   looking out of the back, a little below where your hand points: aim it at
   the table and it shows that part of the map in the radar's green, without
   the table's markers (cursor, selection, path). The picture only shows where
