@@ -1049,15 +1049,15 @@ void HandScanner::Impl::camera(const ScannerContext &ctx)
 	auto toTiles = [&](const glm::vec3 &w) { glm::vec3 r = w - origin; return glm::vec2(glm::dot(r, eastT), glm::dot(r, southT)); };
 	glm::vec3 right = glm::normalize(glm::cross(camDir, camUp)), up2 = glm::cross(right, camDir);
 	float tn = std::tan(glm::radians(FOVS[fovIdx]) * 0.5f);
-	const float far = 30.f / std::max(1e-4f, std::sqrt(glm::dot(eastT, eastT))); // 30 tiles (world)
+	const float farDist = 30.f / std::max(1e-4f, std::sqrt(glm::dot(eastT, eastT))); // 30 tiles (world)
 	const float cx[4] = {-1.f, 1.f, 1.f, -1.f}, cy[4] = {-1.f, -1.f, 1.f, 1.f};
 	for (int i = 0; i < 4; ++i)
 	{
 		glm::vec3 d = glm::normalize(camDir + right * (tn * cx[i]) + up2 * (tn * cy[i]));
 		glm::vec3 hit;
 		float hor = std::sqrt(d.x * d.x + d.z * d.z);
-		if (d.y < -1e-4f && (origin.y - camPos.y) / d.y * hor < far) hit = camPos + d * ((origin.y - camPos.y) / d.y);
-		else hit = camPos + glm::vec3(d.x, 0.f, d.z) / std::max(hor, 1e-4f) * far;
+		if (d.y < -1e-4f && (origin.y - camPos.y) / d.y * hor < farDist) hit = camPos + d * ((origin.y - camPos.y) / d.y);
+		else hit = camPos + glm::vec3(d.x, 0.f, d.z) / std::max(hor, 1e-4f) * farDist;
 		foot[i] = toTiles(hit);
 	}
 	camTile = toTiles(camPos);
