@@ -537,6 +537,12 @@ Room and rendering
     rays, 30 tiles max) and an orange ring where the scanner is; soldier view:
     its heading up and the cone from the middle. It always opens in the
     commander view.
+  - scanner.7: the soldier view's pitch is the scanner's own (held upright in
+    front of you it looks level; owner), and it starts looking where the
+    soldier faces: on switching, yawOffset = the soldier's facing (8
+    directions x 45) - where the scanner points, added to the heading from
+    then on (owner chose "start there, then follow your turns"); the compass
+    and the side radar use that heading.
   - Test ops `usescanner` (ScannerState for the selected soldier, no time
     units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
     three screens); test `scan`.

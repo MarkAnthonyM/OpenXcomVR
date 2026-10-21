@@ -279,6 +279,8 @@ struct HandScanner::Impl
 	// pointing the device; yellow / blue raise and lower it a floor at a time)
 	bool soldierView = false;
 	int eyeStep = 0;                // 0 the soldier's eye height, 1 and 2 floors above
+	float devHeading = 0.f;         // where the scanner itself points (degrees from the map's north)
+	float yawOffset = 0.f;          // soldier view: added to it, so the view starts where the soldier faces
 	BattleUnit *me = nullptr;       // the soldier who used the scanner
 	glm::vec3 eyeWorld{0.f};
 	bool haveEye = false;
@@ -884,11 +886,13 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 	// where the camera points, on the map: out of the back of the device, laid flat (pointed straight
 	// down, the top of the screen decides)
 	glm::vec3 fwd = -glm::vec3(p.xf[2]), up = glm::vec3(p.xf[1]);
+	// (in the soldier view, turned so that where the scanner pointed when it switched is where the soldier faces)
 	glm::vec2 h(fwd.x + up.x, fwd.z + up.z);
 	if (glm::length(h) > 1e-3f)
 	{
 		h = glm::normalize(h);
-		float target = glm::degrees(std::atan2(glm::dot(h, ctx.east), glm::dot(h, ctx.north)));
+		p.devHeading = glm::degrees(std::atan2(glm::dot(h, ctx.east), glm::dot(h, ctx.north)));
+		float target = p.devHeading + (p.soldierView ? p.yawOffset : 0.f);
 		float diff = std::remainder(target - p.heading, 360.f);
 		p.heading = std::fmod(p.heading + diff * (1.f - std::exp(-dt * 20.f)) + 360.f, 360.f);
 	}
@@ -967,7 +971,16 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		else if (b == B_YELLOW && p.soldierView) { p.eyeStep = std::min(2, p.eyeStep + 1); what = "view higher"; }
 		else if (b == B_BLUE) { p.fovIdx = std::max(0, p.fovIdx - 1); what = "zoom in"; }
 		else if (b == B_YELLOW) { p.fovIdx = std::min(FOV_N - 1, p.fovIdx + 1); what = "zoom out"; }
-		else { p.soldierView = !p.soldierView; what = p.soldierView ? "soldier view" : "commander view"; }
+		else
+		{
+			p.soldierView = !p.soldierView;
+			what = p.soldierView ? "soldier view" : "commander view";
+			// the soldier view starts out looking where the soldier faces (its 8 directions: 0 north, clockwise)
+			float facing = p.me ? p.me->getDirection() * 45.f : p.devHeading;
+			p.yawOffset = p.soldierView ? std::remainder(facing - p.devHeading, 360.f) : 0.f;
+			p.heading = std::fmod((p.soldierView ? facing : p.devHeading) + 360.f, 360.f);
+			if (p.soldierView) Log(LOG_INFO) << "[VR] scanner: soldier view starts facing " << (int)std::lround(facing) << " (scanner pointing " << (int)std::lround(p.devHeading) << ")";
+		}
 		p.last = BTN_NAME[b];
 		Log(LOG_INFO) << "[VR] scanner: " << BTN_NAME[b] << " button (" << what << ") fov=" << (int)FOVS[p.fovIdx] << " step=" << p.eyeStep;
 	}
@@ -1018,13 +1031,13 @@ void HandScanner::Impl::camera(const ScannerContext &ctx)
 	}
 	if (soldierView && haveEye)
 	{
-		// the compass heading of the commander's camera, and its pitch raised by the device's tilt (so a
-		// level hand looks level), the horizon kept level
+		// the view's heading (the compass: the scanner's own, turned to start where the soldier faces) and the
+		// scanner's own pitch (held upright in front of you it looks level), the horizon kept level
 		camPos = eyeWorld;
-		glm::vec2 hz(dev.x + devUp.x * 0.f, dev.z);
-		if (glm::length(hz) < 0.15f) hz += glm::vec2(devUp.x, devUp.z); // pointed straight down: the screen's top
+		float hr = glm::radians(heading);
+		glm::vec2 hz = ctx.north * std::cos(hr) + ctx.east * std::sin(hr);
 		hz = glm::length(hz) > 1e-4f ? glm::normalize(hz) : glm::vec2(0.f, -1.f);
-		float pitch = glm::clamp(std::asin(glm::clamp(dev.y, -1.f, 1.f)) + glm::radians(TILT), glm::radians(-80.f), glm::radians(80.f));
+		float pitch = glm::clamp(std::asin(glm::clamp(dev.y, -1.f, 1.f)), glm::radians(-80.f), glm::radians(80.f));
 		camDir = glm::vec3(hz.x * std::cos(pitch), std::sin(pitch), hz.y * std::cos(pitch));
 		camUp = glm::vec3(0.f, 1.f, 0.f);
 	}
