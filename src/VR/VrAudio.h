@@ -18,7 +18,9 @@ namespace OpenXcom
 namespace VR
 {
 
-enum AudioSlot { AUDIO_THUNDER_A, AUDIO_THUNDER_B, AUDIO_SCANNER_PING, AUDIO_SCANNER_BLIP, AUDIO_SCANNER_UI, AUDIO_SLOTS };
+// the scanner's blips use four channels in turn (AUDIO_SCANNER_BLIP .. +3)
+enum AudioSlot { AUDIO_THUNDER_A, AUDIO_THUNDER_B, AUDIO_SCANNER_PING, AUDIO_SCANNER_UI, AUDIO_SCANNER_BLIP,
+	AUDIO_SLOTS = AUDIO_SCANNER_BLIP + 4 };
 
 /// The mixer channel of a slot (-1: no sound).
 int audioChannel(AudioSlot slot);

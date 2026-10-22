@@ -328,6 +328,7 @@ struct HandScanner::Impl
 	bool sndTried[SND_COUNT] = {};
 	int pings = 0, blips = 0;
 	int pingK = -1;                 // the last wave whose ping has sounded
+	int blipSlot = 0;               // the blips' channels are used in turn
 	bool soundOn = false;           // the power-on chirp, once the device has its place
 	void sound(int which, AudioSlot slot, float volume, const ScannerContext &ctx);
 	// the screens' pictures
@@ -948,7 +949,9 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		{
 			if (ctx.haptic) ctx.haptic(p.hand, 0.18f, 0.015f);
 			int k = std::min(SND_BLIPS - 1, (int)std::lround(nearest / CORNER * (SND_BLIPS - 1)));
-			p.sound(SND_BLIP0 + k, AUDIO_SCANNER_BLIP, 0.5f, ctx);
+			// four channels in turn: a further contact's blip doesn't cut off a nearer one's (and its echo)
+			p.blipSlot = (p.blipSlot + 1) % 4;
+			p.sound(SND_BLIP0 + k, (AudioSlot)(AUDIO_SCANNER_BLIP + p.blipSlot), 0.5f, ctx);
 		}
 		p.lastTc = now;
 	}
@@ -1048,9 +1051,10 @@ void HandScanner::Impl::updateLean(const ScannerContext &ctx, float dt)
 {
 	if (!soldierView || phase != OPEN) { leanRefSet = false; lean = glm::vec2(0.f); leanAtLimit = false; return; }
 	if (!leanRefSet) { leanRef = ctx.eye; leanRefSet = true; }
+	// measured from where the player faces (their right, their forward), then applied to the soldier's view
+	// (camera): leaning right always leans the view right, whichever way the soldier faces
 	glm::vec3 d = ctx.eye - leanRef;
-	float hr = glm::radians(heading);
-	glm::vec2 fw = ctx.north * std::cos(hr) + ctx.east * std::sin(hr);
+	glm::vec2 fw(ctx.headFwd.x, ctx.headFwd.z);
 	if (glm::length(fw) < 1e-4f) return;
 	fw = glm::normalize(fw);
 	glm::vec2 rt(-fw.y, fw.x), dv(d.x, d.z);

@@ -572,6 +572,12 @@ Room and rendering
     capped at 0.33 tile from the soldier's centre (inside its own tile, short
     of the walls at its edges), smoothed; a haptic knock when it hits the cap.
     Fair: the commander view already shows the area from above.
+  - scanner.11: the lean is measured along the player's own right / forward
+    (headFwd, flattened), then applied along the view's: before, it was read
+    along the view's axes, so with the soldier facing another way a lean to
+    the right came out as a lean back (owner). Blips play on four channels in
+    turn (AUDIO_SCANNER_BLIP .. +3): a further contact's blip no longer cuts
+    off a nearer one's echo (owner).
   - Test ops `usescanner` (ScannerState for the selected soldier, no time
     units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
     three screens); test `scan`.
