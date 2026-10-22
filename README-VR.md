@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.15.0-scanner.8)
+# OpenXcom Extended — VR Tabletop (prototype 0.15.0-scanner.9)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:

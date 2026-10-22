@@ -558,6 +558,12 @@ Room and rendering
     palette" (tried; the owner prefers clean unless they clash). The zoom
     resets to 45 degrees each time it opens, and the soldier view always uses
     45 (Impl::fov()).
+  - scanner.9: the ping was hard to hear on a headset (nearly all 60-100 Hz):
+    tanh grit (x2.2) for overtones and a short noise knock on the thump,
+    peak 0.85 (owner chose this over just louder). The power-on is audible
+    from the instant the tube lights (owner: it seemed late; it started from
+    silence): its envelope starts at 45% and a soft 70 Hz thump + crackle
+    marks the catch.
   - Test ops `usescanner` (ScannerState for the selected soldier, no time
     units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
     three screens); test `scan`.

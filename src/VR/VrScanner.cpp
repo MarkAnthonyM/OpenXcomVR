@@ -125,11 +125,13 @@ static std::vector<float> darkSpace(const std::vector<float> &x, int freq, float
 }
 
 /// One of the scanner's sounds (mono, -1..1) at a sample rate (the owner chose them from previews):
-/// - ping: a low boom played backwards, then a muffled thump (PING_LEAD in);
+/// - ping: a low boom played backwards, then a muffled thump (PING_LEAD in), with some grit and a knock so
+///   it carries on small speakers;
 /// - blips: a double beep near 1440 Hz in a small hard room; 0 = a contact right by the soldier (two
 ///   semitones up, louder, the beeps 10 ms apart), 7 = at the far corner (two down, quieter, 60 ms apart);
 ///   each beep swells in over 60 ms;
-/// - on: a low 50 Hz hum whose filter opens as it swells (0.35 s, the tube opening), a little crackle;
+/// - on: a low 50 Hz hum whose filter opens as it swells (0.35 s, the tube opening), a little crackle, and a
+///   soft thump as it catches, so it is heard from the instant the tube lights;
 /// - off: the same hum closing: full at first, its filter closing and its pitch sinking as it fades.
 std::vector<float> synthScan(int which, int freq)
 {
@@ -167,9 +169,21 @@ std::vector<float> synthScan(int which, int freq)
 			float r = (float)i / (boom.size() - 1);
 			v.push_back(boom[boom.size() - 1 - i] * r * r);
 		}
+		const size_t thumpAt = v.size();
 		v.insert(v.end(), thump.begin(), thump.end());
+		// a little grit (overtones small speakers can play) and a short knock on the thump, so it is heard
+		// on a headset, not only felt
+		const float grit = 2.2f;
+		for (float &x : v) x = std::tanh(x * grit) / std::tanh(grit);
+		float kl = 0.f;
+		for (size_t i = 0; i < thump.size(); ++i)
+		{
+			float t = (float)i / freq;
+			kl += ((rnd() * 2.f - 1.f) - kl) * std::min(1.f, 0.25f * k44);
+			v[thumpAt + i] += kl * std::exp(-t / 0.006f) * 0.5f;
+		}
 		v = darkSpace(v, freq, 0.4f);
-		normalize(v, 0.55f);
+		normalize(v, 0.85f);
 	}
 	else if (which >= SND_BLIP0)
 	{
@@ -204,16 +218,20 @@ std::vector<float> synthScan(int which, int freq)
 	{
 		const float swell = 0.35f, L = 0.65f + swell;
 		v = make(L);
-		float ph = 0.f, lp = 0.f;
+		float ph = 0.f, lp = 0.f, cl = 0.f;
 		for (size_t i = 0; i < v.size(); ++i)
 		{
 			float t = (float)i / freq;
 			ph += TAU * (50.f + 12.f * t) / freq;
 			float saw = std::fmod(ph / TAU, 1.f) * 2.f - 1.f;
 			lp += (saw - lp) * std::min(1.f, (0.004f + 0.05f * std::min(t / swell, 1.f)) * k44);
-			float env = std::pow(std::min(t / swell, 1.f), 1.5f) * std::min((L - t) / 0.25f, 1.f);
+			float rel = std::min((L - t) / 0.25f, 1.f);
+			// audible from the instant the tube lights (a soft thump and crackle as it catches), then the swell
+			float env = std::max(std::pow(std::min(t / swell, 1.f), 1.5f) * rel, 0.45f * std::min(t / 0.004f, 1.f)) * rel;
 			float crackle = rnd() > 0.995f ? (rnd() * 2.f - 1.f) * std::min(t / 0.2f, 1.f) : 0.f;
-			v[i] = lp * env * 2.f + crackle * 0.6f;
+			cl += ((rnd() * 2.f - 1.f) - cl) * std::min(1.f, 0.2f * k44);
+			float catchSnd = std::sin(TAU * 70.f * t) * std::exp(-t / 0.03f) * 0.8f + cl * std::exp(-t / 0.01f) * 0.5f;
+			v[i] = lp * env * 2.f + crackle * 0.6f + catchSnd;
 		}
 		v = darkSpace(v, freq, 0.4f);
 		normalize(v, 0.55f);
