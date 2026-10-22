@@ -146,7 +146,8 @@ The New Battle flow is driven by blind clicks on the flat screen (see
 - Branch `vr-prototype-scanner` (from vr-prototype 0.13.0, 0.14.0 merged
   in): the motion scanner in the hand (`VrScanner.cpp`), builds
   `0.13.0-scanner.1`, `0.14.0-scanner.2-4`, then `0.15.0-scanner.<n>`
-  (0.15.0 merged in).
+  (0.15.0 merged in); merged into vr-prototype as 0.16.0 (scanner.12, owner
+  approved). The button sounds were set aside (the buttons are silent).
 - Branch `vr-prototype-thunder` (from vr-prototype 0.14.0): better thunder,
   builds `0.14.0-thunder.<n>`; merged into vr-prototype as 0.15.0 (thunder.1, owner
   approved). The owner asked for the three improvements
@@ -498,7 +499,8 @@ Room and rendering
     turn (favoured), ping now, show the range, freeze the picture.
   - scanner.5 (0.15.0 merged in, with VrAudio): sounds and the animation.
     Sounds (synthScan, made in code, three more VrAudio slots: ping, blip,
-    UI, later two wave slots and UI, see scanner.12; from the device's place around the head): a sonar ping per wave, a
+    UI, later two wave slots and UI, see scanner.12; from the device's place
+    around the head): a sonar ping per wave, a
     blip per frame the wave reaches contacts (8 pitches, high = near the
     soldier, pitched by the nearest; same moment as the haptic tick), a
     power-on chirp when the screens light, power-off at closing, button

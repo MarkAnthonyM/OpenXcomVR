@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.15.0-scanner.12)
+# OpenXcom Extended — VR Tabletop (prototype 0.16.0)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -228,7 +228,7 @@ stand) in an X-COM command center at a holographic war table:
   darkness, what your soldiers see and the flat screen stay as they are.
   Forced weather and a turned sun carry on into the next battles until you
   press AUTO / REAL.
-- **The motion scanner in your hand (scanner branch).** When a soldier uses a
+- **The motion scanner in your hand.** When a soldier uses a
   motion scanner (the time units are spent as usual), the scanner from the
   game's scanner screen forms in your right hand behind a rising green scan
   line; then its screens switch on like old tubes (a line, then the picture)
