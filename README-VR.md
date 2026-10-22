@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.15.0-scanner.11)
+# OpenXcom Extended — VR Tabletop (prototype 0.15.0-scanner.12)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -269,7 +269,9 @@ stand) in an X-COM command center at a holographic war table:
     (with a tick in your hand), higher, louder and with its two beeps closer
     together the nearer the contact is; a low hum swelling as the screens
     switch on and closing down as they go off. They come from where the
-    scanner is. The buttons are silent for now (you feel them).
+    scanner is, and follow it as you turn your head. Each wave's ping and
+    beeps are mixed as one sound, so the beeps keep their exact spacing. The
+    buttons are silent for now (you feel them).
   - The camera always comes out at its normal zoom; the soldier view always
     uses the normal view, whatever the commander view's zoom.
   - When it comes out, the table centres on the soldier and zooms out if

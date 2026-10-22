@@ -88,6 +88,19 @@ bool writeWav(const std::string &path, const std::vector<float> &mono, int freq)
 	return true;
 }
 
+void freeChunk(Mix_Chunk *chunk)
+{
+	if (!chunk) return;
+	Uint8 *buf = chunk->abuf;       // Mix_QuickLoad_RAW doesn't own its samples
+	Mix_FreeChunk(chunk);           // (halts any channel playing it first)
+	SDL_free(buf);
+}
+
+void fadeOut(int channel, int ms)
+{
+	if (channel >= 0 && Mix_Playing(channel)) Mix_FadeOutChannel(channel, ms);
+}
+
 bool moveSound(int channel, float angleDeg)
 {
 	if (channel < 0) return false;

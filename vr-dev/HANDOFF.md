@@ -498,7 +498,7 @@ Room and rendering
     turn (favoured), ping now, show the range, freeze the picture.
   - scanner.5 (0.15.0 merged in, with VrAudio): sounds and the animation.
     Sounds (synthScan, made in code, three more VrAudio slots: ping, blip,
-    UI; from the device's place around the head): a sonar ping per wave, a
+    UI, later two wave slots and UI, see scanner.12; from the device's place around the head): a sonar ping per wave, a
     blip per frame the wave reaches contacts (8 pitches, high = near the
     soldier, pitched by the nearest; same moment as the haptic tick), a
     power-on chirp when the screens light, power-off at closing, button
@@ -578,6 +578,23 @@ Room and rendering
     the right came out as a lean back (owner). Blips play on four channels in
     turn (AUDIO_SCANNER_BLIP .. +3): a further contact's blip no longer cuts
     off a nearer one's echo (owner).
+  - scanner.12: the spacing between blips drifted (owner: two contacts' blips
+    steady for a while, then closer). Each was started from the frame that
+    saw the wave reach its contact, and SDL_mixer starts a sound only at its
+    next buffer (1024 samples at 22050 Hz, about 46 ms), so the gap came out
+    one buffer short or long depending on where each wave fell against the
+    buffers, plus frame hitches. Now each wave is one sound (playWave): the
+    ping with every contact's blip mixed in at PING_LEAD + dist / PING_SPEED
+    (contacts reached within 15 ms share a blip, pitched by the nearest),
+    started PING_LEAD before the wave and trimmed by how late its frame was,
+    so it stays with the picture. Waves alternate between two channels
+    (AUDIO_SCANNER_WAVE_A/B, replacing PING and BLIP..+3); a wave's chunk is
+    freed when its channel comes round again (freeChunk); the playing wave
+    follows the device round the head (moveSound) and fades out (80 ms) when
+    the scanner closes. The haptic ticks stay per frame. `scannerwav` also
+    writes the last wave as mixed (`wave.wav`). Checked with the owner's save
+    (two contacts, 5.8 and 10.8 tiles) and SDL's disk audio driver
+    (SDL_AUDIODRIVER=disk): the same gap in every wave of the mixer's output.
   - Test ops `usescanner` (ScannerState for the selected soldier, no time
     units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
     three screens); test `scan`.

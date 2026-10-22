@@ -1490,7 +1490,13 @@ static void runScript()
 			// test helper: press one of the scanner's buttons (red closes it; blue, yellow zoom; green turns the radar)
 			if (!S->scanner.testPress(c.args.empty() ? "red" : c.args[0])) Log(LOG_INFO) << "[VR] script: the scanner isn't open";
 		}
-		else if (c.op == "scannerwav") { writeScannerSounds(c.args.empty() ? "scanner-" : c.args[0]); }
+		else if (c.op == "scannerwav")
+		{
+			// test helper: the scanner's sounds as WAV files (prefix + name), and the last wave as mixed (prefix + "wave")
+			std::string pre = c.args.empty() ? "scanner-" : c.args[0];
+			writeScannerSounds(pre);
+			if (S->scanner.writeWave(pre + "wave.wav")) Log(LOG_INFO) << "[VR] script: wrote " << pre << "wave.wav";
+		}
 		else if (c.op == "scannerfreeze") { S->scanner.freeze((float)num(0, -1)); }
 		else if (c.op == "scannerdump") { S->scanner.dump(c.args.empty() ? "scanner_screens.png" : c.args[0]); }
 		else if (c.op == "camunit")

@@ -79,6 +79,8 @@ public:
 	void feedOverlay(const Shader &sh) const;
 	/// Tests: press a button (as the other hand would): "red" (close), "blue", "yellow", "green".
 	bool testPress(const std::string &button = "red");
+	/// Tests: the last wave's sound (its ping and blips, as mixed) as a WAV file; false before the first.
+	bool writeWave(const std::string &path) const;
 	/// Tests: the three screens side by side as a PNG.
 	bool dump(const std::string &path) const;
 	/// Tests: hold the opening or closing animation at this many seconds (below 0: run again).

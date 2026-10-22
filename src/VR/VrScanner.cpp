@@ -328,9 +328,19 @@ struct HandScanner::Impl
 	bool sndTried[SND_COUNT] = {};
 	int pings = 0, blips = 0;
 	int pingK = -1;                 // the last wave whose ping has sounded
-	int blipSlot = 0;               // the blips' channels are used in turn
 	bool soundOn = false;           // the power-on chirp, once the device has its place
 	void sound(int which, AudioSlot slot, float volume, const ScannerContext &ctx);
+	// each wave is one sound: its ping with every contact's blip mixed in at the moment the wave reaches it, so
+	// their spacing is exact (started one by one from the frames, each would wait for the mixer's next buffer,
+	// about 46 ms at the game's settings, and for the frame that noticed it)
+	std::vector<float> voice[SND_COUNT];   // the ping and blips, mono at voiceFreq
+	int voiceFreq = 0;
+	Mix_Chunk *wave[2] = {};        // the last two waves (two channels in turn: a wave is freed when its channel comes round again)
+	int waveSlot = 0, waveCh = -1;
+	std::vector<float> lastWave;    // tests
+	int lastWaveFreq = 0;
+	float deviceAngle(const ScannerContext &ctx) const;
+	void playWave(float late, const ScannerContext &ctx);
 	// the screens' pictures
 	std::vector<uint32_t> bar, side;
 	TextMask dirMask[8];
@@ -834,25 +844,74 @@ static glm::vec3 crtOff(float k)
 	return glm::vec3(0.f, 1.f - (k - 0.6f) / 0.4f, 1.f);
 }
 
+/// Where the device is, as the head hears it: degrees clockwise from where it faces.
+float HandScanner::Impl::deviceAngle(const ScannerContext &ctx) const
+{
+	glm::vec3 d = glm::vec3(xf[3]) - ctx.eye;
+	glm::vec2 f(ctx.headFwd.x, ctx.headFwd.z), dv(d.x, d.z);
+	if (glm::length(f) < 1e-4f || glm::length(dv) < 1e-4f) return 0.f;
+	f = glm::normalize(f);
+	glm::vec2 r(-f.y, f.x);
+	return std::atan2(glm::dot(dv, r), glm::dot(dv, f)) * 57.29578f;
+}
+
 void HandScanner::Impl::sound(int which, AudioSlot slot, float volume, const ScannerContext &ctx)
 {
-	if (which == SND_PING) ++pings;
-	if (which >= SND_BLIP0) ++blips;
 	int freq = audioFreq();
 	if (!freq) return;
 	if (!sndTried[which]) { sndTried[which] = true; snd[which] = makeChunk(synthScan(which, freq)); }
 	if (!snd[which]) return;
-	// from the device, as the head hears it: degrees clockwise from where it faces
-	glm::vec3 d = glm::vec3(xf[3]) - ctx.eye;
-	glm::vec2 f(ctx.headFwd.x, ctx.headFwd.z), dv(d.x, d.z);
-	float angle = 0.f;
-	if (glm::length(f) > 1e-4f && glm::length(dv) > 1e-4f)
+	playAt(slot, snd[which], volume, deviceAngle(ctx));
+}
+
+/// A wave's sound, from its ping on: `late` seconds of it are already past (the frame came after the moment it
+/// was due), so it stays with the picture's wave.
+void HandScanner::Impl::playWave(float late, const ScannerContext &ctx)
+{
+	++pings;
+	const float BLIP_GAIN = 0.5f / 0.55f;   // the blips' level against the ping's (as on channels of their own)
+	const float MERGE = 0.015f;             // contacts reached closer together than this share one blip
+	int freq = audioFreq();
+	bool play = freq > 0;
+	if (!play) freq = 22050;                // (no sound: still made, for the tests)
+	if (freq != voiceFreq) { for (std::vector<float> &v : voice) v.clear(); voiceFreq = freq; }
+	auto get = [&](int which) -> const std::vector<float> & {
+		if (voice[which].empty()) voice[which] = synthScan(which, freq);
+		return voice[which];
+	};
+	// the blips: one where the wave reaches each contact, pitched by the nearest of those reached together
+	std::vector<float> dists;
+	for (const Contact &c : contacts) dists.push_back(c.dist);
+	std::sort(dists.begin(), dists.end());
+	struct Blip { size_t at; int which; };
+	std::vector<Blip> blipsAt;
+	float groupT = -1.f;
+	for (float d : dists)
 	{
-		f = glm::normalize(f);
-		glm::vec2 r(-f.y, f.x);
-		angle = std::atan2(glm::dot(dv, r), glm::dot(dv, f)) * 57.29578f;
+		float t0 = d / PING_SPEED;
+		if (groupT >= 0.f && t0 - groupT < MERGE) continue;
+		groupT = t0;
+		int k = std::min(SND_BLIPS - 1, (int)std::lround(d / CORNER * (SND_BLIPS - 1)));
+		blipsAt.push_back({(size_t)std::lround((PING_LEAD + t0) * freq), SND_BLIP0 + k});
 	}
-	playAt(slot, snd[which], volume, angle);
+	const std::vector<float> &ping = get(SND_PING);
+	size_t len = ping.size();
+	for (const Blip &b : blipsAt) len = std::max(len, b.at + get(b.which).size());
+	size_t skip = (size_t)std::max(0.f, late * freq);
+	if (skip >= len) return;
+	std::vector<float> mix(len - skip, 0.f);
+	auto add = [&](const std::vector<float> &v, size_t at, float gain) {
+		for (size_t i = at < skip ? skip - at : 0; i < v.size(); ++i) mix[at + i - skip] += v[i] * gain;
+	};
+	add(ping, 0, 1.f);
+	for (const Blip &b : blipsAt) add(get(b.which), b.at, BLIP_GAIN);
+	lastWave = mix;
+	lastWaveFreq = freq;
+	if (!play) return;
+	waveSlot ^= 1;
+	freeChunk(wave[waveSlot]);      // (three seconds old: long finished)
+	wave[waveSlot] = makeChunk(mix);
+	waveCh = playAt(waveSlot ? AUDIO_SCANNER_WAVE_B : AUDIO_SCANNER_WAVE_A, wave[waveSlot], 0.55f, deviceAngle(ctx));
 }
 
 void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt)
@@ -893,6 +952,8 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		p.t = 0.f;
 		p.src = nullptr;
 		p.sound(SND_OFF, AUDIO_SCANNER_UI, 0.45f, ctx);
+		fadeOut(p.waveCh, 80);      // (the rest of the wave's blips with it)
+		p.waveCh = -1;
 		Log(LOG_INFO) << "[VR] scanner: closed";
 	}
 	if (p.freezeT >= 0.f && (p.phase == Impl::OPENING || p.phase == Impl::CLOSING)) p.t = p.freezeT;
@@ -920,38 +981,34 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 	p.updateLean(ctx, dt);
 	p.camera(ctx);
 
-	// the ping sound starts PING_LEAD before each wave (its thump goes with the wave); the first wave leaves
-	// as the screens are on
+	// each wave's sound starts PING_LEAD before the wave (the ping's thump goes with it), its blips mixed in; the
+	// first wave leaves as the screens are on
+	if (p.phase == Impl::OPEN) p.pingT += dt;
 	if (p.phase == Impl::OPENING || p.phase == Impl::OPEN)
 	{
-		float w = p.phase == Impl::OPENING ? p.t - OPEN_T : p.pingT;   // seconds since the first wave
-		int k = (int)std::floor((w + PING_LEAD) / PING_CYCLE);
-		if (k > p.pingK) { p.pingK = k; p.sound(SND_PING, AUDIO_SCANNER_PING, 0.55f, ctx); }
+		float w = (p.phase == Impl::OPENING ? p.t - OPEN_T : p.pingT) + PING_LEAD;   // since the first wave's sound was due
+		int k = (int)std::floor(w / PING_CYCLE);
+		if (k > p.pingK) { p.pingK = k; p.playWave(w - k * PING_CYCLE, ctx); }
+		moveSound(p.waveCh, p.deviceAngle(ctx));
 	}
-	// the waves (once the screens are on): a tick in the holding hand as the wave passes each contact
+	// a tick in the holding hand as the wave passes contacts (one for those it reached this frame)
 	if (p.phase == Impl::OPEN)
 	{
-		p.pingT += dt;
 		float now = p.tc();
 		if (p.cycle() != p.lastCycle)
 		{
 			p.lastCycle = p.cycle();
 			p.lastTc = -1.f;
 		}
-		// contacts the wave reached this frame: one blip (and tick) for them all, pitched by the nearest
-		float nearest = -1.f;
 		for (const Impl::Contact &c : p.contacts)
 		{
 			float t0 = c.dist / PING_SPEED;
-			if (t0 > p.lastTc && t0 <= now && (nearest < 0.f || c.dist < nearest)) nearest = c.dist;
-		}
-		if (nearest >= 0.f)
-		{
-			if (ctx.haptic) ctx.haptic(p.hand, 0.18f, 0.015f);
-			int k = std::min(SND_BLIPS - 1, (int)std::lround(nearest / CORNER * (SND_BLIPS - 1)));
-			// four channels in turn: a further contact's blip doesn't cut off a nearer one's (and its echo)
-			p.blipSlot = (p.blipSlot + 1) % 4;
-			p.sound(SND_BLIP0 + k, (AudioSlot)(AUDIO_SCANNER_BLIP + p.blipSlot), 0.5f, ctx);
+			if (t0 > p.lastTc && t0 <= now)
+			{
+				if (ctx.haptic) ctx.haptic(p.hand, 0.18f, 0.015f);
+				++p.blips;
+				break;
+			}
 		}
 		p.lastTc = now;
 	}
@@ -1320,6 +1377,11 @@ bool writeScannerSounds(const std::string &prefix)
 		if (!writeWav(prefix + SND_NAME[i] + ".wav", synthScan(i, 44100), 44100)) return false;
 	Log(LOG_INFO) << "[VR] scanner sounds written to " << prefix << "*.wav";
 	return true;
+}
+
+bool HandScanner::writeWave(const std::string &path) const
+{
+	return !_p->lastWave.empty() && writeWav(path, _p->lastWave, _p->lastWaveFreq);
 }
 
 bool HandScanner::dump(const std::string &path) const

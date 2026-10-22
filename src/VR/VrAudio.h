@@ -18,9 +18,9 @@ namespace OpenXcom
 namespace VR
 {
 
-// the scanner's blips use four channels in turn (AUDIO_SCANNER_BLIP .. +3)
-enum AudioSlot { AUDIO_THUNDER_A, AUDIO_THUNDER_B, AUDIO_SCANNER_PING, AUDIO_SCANNER_UI, AUDIO_SCANNER_BLIP,
-	AUDIO_SLOTS = AUDIO_SCANNER_BLIP + 4 };
+// the scanner's waves (each ping with its blips, mixed as one sound) use two channels in turn
+enum AudioSlot { AUDIO_THUNDER_A, AUDIO_THUNDER_B, AUDIO_SCANNER_WAVE_A, AUDIO_SCANNER_WAVE_B, AUDIO_SCANNER_UI,
+	AUDIO_SLOTS };
 
 /// The mixer channel of a slot (-1: no sound).
 int audioChannel(AudioSlot slot);
@@ -32,6 +32,10 @@ int playAt(AudioSlot slot, Mix_Chunk *chunk, float volume, float angleDeg);
 int audioFreq();
 /// A mono sound (-1..1 at audioFreq) as a mixer chunk in the mixer's format; kept for good (null: no sound).
 Mix_Chunk *makeChunk(const std::vector<float> &mono);
+/// Frees a chunk from makeChunk (stopping it wherever it plays) and its samples.
+void freeChunk(Mix_Chunk *chunk);
+/// Fades out whatever plays on a channel.
+void fadeOut(int channel, int ms);
 /// Tests: a mono sound as a 16-bit WAV file.
 bool writeWav(const std::string &path, const std::vector<float> &mono, int freq);
 /// Keeps a playing sound in its direction while the head turns; false (and the position cleared) once it
