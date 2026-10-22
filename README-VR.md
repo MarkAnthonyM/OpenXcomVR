@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.15.0-scanner.9)
+# OpenXcom Extended — VR Tabletop (prototype 0.15.0-scanner.10)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -243,7 +243,10 @@ stand) in an X-COM command center at a holographic war table:
     table: it starts looking where the soldier faces and turns as you turn the
     scanner (held upright in front of you, it looks level); yellow and
     blue raise and lower it a floor at a time (eye height, one and two floors
-    up), and the soldier's own figure isn't drawn. It always comes out in the
+    up), and the soldier's own figure isn't drawn. Lean your body to lean the
+    soldier: sideways or forward, up to a third of a tile from its middle (a
+    small knock in your hand says it can't lean further), enough to peek past
+    a corner it stands at, never through a wall. It always comes out in the
     commander view; in it, blue and yellow zoom in and out.
   - The picture only shows where the scanner's ping has been: every 3 seconds
     a ping spreads from the soldier to the edge of the game's range (the same

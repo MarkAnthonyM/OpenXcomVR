@@ -30,6 +30,11 @@ scannerpress yellow
 wait 1200
 status
 scannerdump shots/scanner_soldier_up.png
+cam 0.3 1.2 -0.02 0 -25
+wait 1500
+status
+cam 0.0 1.2 -0.02 0 -25
+wait 800
 scannerpress green
 wait 800
 scannerdump shots/scanner_commander.png

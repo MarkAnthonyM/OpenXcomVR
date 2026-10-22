@@ -564,6 +564,14 @@ Room and rendering
     from the instant the tube lights (owner: it seemed late; it started from
     silence): its envelope starts at 45% and a soft 70 Hz thump + crackle
     marks the catch.
+  - scanner.10: the ping without the knock (owner preferred it; the grit
+    stays). Soldier view leaning (owner: to peek past a corner): the head's
+    position when the view starts is the reference (re-set by switching the
+    view off and on); the head's horizontal offset, split across / along the
+    view's heading, moves the eye by LEAN_MAX (0.33 tile) per LEAN_FULL (15 cm),
+    capped at 0.33 tile from the soldier's centre (inside its own tile, short
+    of the walls at its edges), smoothed; a haptic knock when it hits the cap.
+    Fair: the commander view already shows the area from above.
   - Test ops `usescanner` (ScannerState for the selected soldier, no time
     units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
     three screens); test `scan`.

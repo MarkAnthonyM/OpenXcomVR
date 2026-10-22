@@ -74,6 +74,8 @@ const float BUILD_END = 0.5f, OPEN_T = 0.85f;
 const float CRT_OFF = 0.25f, CLOSE_T = 0.65f;
 const glm::vec3 HOLO(0.35f, 1.f, 0.5f);
 const float FOVS[] = {25.f, 35.f, 45.f, 60.f, 75.f};
+const float LEAN_FULL = 0.15f;          // soldier view: this much head lean (metres) ...
+const float LEAN_MAX = 0.33f;           // ... moves the eye this far (tiles), the most it goes (short of the tile's edges)
 const int FOV_N = 5, FOV_DEFAULT = 2;  // 45 degrees (the soldier view always uses it)
 const char *DIRS[8] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
 
@@ -125,8 +127,8 @@ static std::vector<float> darkSpace(const std::vector<float> &x, int freq, float
 }
 
 /// One of the scanner's sounds (mono, -1..1) at a sample rate (the owner chose them from previews):
-/// - ping: a low boom played backwards, then a muffled thump (PING_LEAD in), with some grit and a knock so
-///   it carries on small speakers;
+/// - ping: a low boom played backwards, then a muffled thump (PING_LEAD in), with some grit so it carries
+///   on small speakers;
 /// - blips: a double beep near 1440 Hz in a small hard room; 0 = a contact right by the soldier (two
 ///   semitones up, louder, the beeps 10 ms apart), 7 = at the far corner (two down, quieter, 60 ms apart);
 ///   each beep swells in over 60 ms;
@@ -171,17 +173,10 @@ std::vector<float> synthScan(int which, int freq)
 		}
 		const size_t thumpAt = v.size();
 		v.insert(v.end(), thump.begin(), thump.end());
-		// a little grit (overtones small speakers can play) and a short knock on the thump, so it is heard
-		// on a headset, not only felt
+		// a little grit (overtones small speakers can play), so it is heard on a headset, not only felt
 		const float grit = 2.2f;
 		for (float &x : v) x = std::tanh(x * grit) / std::tanh(grit);
-		float kl = 0.f;
-		for (size_t i = 0; i < thump.size(); ++i)
-		{
-			float t = (float)i / freq;
-			kl += ((rnd() * 2.f - 1.f) - kl) * std::min(1.f, 0.25f * k44);
-			v[thumpAt + i] += kl * std::exp(-t / 0.006f) * 0.5f;
-		}
+		(void)thumpAt;
 		v = darkSpace(v, freq, 0.4f);
 		normalize(v, 0.85f);
 	}
@@ -296,6 +291,12 @@ struct HandScanner::Impl
 	float fov() const { return FOVS[soldierView ? FOV_DEFAULT : fovIdx]; }
 	float devHeading = 0.f;         // where the scanner itself points (degrees from the map's north)
 	float yawOffset = 0.f;          // soldier view: added to it, so the view starts where the soldier faces
+	// soldier view: leaning. Where the head was when the view started; the eye moves (smoothed) by how far it
+	// has leaned since, sideways and forward, up to LEAN_MAX tiles from the soldier's centre
+	glm::vec3 leanRef{0.f};
+	bool leanRefSet = false, leanAtLimit = false;
+	glm::vec2 lean{0.f};            // tiles: across (right +), forward
+	void updateLean(const ScannerContext &ctx, float dt);
 	BattleUnit *me = nullptr;       // the soldier who used the scanner
 	glm::vec3 eyeWorld{0.f};
 	bool haveEye = false;
@@ -915,6 +916,7 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		p.heading = std::fmod(p.heading + diff * (1.f - std::exp(-dt * 20.f)) + 360.f, 360.f);
 	}
 	if (p.src) { p.cropRadar(ctx); p.scan(ctx); }
+	p.updateLean(ctx, dt);
 	p.camera(ctx);
 
 	// the ping sound starts PING_LEAD before each wave (its thump goes with the wave); the first wave leaves
@@ -1002,6 +1004,8 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 			// the soldier view starts out looking where the soldier faces (its 8 directions: 0 north, clockwise)
 			float facing = p.me ? p.me->getDirection() * 45.f : p.devHeading;
 			p.yawOffset = p.soldierView ? std::remainder(facing - p.devHeading, 360.f) : 0.f;
+			p.leanRefSet = false;       // leaning starts from where the head is now
+			p.lean = glm::vec2(0.f);
 			p.heading = std::fmod((p.soldierView ? facing : p.devHeading) + 360.f, 360.f);
 			if (p.soldierView) Log(LOG_INFO) << "[VR] scanner: soldier view starts facing " << (int)std::lround(facing) << " (scanner pointing " << (int)std::lround(p.devHeading) << ")";
 		}
@@ -1040,6 +1044,26 @@ BattleUnit *HandScanner::feedHides() const
 	return p.soldierView && isOpen() ? p.me : nullptr;
 }
 
+void HandScanner::Impl::updateLean(const ScannerContext &ctx, float dt)
+{
+	if (!soldierView || phase != OPEN) { leanRefSet = false; lean = glm::vec2(0.f); leanAtLimit = false; return; }
+	if (!leanRefSet) { leanRef = ctx.eye; leanRefSet = true; }
+	glm::vec3 d = ctx.eye - leanRef;
+	float hr = glm::radians(heading);
+	glm::vec2 fw = ctx.north * std::cos(hr) + ctx.east * std::sin(hr);
+	if (glm::length(fw) < 1e-4f) return;
+	fw = glm::normalize(fw);
+	glm::vec2 rt(-fw.y, fw.x), dv(d.x, d.z);
+	glm::vec2 want(glm::dot(dv, rt), glm::dot(dv, fw));
+	want *= LEAN_MAX / LEAN_FULL;
+	bool limit = glm::length(want) > LEAN_MAX;
+	if (limit) want *= LEAN_MAX / glm::length(want);
+	// a small knock in the hand when it reaches as far as the soldier can lean
+	if (limit && !leanAtLimit && ctx.haptic) ctx.haptic(hand, 0.22f, 0.02f);
+	leanAtLimit = limit;
+	lean += (want - lean) * (1.f - std::exp(-dt * 15.f));
+}
+
 /// This frame's camera. Commander view: out of the back of the device in the hand. Soldier view: at the
 /// soldier's eyes on the table (a floor higher per step), looking where the hand points, the horizon level.
 /// Also what the side radar shows: its turn, and the camera's footprint on the soldier's floor.
@@ -1057,6 +1081,16 @@ void HandScanner::Impl::camera(const ScannerContext &ctx)
 	{
 		// the view's heading (the compass: the scanner's own, turned to start where the soldier faces) and the
 		// scanner's own pitch (held upright in front of you it looks level), the horizon kept level
+		// leaning: across and forward from the view's heading, a tile being as long as one on the table
+		{
+			float hr0 = glm::radians(heading);
+			glm::vec2 fw = ctx.north * std::cos(hr0) + ctx.east * std::sin(hr0);
+			if (glm::length(fw) > 1e-4f) fw = glm::normalize(fw);
+			glm::vec2 rt(-fw.y, fw.x);
+			float tile = 1.f / std::max(1e-6f, std::sqrt(glm::dot(eastT, eastT)));
+			glm::vec2 off = (rt * lean.x + fw * lean.y) * tile;
+			eyeWorld += glm::vec3(off.x, 0.f, off.y);
+		}
 		camPos = eyeWorld;
 		float hr = glm::radians(heading);
 		glm::vec2 hz = ctx.north * std::cos(hr) + ctx.east * std::sin(hr);
@@ -1329,7 +1363,8 @@ std::string HandScanner::status() const
 			o << " nearest=" << (int)std::lround(n->dist) << "," << DIRS[dir8((float)n->dx, (float)n->dy)];
 		}
 		o << " feed=" << (p.feedFresh ? "on" : "off") << " pings=" << p.pings << " blips=" << p.blips
-			<< " look=" << (int)std::lround(glm::degrees(std::asin(glm::clamp(p.camDir.y, -1.f, 1.f)))) << (p.haveEye ? " eye" : "");
+			<< " look=" << (int)std::lround(glm::degrees(std::asin(glm::clamp(p.camDir.y, -1.f, 1.f)))) << (p.haveEye ? " eye" : "")
+			<< " lean=" << std::lround(p.lean.x * 100) / 100.f << "," << std::lround(p.lean.y * 100) / 100.f << (p.leanAtLimit ? "(limit)" : "");
 	}
 	o << " presses=" << p.presses << " last=" << p.last;
 	return o.str();
