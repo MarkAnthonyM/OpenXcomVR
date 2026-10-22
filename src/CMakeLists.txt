@@ -554,6 +554,7 @@ set ( vr_src
   VR/VrHands.cpp
   VR/VrTable.cpp
   VR/VrFloat.cpp
+  VR/VrScanner.cpp
   VR/VrDash.cpp
   VR/VrWeather.cpp
   VR/VrAudio.cpp

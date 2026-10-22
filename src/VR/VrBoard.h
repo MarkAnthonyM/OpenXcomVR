@@ -118,6 +118,9 @@ public:
 	bool renderMinimap(std::vector<uint32_t> &px, int S, bool align);
 	glm::vec2 minimapTile(const glm::vec2 &uv, bool align) const;
 	void centerOnTile(const glm::vec2 &tile);
+	/// Centres the table on a tile and zooms out (only if needed) so a square of 2 x half tiles around it
+	/// fits on the table at the current turn (the motion scanner's range).
+	void showRange(const glm::vec2 &tile, float half);
 	/// Test helper: an explosion effect at a tile (no damage, effect only).
 	void testBurst(int tx, int ty, int tz, bool big);
 	/// Lighting: draw only what casts shadows; this frame's flashes (world position, colour);
@@ -126,6 +129,13 @@ public:
 	bool viewLocked() const;
 	float curtain() const;
 	void setShadowPass(bool on, const glm::vec3 &light = glm::vec3(0.f));
+	/// Drawing for the motion scanner's camera: the map and figures without the table's markers (cursor,
+	/// selection, path, waypoints, readouts).
+	void setFeedPass(bool on);
+	/// The motion scanner's soldier view: this unit's own figure isn't drawn (the camera is at its eyes).
+	void setHiddenUnit(BattleUnit *unit);
+	/// A battle map voxel position (x, y, height) on the table (world).
+	glm::vec3 voxelToWorld(const glm::vec3 &voxel) const;
 	void lights(std::vector<std::pair<glm::vec3, glm::vec3>> &out) const;
 	bool alert() const;
 	float nightLevel() const;

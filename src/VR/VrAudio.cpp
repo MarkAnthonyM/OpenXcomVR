@@ -7,6 +7,8 @@
 #include <SDL_mixer.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdint>
 
 namespace OpenXcom
 {
@@ -47,6 +49,56 @@ int playAt(AudioSlot slot, Mix_Chunk *chunk, float volume, float angleDeg)
 	if (Options::StereoSound) moveSound(ch, angleDeg);
 	else Mix_SetPosition(ch, 0, 0);
 	return ch;
+}
+
+int audioFreq()
+{
+	if (Options::mute) return 0;
+	int freq = 0, channels = 0;
+	Uint16 format = 0;
+	if (!Mix_QuerySpec(&freq, &format, &channels)) return 0;
+	return freq;
+}
+
+Mix_Chunk *makeChunk(const std::vector<float> &mono)
+{
+	int freq = 0, channels = 0;
+	Uint16 format = 0;
+	if (mono.empty() || !Mix_QuerySpec(&freq, &format, &channels) || format != AUDIO_S16SYS || channels < 1) return nullptr;
+	Uint8 *buf = (Uint8*)SDL_malloc(mono.size() * channels * 2);
+	if (!buf) return nullptr;
+	Sint16 *out = (Sint16*)buf;
+	for (size_t i = 0; i < mono.size(); ++i)
+		for (int c = 0; c < channels; ++c) out[i * channels + c] = (Sint16)(std::max(-1.f, std::min(1.f, mono[i])) * 32000.f);
+	return Mix_QuickLoad_RAW(buf, (Uint32)(mono.size() * channels * 2));
+}
+
+bool writeWav(const std::string &path, const std::vector<float> &mono, int freq)
+{
+	FILE *f = fopen(path.c_str(), "wb");
+	if (!f) return false;
+	auto u32 = [&](uint32_t v) { fwrite(&v, 4, 1, f); };
+	auto u16 = [&](uint16_t v) { fwrite(&v, 2, 1, f); };
+	uint32_t bytes = (uint32_t)mono.size() * 2;
+	fwrite("RIFF", 1, 4, f); u32(36 + bytes); fwrite("WAVE", 1, 4, f);
+	fwrite("fmt ", 1, 4, f); u32(16); u16(1); u16(1); u32((uint32_t)freq); u32((uint32_t)freq * 2); u16(2); u16(16);
+	fwrite("data", 1, 4, f); u32(bytes);
+	for (float v : mono) { int16_t x = (int16_t)(std::max(-1.f, std::min(1.f, v)) * 32000.f); fwrite(&x, 2, 1, f); }
+	fclose(f);
+	return true;
+}
+
+void freeChunk(Mix_Chunk *chunk)
+{
+	if (!chunk) return;
+	Uint8 *buf = chunk->abuf;       // Mix_QuickLoad_RAW doesn't own its samples
+	Mix_FreeChunk(chunk);           // (halts any channel playing it first)
+	SDL_free(buf);
+}
+
+void fadeOut(int channel, int ms)
+{
+	if (channel >= 0 && Mix_Playing(channel)) Mix_FadeOutChannel(channel, ms);
 }
 
 bool moveSound(int channel, float angleDeg)

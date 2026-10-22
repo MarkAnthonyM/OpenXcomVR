@@ -16,6 +16,9 @@
 #include "VrHands.h"
 #include "VrTable.h"
 #include "VrFloat.h"
+#include "VrScanner.h"
+#include "../Battlescape/ScannerState.h"
+#include "../Battlescape/BattlescapeGame.h"
 #include "VrApi.h"
 #include "VrVersion.h"
 #include "../Engine/Game.h"
@@ -135,6 +138,7 @@ struct State
 	Hands handsVis;
 	Table table;
 	FloatWindow floatWin;         // pop-ups projected over the table
+	HandScanner scanner;          // the motion scanner in the hand
 	std::vector<Collider> colliders;
 	float grabHold[2] = {0.f, 0.f};
 	bool laserOn[2] = {true, true};
@@ -164,7 +168,8 @@ struct State
 	float bHold = 0.f;              // Left B held (recenter / seat calibration)
 	bool bCalibrated = false;
 	struct TapHold { float t = 0.f; bool fired = false; };
-	TapHold thX, thY, thDpadLeft; // Touch X / Y, Frame D-pad left: tap and hold do different things
+	TapHold thX, thY, thDpadLeft;
+	bool scannerOwnClick = false; // the scanner's close button is clicking (the only click let through while it is out) // Touch X / Y, Frame D-pad left: tap and hold do different things
 	bool padWasTouched[2] = {false, false};
 	float padLast[2] = {0.f, 0.f};
 	float padLevelAcc = 0.f;   // left trackpad travel toward the next level step
@@ -245,6 +250,13 @@ static void pushButton(Uint8 button, bool down)
 	SDL_PushEvent(&ev);
 }
 
+/// While the motion scanner is out, nothing reaches the game but its own close button: any click or key on
+/// the game's scanner screen would close it (only the red button should), and the map stays put.
+static bool scannerLocked()
+{
+	return S->scanner.isOpen() && !S->scannerOwnClick;
+}
+
 static void pushKey(SDLKey key, Uint16 unicode)
 {
 	for (int down = 1; down >= 0; --down)
@@ -310,6 +322,7 @@ static bool createResources()
 	S->board.setMapRect(S->table.mapRect());
 	S->board.clickScreen = [](int gx, int gy, int button)
 	{
+		if (scannerLocked()) return;
 		glm::vec2 uv((gx + 0.5f) / std::max(1, S->surfW), (gy + 0.5f) / std::max(1, S->surfH));
 		int wx, wy;
 		gameToWindow(uv, wx, wy);
@@ -624,8 +637,8 @@ static TableContext tableContext()
 	ctx.haptic = [](int hand, float amp, float sec) { if (S->mode == MODE_HEADSET) S->xr.haptic(hand, amp, sec); };
 	for (int h = 0; h < 2; ++h) ctx.handBusy[h] = S->grab[h].kind != Grab::NONE;
 	ctx.eye = S->mode == MODE_HEADSET ? xfPoint(S->rig, S->head.pos) : S->head.pos;
-	ctx.pressKey = [](int key) { pushKey((SDLKey)key, (Uint16)(key < 128 ? key : 0)); };
-	ctx.typeKey = [](int key, int ch) { pushKey((SDLKey)key, (Uint16)ch); };
+	ctx.pressKey = [](int key) { if (!scannerLocked()) pushKey((SDLKey)key, (Uint16)(key < 128 ? key : 0)); };
+	ctx.typeKey = [](int key, int ch) { if (!scannerLocked()) pushKey((SDLKey)key, (Uint16)ch); };
 	return ctx;
 }
 
@@ -664,6 +677,7 @@ static void updateHandsAndTable(float dt, bool simulated)
 	fc.hover = S->board.hoverScreen;
 	fc.mouse = [](int gx, int gy, int button, bool down)
 	{
+		if (scannerLocked()) return;
 		// the mouse goes there now (the game sees the hover), the button follows two frames later
 		int wx, wy;
 		gameToWindow(glm::vec2((gx + 0.5f) / std::max(1, S->surfW), (gy + 0.5f) / std::max(1, S->surfH)), wx, wy);
@@ -672,6 +686,40 @@ static void updateHandsAndTable(float dt, bool simulated)
 	};
 	fc.haptic = ctx.haptic;
 	S->floatWin.update(fc, S->handsVis, dt);
+	{
+		// the motion scanner: in the hand while the game's scanner screen is up
+		ScannerContext sc;
+		sc.game = S->game;
+		sc.pixels = &S->pixels;
+		sc.surfW = S->surfW;
+		sc.surfH = S->surfH;
+		sc.eye = ctx.eye;
+		sc.headFwd = S->mode == MODE_HEADSET ? xfDir(S->rig, S->head.forward()) : S->head.forward();
+		if (S->board.battle())
+		{
+			glm::vec3 o = S->board.tileCenter(0, 0, 0), s1 = S->board.tileCenter(0, 1, 0), e1 = S->board.tileCenter(1, 0, 0);
+			glm::vec2 n(o.x - s1.x, o.z - s1.z), e(e1.x - o.x, e1.z - o.z);
+			if (glm::length(n) > 1e-6f && glm::length(e) > 1e-6f) { sc.north = glm::normalize(n); sc.east = glm::normalize(e); }
+		}
+		sc.tileCenter = [](int x, int y, int z) { return S->board.tileCenter(x, y, z); };
+		sc.voxelToWorld = [](const glm::vec3 &v) { return S->board.voxelToWorld(v); };
+		sc.clickScreen = [](int gx, int gy, int button) { S->scannerOwnClick = true; S->board.clickScreen(gx, gy, button); S->scannerOwnClick = false; };
+		sc.haptic = ctx.haptic;
+		S->scanner.update(sc, S->handsVis, dt);
+		// as it comes out, the table centres on the soldier and fits the whole scan (19 x 19 tiles), so
+		// the camera can see all of it wherever the soldier stands (the map can't be moved while it is out)
+		static bool scannerWasOpen = false;
+		bool open = S->scanner.isOpen();
+		SavedBattleGame *sb = S->board.battle();
+		if (open && !scannerWasOpen && sb && sb->getSelectedUnit())
+		{
+			Position u = sb->getSelectedUnit()->getPosition();
+			S->board.showRange(glm::vec2(u.x + 0.5f, u.y + 0.5f), 9.5f);
+			glm::vec3 a = S->board.tileCenter(u.x - 9, u.y - 9, u.z), b = S->board.tileCenter(u.x + 9, u.y + 9, u.z);
+			Log(LOG_INFO) << "[VR] scanner: table centred on the soldier, range " << a.x << "," << a.z << " .. " << b.x << "," << b.z;
+		}
+		scannerWasOpen = open;
+	}
 	S->board.baseFingers(S->handsVis, ctx.handBusy, ctx.haptic, dt);
 	{
 		std::vector<glm::vec3> pts;
@@ -765,7 +813,7 @@ static void updateHeadsetInput(float dt)
 		glm::vec3 gripW = xfPoint(S->rig, H[h].grip.pos);
 		if (H[h].grabBtn.pressed)
 		{
-			if (S->board.canGrab(gripW))
+			if (!S->scanner.isOpen() && S->board.canGrab(gripW))
 			{
 				g.kind = Grab::BOARD;
 				S->board.beginGrab(h, gripW);
@@ -815,9 +863,13 @@ static void updateHeadsetInput(float dt)
 	//         right B / A held = zoom in / out
 	// Frame:  left D-pad up / down = level; D-pad left tap = recenter, hold = seat height;
 	//         right Y / A held = zoom in / out
+	// while the motion scanner is out the map stays put: no levels, zoom, sliding or turning, no clicks
+	const bool scanning = S->scanner.isOpen();
 	if (H[0].kind == CTRL_TOUCH)
 	{
 		int y = tapOrHold(H[0].b, S->thY, dt), x = tapOrHold(H[0].a, S->thX, dt);
+		if (scanning && y == 1) y = 0;
+		if (scanning && x == 1) x = 0;
 		if (y == 1) { S->board.wheel(1); S->xr.haptic(0, 0.35f, 0.012f); }
 		else if (y == 2) calibrateSeat();
 		if (x == 1) { S->board.wheel(-1); S->xr.haptic(0, 0.35f, 0.012f); }
@@ -825,8 +877,8 @@ static void updateHeadsetInput(float dt)
 	}
 	else if (H[0].kind == CTRL_FRAME)
 	{
-		if (H[0].dpadUp.pressed) { S->board.wheel(1); S->xr.haptic(0, 0.35f, 0.012f); }
-		if (H[0].dpadDown.pressed) { S->board.wheel(-1); S->xr.haptic(0, 0.35f, 0.012f); }
+		if (H[0].dpadUp.pressed && !scanning) { S->board.wheel(1); S->xr.haptic(0, 0.35f, 0.012f); }
+		if (H[0].dpadDown.pressed && !scanning) { S->board.wheel(-1); S->xr.haptic(0, 0.35f, 0.012f); }
 		int d = tapOrHold(H[0].dpadLeft, S->thDpadLeft, dt);
 		if (d == 1) recenter();
 		else if (d == 2) calibrateSeat();
@@ -845,7 +897,7 @@ static void updateHeadsetInput(float dt)
 	{
 		// zoom on buttons (controllers without trackpads): about 2x per second while held
 		const Button *in = H[1].kind == CTRL_TOUCH ? &H[1].b : H[1].kind == CTRL_FRAME ? &H[1].y : nullptr;
-		if (in && H[1].active)
+		if (in && H[1].active && !scanning)
 		{
 			float dir = (in->down ? 1.f : 0.f) - (H[1].a.down ? 1.f : 0.f);
 			if (dir != 0.f) S->board.zoom(std::exp(dir * 0.7f * dt));
@@ -863,14 +915,14 @@ static void updateHeadsetInput(float dt)
 		glm::vec2 right(-fwd.y, fwd.x);
 		glm::vec2 st = H[0].stick;
 		float m = glm::length(st);
-		if (H[0].active && m > 0.15f)
+		if (H[0].active && m > 0.15f && !scanning)
 		{
 			float speed = 0.45f * std::pow((m - 0.15f) / 0.85f, 1.5f); // metres of table per second
 			glm::vec2 dir = (right * st.x + fwd * st.y) / m;
 			S->board.pan(dir * speed * dt);
 		}
 		float rx = H[1].stick.x;
-		if (H[1].active && std::fabs(rx) > 0.2f)
+		if (H[1].active && std::fabs(rx) > 0.2f && !scanning)
 		{
 			float r = (std::fabs(rx) - 0.2f) / 0.8f;
 			S->board.rotate((rx > 0 ? 1.f : -1.f) * glm::radians(90.f) * r * r * dt); // like turning your view to the right
@@ -880,7 +932,7 @@ static void updateHeadsetInput(float dt)
 			if (H[h].trackpadTouch && S->padWasTouched[h])
 			{
 				float dy = H[h].trackpad.y - S->padLast[h];
-				if (std::fabs(dy) < 0.5f)
+				if (std::fabs(dy) < 0.5f && !scanning)
 				{
 					if (h == 1) S->board.zoom(std::exp(dy * 0.9f)); // swipe up = closer
 					else padLevelSwipe(dy);
@@ -920,7 +972,7 @@ static void updateHeadsetInput(float dt)
 
 	// buttons of the pointing hand
 	HandState &P = H[S->pointerHand];
-	if (P.triggerBtn.pressed && S->laserOn[S->pointerHand])
+	if (P.triggerBtn.pressed && S->laserOn[S->pointerHand] && !scanning)
 	{
 		glm::vec3 o = xfPoint(S->rig, P.aim.pos), d = xfDir(S->rig, P.aim.forward());
 		RayHit hit = castRay(o, d);
@@ -933,7 +985,7 @@ static void updateHeadsetInput(float dt)
 	// right click only with the laser out (over the table the thumb rests on A to pinch):
 	// A on Index, the right stick click on Touch (A/B zoom there), X on Frame
 	const Button &rc = H[1].kind == CTRL_TOUCH ? H[1].stickClick : H[1].kind == CTRL_FRAME ? H[1].x : H[1].a;
-	if (rc.pressed && S->pointerHand == 1 && S->laserOn[1])
+	if (rc.pressed && S->pointerHand == 1 && S->laserOn[1] && !scanning)
 	{
 		if (S->pointerOnPanel) { pushButton(SDL_BUTTON_RIGHT, true); S->rightSent = true; }
 		else if (S->pointerOnBoard) S->board.click(SDL_BUTTON_RIGHT);
@@ -942,7 +994,7 @@ static void updateHeadsetInput(float dt)
 	(void)P;
 	// back: right B (Index, Frame), the left menu button (Touch, where B zooms); Frame's View/Menu too
 	bool back = H[1].kind == CTRL_TOUCH ? H[0].menu.pressed : (H[1].b.pressed || H[0].menu.pressed || H[1].menu.pressed);
-	if (back) pushKey(SDLK_ESCAPE, 27);
+	if (back && !scanning) pushKey(SDLK_ESCAPE, 27);
 
 	// scroll wheel: right stick up/down while pointing at the screen, for lists. Not on the battlescape
 	// itself, where the wheel would change the view level (that is the left trackpad's job).
@@ -951,7 +1003,7 @@ static void updateHeadsetInput(float dt)
 	bool mapOnTop = !S->game->getStates().empty() && dynamic_cast<BattlescapeState*>(S->game->getStates().back());
 	int fgx, fgy;
 	bool floatScroll = !S->pointerOnPanel && S->floatWin.scrollPoint(fgx, fgy);
-	if ((S->pointerOnPanel || floatScroll) && !mapOnTop && std::fabs(sy) > 0.55f && now >= S->wheelNext)
+	if ((S->pointerOnPanel || floatScroll) && !mapOnTop && !scanning && std::fabs(sy) > 0.55f && now >= S->wheelNext)
 	{
 		// at a floating window, the wheel turns where a finger last was on it (or its middle)
 		if (floatScroll) S->board.hoverScreen(fgx, fgy);
@@ -1042,6 +1094,11 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uSunArea", sky.area);
 	sh.set("uFadeCount", 0);
 	sh.set("uShadowPass", 0);
+	sh.set("uFeed", 0);
+	sh.set("uBuild", 0);
+	sh.set("uCrt", glm::vec3(1.f, 1.f, 0.f));
+	sh.set("uScanK", 0.12f);
+	sh.set("uVignette", 0.f);
 	bool useShadow = S->shadowOn && !shadowPass;
 	sh.set("uShadowOn", useShadow ? 1 : 0);
 	sh.set("uShadowMap", 1);
@@ -1182,6 +1239,48 @@ static void renderShadows()
 	S->shadowOn = true;
 }
 
+/// The motion scanner's camera: the table as seen from the back of the device in the hand, into the
+/// little picture on its screen (the room and the map; no hands, screens or weather).
+static void renderScannerFeed()
+{
+	glm::mat4 view, proj;
+	glm::vec3 eye;
+	if (!S->scanner.feedCamera(view, proj, eye) || !S->scanner.beginFeed()) return;
+	glm::mat4 vp = proj * view;
+	glEnable(GL_FRAMEBUFFER_SRGB);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+	glDepthMask(GL_TRUE);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_BLEND);
+	glClearColor(0.f, 0.f, 0.f, 1.f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	Shader &sh = S->shader;
+	setCommonUniforms(vp, eye);
+	sh.set("uMode", 0);
+	sh.set("uModel", glm::mat4(1.f));
+	S->scanner.feedUniforms(sh);
+	const std::vector<glm::vec4> &holes = S->table.holes();
+	sh.set("uHoleCount", (int)std::min<size_t>(holes.size(), 40));
+	for (size_t i = 0; i < holes.size() && i < 40; ++i) sh.set(("uHoles[" + std::to_string(i) + "]").c_str(), holes[i]);
+	sh.set("uHoleY", glm::vec2(S->table.surfaceY() - 0.002f, S->table.surfaceY() + 0.003f));
+	S->roomMesh.draw();
+	sh.set("uHoleCount", 0);
+	// the figures turn to the camera (not the head), and in the soldier view the soldier's own isn't drawn
+	S->board.setFeedPass(true);
+	S->board.setHiddenUnit(S->scanner.feedHides());
+	S->board.setViewer(eye);
+	S->board.draw(sh, vp, eye, S->time);
+	S->board.setViewer(S->mode == MODE_HEADSET ? xfPoint(S->rig, S->head.pos) : S->head.pos);
+	S->board.setHiddenUnit(nullptr);
+	S->board.setFeedPass(false);
+	sh.use();
+	S->scanner.feedOverlay(sh);
+	glDisable(GL_FRAMEBUFFER_SRGB);
+	S->scanner.endFeed();
+	sh.set("uFeed", 0);
+}
+
 static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye, bool drawHands)
 {
 	glm::mat4 vp = proj * view;
@@ -1210,6 +1309,8 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 	S->board.draw(sh, vp, eye, S->time);
 	sh.use();
 	S->floatWin.draw(sh);
+	S->scanner.draw(sh);
+	sh.set("uMapShade", S->sky.on ? S->sky.mapShade : 0.f);
 	S->table.draw(sh);
 	S->table.drawWalls(sh);
 
@@ -1370,6 +1471,34 @@ static void runScript()
 		else if (c.op == "boardpan") { S->board.pan(glm::vec2((float)num(0, 0), (float)num(1, 0))); }
 		else if (c.op == "boardrotate") { S->board.rotate(glm::radians((float)num(0, 0))); }
 		else if (c.op == "boardzoom") { S->board.zoom((float)num(0, 1)); }
+		else if (c.op == "usescanner")
+		{
+			// test helper: the selected soldier uses a motion scanner (the game's scanner screen, no time units)
+			static BattleAction a;
+			SavedBattleGame *sb = S->game && S->game->getSavedGame() ? S->game->getSavedGame()->getSavedBattle() : nullptr;
+			if (sb && sb->getSelectedUnit())
+			{
+				a = BattleAction();
+				a.actor = sb->getSelectedUnit();
+				a.type = BA_USE;
+				S->game->pushState(new ScannerState(&a));
+			}
+			else Log(LOG_INFO) << "[VR] script: usescanner needs a selected soldier";
+		}
+		else if (c.op == "scannerpress")
+		{
+			// test helper: press one of the scanner's buttons (red closes it; blue, yellow zoom; green turns the radar)
+			if (!S->scanner.testPress(c.args.empty() ? "red" : c.args[0])) Log(LOG_INFO) << "[VR] script: the scanner isn't open";
+		}
+		else if (c.op == "scannerwav")
+		{
+			// test helper: the scanner's sounds as WAV files (prefix + name), and the last wave as mixed (prefix + "wave")
+			std::string pre = c.args.empty() ? "scanner-" : c.args[0];
+			writeScannerSounds(pre);
+			if (S->scanner.writeWave(pre + "wave.wav")) Log(LOG_INFO) << "[VR] script: wrote " << pre << "wave.wav";
+		}
+		else if (c.op == "scannerfreeze") { S->scanner.freeze((float)num(0, -1)); }
+		else if (c.op == "scannerdump") { S->scanner.dump(c.args.empty() ? "scanner_screens.png" : c.args[0]); }
 		else if (c.op == "camunit")
 		{
 			// test helper: look at the selected soldier from behind and above (back, up in metres)
@@ -1798,7 +1927,7 @@ static void runScript()
 			glm::vec3 t = hp.tip(F_INDEX);
 			Log(LOG_INFO) << "[VR] status: " << S->table.status() << " | tip " << t.x << "," << t.y << "," << t.z
 				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch << " | " << S->floatWin.status()
-				<< " | " << S->board.baseStatus() << " | " << S->board.weatherStatus() << " | " << S->table.debugPanel().status();
+				<< " | " << S->board.baseStatus() << " | " << S->board.weatherStatus() << " | " << S->table.debugPanel().status() << " | " << S->scanner.status();
 		}
 		else if (c.op == "thunderwav") { writeThunderWav(c.args.size() > 0 ? c.args[0] : "thunder.wav", num(1, 1) > 0.5, (int)num(2, 0)); }
 		else if (c.op == "shot") { S->pendingShot = c.args.empty() ? "vr_shot.png" : c.args[0]; return; }
@@ -1868,6 +1997,7 @@ static void previewFrame()
 		lastLights = now;
 	}
 	renderShadows();
+	renderScannerFeed();
 	S->previewTarget.bind();
 	glm::mat4 proj = glm::perspective(glm::radians(62.f), (float)w / (float)h, 0.03f, 60.f);
 	drawScene(viewFromPose(S->head), proj, S->head.pos, false);
@@ -1924,6 +2054,7 @@ static void headsetFrame(float dt)
 		GLStateGuard guard;
 		computeLights(dt);
 		renderShadows();
+		renderScannerFeed();
 		for (int e = 0; e < 2; ++e)
 		{
 			GLuint tex = S->xr.acquireEye(e);

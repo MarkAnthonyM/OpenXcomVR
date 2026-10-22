@@ -107,6 +107,20 @@ uniform float uSunBoost;     // the battle map's sunlit part: how much brighter 
 uniform mat4 uMapInv;        // world -> battle map voxels
 uniform int uFadeCount;      // mode 6 (mist): it parts around these (world xyz, radius)
 uniform vec4 uFade[3];
+uniform vec3 uCrt;           // mode 1: a CRT turning on or off: how far the picture is open (vertically, across), glow
+uniform float uScanK;        // mode 1: how deep the scanlines go (0.12 normally)
+uniform float uVignette;     // mode 1: darker toward the screen's edges (0 none)
+uniform int uBuild;          // the motion scanner forming (or dissolving): nothing beyond this world plane...
+uniform vec4 uBuildPlane;
+uniform vec3 uBuildGlow;     // ...and a glowing band along it
+uniform int uFeed;           // the motion scanner's camera: the picture in the radar's green, with the ping
+uniform vec3 uFeedO;         // ...the soldier's tile (world)
+uniform vec3 uFeedE;         // ...one tile east and south as world vectors over their squared length (dot gives tiles)
+uniform vec3 uFeedS;
+uniform vec4 uFeedClock;     // ...the ping: seconds into it, pings so far, the wave's speed (tiles/s), seconds between pings
+uniform vec3 uFeedFill;      // ...the picture fills in over x seconds after the wave, each point stays y + up to z seconds
+uniform int uFeedN;          // ...contacts: offset from the soldier (tiles), ring radius (tiles), brightness
+uniform vec4 uFeedC[24];
 out vec4 fragColor;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -299,8 +313,66 @@ vec3 displayContent(vec2 uv)
 	return col;
 }
 
-void main()
+float feedHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+/// The motion scanner's camera: brightness in eight steps of the radar's green, shown only where the ping
+/// has been. The wave spreads from the soldier to the edge of the scan (the game's 19 x 19 tiles); each pixel
+/// of the little picture comes up a moment after it passes (scattered points that join up), stays, and
+/// drops out again at random just before the next wave gets there; beyond the range it stays black.
+/// Contacts are rings on whatever is at their tile, on any floor (the game doesn't say which).
+vec3 feedColor(vec3 c)
 {
+	vec3 rel = vWorld - uFeedO;
+	vec2 t = vec2(dot(rel, uFeedE), dot(rel, uFeedS));
+	float d = length(t);
+	bool inRange = max(abs(t.x), abs(t.y)) < 9.5;
+	float now = uFeedClock.x, speed = uFeedClock.z, cyc = uFeedClock.w;
+	float vis = 0.0;
+	if (inRange)
+	{
+		float t0 = d / speed + feedHash(gl_FragCoord.xy) * uFeedFill.x;
+		float life = uFeedFill.y + feedHash(gl_FragCoord.yx + 17.31) * uFeedFill.z;
+		float a = now - t0;
+		if (a >= 0.0 && a < life) vis = 1.0;
+		else if (a < 0.0 && uFeedClock.y > 0.5 && a + cyc < life) vis = 1.0; // the last ping's, not gone yet
+	}
+	float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+	float v = pow(clamp(l * 2.2, 0.0, 1.0), 0.55);
+	v = floor(v * 7.0 + 0.5) / 7.0;
+	vec3 g = mix(vec3(0.002, 0.010, 0.003), vec3(0.20, 0.62, 0.14), v);
+	for (int i = 0; i < 24; ++i)
+	{
+		if (i >= uFeedN) break;
+		vec4 k = uFeedC[i];
+		float r = length(t - k.xy);
+		float rw = max(fwidth(r), 1e-4);
+		float ring = 1.0 - smoothstep(0.0, max(0.07, rw * 1.2), abs(r - k.z));
+		float fill = (1.0 - smoothstep(k.z * 0.5, k.z, r)) * 0.3;
+		g = mix(g, vec3(1.0, 0.62, 0.10) * min(k.w, 1.6), clamp(ring + fill, 0.0, 1.0));
+	}
+	g *= vis;
+	// the wavefront itself: it fizzles where it meets the edge of the range, the sides first, the corners last
+	float R = now * speed;
+	if (inRange && R < 14.0)
+	{
+		float fw = max(fwidth(d), 1e-4);
+		float fizz = 1.0 - 0.75 * smoothstep(8.5, 13.6, R);
+		float band = 1.0 - smoothstep(0.0, max(0.35, fw * 1.5), abs(d - R));
+		g += vec3(0.30, 0.95, 0.40) * band * fizz;
+	}
+	return g;
+}
+
+float gBuildEdge = 0.0;
+
+void sceneMain()
+{
+	if (uBuild == 1)
+	{
+		float b = dot(uBuildPlane.xyz, vWorld) + uBuildPlane.w;
+		if (b > 0.0) discard;
+		gBuildEdge = 1.0 - smoothstep(0.0, 0.006, -b);
+	}
 	if (uClip.x <= uClip.z && (vWorld.x < uClip.x || vWorld.x > uClip.z || vWorld.z < uClip.y || vWorld.z > uClip.w)) discard;
 	if (uHoleCount > 0 && vWorld.y > uHoleY.x && vWorld.y < uHoleY.y)
 	{
@@ -332,7 +404,15 @@ void main()
 		// prescaled picture filters cleanly when it is small or seen at an angle
 		vec3 c = textureGrad(uTex, uv, dFdx(vUV), dFdy(vUV)).rgb;
 		// faint scanlines, one per game pixel row, only visible up close
-		if (uScan > 0.0) c *= 0.94 + 0.06 * sin(texel.y / uScan * 6.2831853);
+		if (uScan > 0.0) c *= 1.0 - uScanK * (0.5 - 0.5 * sin(texel.y / uScan * 6.2831853));
+		if (uVignette > 0.0) c *= 1.0 - uVignette * smoothstep(0.3, 0.75, length(vUV - 0.5));
+		if (uCrt.x < 0.999 || uCrt.y < 0.999)
+		{
+			// a tube turning on or off: only a band (then a line, a dot) of the picture, glowing
+			vec2 q = abs(vUV - 0.5) * 2.0;
+			if (q.y > max(uCrt.x, 0.012) || q.x > max(uCrt.y, 0.012)) { fragColor = vec4(0.004, 0.007, 0.005, 1.0); return; }
+			c = mix(c, vec3(0.7, 1.0, 0.8), uCrt.z) * (1.0 + 2.0 * uCrt.z);
+		}
 		fragColor = vec4(c * uTint.rgb * 1.15, 1.0);
 		return;
 	}
@@ -505,6 +585,13 @@ void main()
 	if (vMat == 1 || vMat == 2 || vMat == 5) base *= roomOcclusion(vWorld);
 	vec3 col = lighting(base, n, spec, rough) + emissive;
 	fragColor = vec4(col * uTint.rgb, vColor.a * uTint.a);
+}
+
+void main()
+{
+	sceneMain();
+	if (uFeed == 1) fragColor.rgb = feedColor(fragColor.rgb);
+	if (uBuild == 1) fragColor.rgb += uBuildGlow * gBuildEdge;
 }
 )GLSL";
 

@@ -145,7 +145,8 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   `VrDebug.cpp`), the moon, the sky visuals and vanilla mode (`vrVanillaSky`).
 - Branch `vr-prototype-scanner` (from vr-prototype 0.13.0, 0.14.0 merged
   in): the motion scanner in the hand (`VrScanner.cpp`), builds
-  `0.13.0-scanner.1`, then `0.14.0-scanner.<n>`.
+  `0.13.0-scanner.1`, `0.14.0-scanner.2-4`, then `0.15.0-scanner.<n>`
+  (0.15.0 merged in).
 - Branch `vr-prototype-thunder` (from vr-prototype 0.14.0): better thunder,
   builds `0.14.0-thunder.<n>`; merged into vr-prototype as 0.15.0 (thunder.1, owner
   approved). The owner asked for the three improvements
@@ -436,6 +437,167 @@ Room and rendering
   (`Board::setShadeOffset`: every tile's shade + n for the table's colours,
   and the sky worked out again); the game's global shade is never touched.
   The weather roll keeps using the game's darkness for its seed.
+- Scanner branch (`vr-prototype-scanner`): when the game's ScannerState is the
+  top state, VrScanner shows a handheld scanner in the right hand (left if
+  only it is tracked); closing only with a button (letting go was rejected:
+  accidental drops), which sends the game a right-click.
+  - scanner.1 (0.13.0): a voxel model of the item's BIGOBS art with the radar
+    picture turning on its screen. The owner then asked for the scanner of the
+    game's scanner screen instead, with a camera.
+  - scanner.2 (0.14.0, after merging the weather round): the device is
+    DETBORD.PCK made solid (`build`: one alpha-cut textured front quad, walls
+    where the surface steps, a flat back; 0.8 mm per art pixel; the screens
+    set in, the four buttons standing out). Rects in the art: camera 56,24
+    152x152 (the game's ScannerView spot), compass bar 217,29 47x11, side
+    display 216,48 49x81, buttons blue 216,136 / yellow 240,136 / green
+    216,160 / red 240,160 (17x17). Held with the fist just off the right edge
+    (art 298,150; left hand 22,150) so the fingers keep off the side panel.
+  - The camera (owner's choices): low resolution in the radar's green, 152 x
+    152, slightly zoomed (45 degrees; blue/yellow step 25-75). VrSystem's
+    renderScannerFeed draws the room and the board from the back of the
+    device into its own target every other frame; the scene shader's `uFeed`
+    pass (feedColor) turns it into 8 steps of green and adds the ping and the
+    contact rings from world position -> tiles from the soldier (uFeedO/E/S).
+    Rings, not markers at the unit: they light whatever is at the tile, any
+    floor (the owner wanted it faithful: the game doesn't tell the floor).
+    Contacts are exactly ScannerView::draw's (units with motion points within
+    9 tiles, size motionPoints / 5 up to 5), minus the soldier himself.
+  - The ping (owner's idea): from the soldier to the corners of the range in
+    1.2 s, drawn only inside the 19 x 19 square, so it fizzles at the edges;
+    a contact lights when the wave reaches it, the picture fades from 1.5 s to
+    2.4 s (to 12%), a new ping every 2.5 s; a haptic tick per contact.
+  - Compass bar: the map's 8 directions sliding past a middle mark (45 degrees
+    = 18 art pixels), game small font. Side display: the cropped game radar
+    (north up, or turning with the device inside a circle, the whole square
+    kept) with the camera's view as a wedge; readout "CONTACTS n" (or "MOTION
+    n" if too wide), "NEAREST", "<tiles> <dir>".
+  - scanner.3, after the owner's first headset try: the device is tipped 35
+    degrees in the hand (TILT: the camera looks below the hand's forward, the
+    screen tips up; his wrist had to bend down too far). The camera skips the
+    table's markers (Board::setFeedPass: no drawHud). While the scanner is out
+    the map can't be moved and no input reaches the game except its own close
+    button (scannerLocked in VrSystem: board.clickScreen, floating-window
+    mouse, table keys, trigger, right-click, Back, the wheel; sticks, pads,
+    level and zoom buttons, grabbing the map): any click on ScannerState
+    closes it. The whole picture follows the ping (owner: fade to black, but
+    no long black stretch): each pixel shows from when the wave passes it
+    (plus a random 0-0.3 s, so it fills in as points) for 1.9-2.35 s (random,
+    so it dissolves), so every spot is black for well under a second before
+    the next wave refills it; outside the 19 x 19 range it is always black.
+  - scanner.4: the dissolve sweeps outward too: each pixel shows for 1.8 s
+    (+ up to 0.4 s, so it dissolves) from when the wave passes it, and the
+    next ping starts as the edge of the range begins to go out (cycle = wave
+    crossing 1.2 s + 1.8 s = 3 s; every spot dark about a second; owner's
+    rule). When the scanner opens, Board::showRange centres the table on the
+    soldier and zooms out only if the 19 x 19 square (turned with the table)
+    doesn't fit the map area; the view stays like that afterwards (owner).
+    The controls stay locked: with the range on the table there's no need to
+    turn or slide (the owner first asked for turning, for soldiers at the
+    table's edge). The green button (radar north up / turning) stays for now;
+    ideas discussed for it: mark the contacts on the table until the end of the
+    turn (favoured), ping now, show the range, freeze the picture.
+  - scanner.5 (0.15.0 merged in, with VrAudio): sounds and the animation.
+    Sounds (synthScan, made in code, three more VrAudio slots: ping, blip,
+    UI, later two wave slots and UI, see scanner.12; from the device's place around the head): a sonar ping per wave, a
+    blip per frame the wave reaches contacts (8 pitches, high = near the
+    soldier, pitched by the nearest; same moment as the haptic tick), a
+    power-on chirp when the screens light, power-off at closing, button
+    clicks (a heavier one for red). No hum (owner). Test op
+    `scannerwav <prefix>` writes them as WAVs.
+    Animation (owner chose the build-in + tube screens, beam from the table):
+    OPENING lasts 1 s: a beam from the nearest point of the table's rim to
+    the fist (0-0.15 s), the device forms behind a plane rising along its
+    up axis (uBuild/uBuildPlane: discard beyond it, glowing band at it;
+    0.15-0.65 s), the beam fades, the screens turn on (uCrt: a line across,
+    then it opens; staggered for the bar and side display; 0.65-1 s) with
+    the chirp; the ping clock only runs once OPEN. CLOSING 0.8 s: screens
+    fold to a line and a dot (0-0.25), dissolve downward (to 0.65), the beam
+    retracts. Screens: uScanK 0.3 (scanlines; 0.12 elsewhere), uVignette 0.4.
+    Buttons work 0.3 s after it is open. Test op `scannerfreeze <t>` holds
+    the animation at t (-1 runs it again).
+  - scanner.6 (owner's test of .5): the beam is gone (build-in 0-0.5 s, tubes
+    on 0.5-0.85 s; closing: tubes off 0-0.25, dissolve to 0.65 s). The side
+    radar is built from DETBORD2 + the ScannerView surface (cropRadar), not
+    cut from the frame, so the game's cursor never shows. Sounds redone dark
+    (owner: "cartoony"; wanted dread): synthScan's ping is a ~165 Hz boom
+    with a detuned partner (beats) and a sub octave, blips are heartbeat
+    double thumps 58-116 Hz (near: louder, a tritone-over-octave overtone,
+    tanh grit), power on a low saw swell opening up with crackle, off a sub
+    drop with static, buttons relay clunks; all through darkSpace (highs off,
+    two filtered feedback echoes). Volumes ping 0.55, blips 0.5, UI 0.45.
+    Green button = soldier view (owner's idea): camera at
+    TileEngine::getSightOriginVoxel + 24 voxels per step (0-2; yellow up,
+    blue down) via Board::voxelToWorld, heading from the commander camera,
+    pitch raised by TILT (so a level hand looks level), level horizon, near
+    plane 0.8 mm; Board::setHiddenUnit hides the soldier's own figure and
+    renderScannerFeed turns the standees to the camera (setViewer). Side
+    radar (owner: the wedge was ambiguous and didn't match the screen):
+    always turned inside a circle; commander view: world -z (the table's far
+    side) up, the camera's footprint on the soldier's floor outlined (corner
+    rays, 30 tiles max) and an orange ring where the scanner is; soldier view:
+    its heading up and the cone from the middle. It always opens in the
+    commander view.
+  - scanner.7: the soldier view's pitch is the scanner's own (held upright in
+    front of you it looks level; owner), and it starts looking where the
+    soldier faces: on switching, yawOffset = the soldier's facing (8
+    directions x 45) - where the scanner points, added to the heading from
+    then on (owner chose "start there, then follow your turns"); the compass
+    and the side radar use that heading.
+  - scanner.8: the sounds the owner picked over several rounds of previews
+    (prototyped in Python, then ported to synthScan; the in-game WAVs match
+    the previews to 0.1 dB): ping = a reversed low boom (60-100 Hz) then a
+    muffled thump (it starts PING_LEAD = 0.25 s before each wave, so the
+    thump leaves with the wave; pingK counts the waves, the first leaves as
+    the tube is on); blips = a double beep at 1440 Hz +-2 semitones by
+    distance (near up), gap 10 ms (near) .. 60 ms (far), 130 ms beeps that
+    swell in over 60 ms, a three-tap echo (0.235/0.19/0.29 s), louder near
+    (modelled on a reference clip the owner sent; only measured, nothing of it
+    used); on = the low 50 Hz saw swell timed to the tube opening; off = the
+    same hum closing (filter shutting, 62->42 Hz) from the fold's start. No
+    button sounds for now (owner). Not run through an 8-bit/11 kHz "game
+    palette" (tried; the owner prefers clean unless they clash). The zoom
+    resets to 45 degrees each time it opens, and the soldier view always uses
+    45 (Impl::fov()).
+  - scanner.9: the ping was hard to hear on a headset (nearly all 60-100 Hz):
+    tanh grit (x2.2) for overtones and a short noise knock on the thump,
+    peak 0.85 (owner chose this over just louder). The power-on is audible
+    from the instant the tube lights (owner: it seemed late; it started from
+    silence): its envelope starts at 45% and a soft 70 Hz thump + crackle
+    marks the catch.
+  - scanner.10: the ping without the knock (owner preferred it; the grit
+    stays). Soldier view leaning (owner: to peek past a corner): the head's
+    position when the view starts is the reference (re-set by switching the
+    view off and on); the head's horizontal offset, split across / along the
+    view's heading, moves the eye by LEAN_MAX (0.33 tile) per LEAN_FULL (15 cm),
+    capped at 0.33 tile from the soldier's centre (inside its own tile, short
+    of the walls at its edges), smoothed; a haptic knock when it hits the cap.
+    Fair: the commander view already shows the area from above.
+  - scanner.11: the lean is measured along the player's own right / forward
+    (headFwd, flattened), then applied along the view's: before, it was read
+    along the view's axes, so with the soldier facing another way a lean to
+    the right came out as a lean back (owner). Blips play on four channels in
+    turn (AUDIO_SCANNER_BLIP .. +3): a further contact's blip no longer cuts
+    off a nearer one's echo (owner).
+  - scanner.12: the spacing between blips drifted (owner: two contacts' blips
+    steady for a while, then closer). Each was started from the frame that
+    saw the wave reach its contact, and SDL_mixer starts a sound only at its
+    next buffer (1024 samples at 22050 Hz, about 46 ms), so the gap came out
+    one buffer short or long depending on where each wave fell against the
+    buffers, plus frame hitches. Now each wave is one sound (playWave): the
+    ping with every contact's blip mixed in at PING_LEAD + dist / PING_SPEED
+    (contacts reached within 15 ms share a blip, pitched by the nearest),
+    started PING_LEAD before the wave and trimmed by how late its frame was,
+    so it stays with the picture. Waves alternate between two channels
+    (AUDIO_SCANNER_WAVE_A/B, replacing PING and BLIP..+3); a wave's chunk is
+    freed when its channel comes round again (freeChunk); the playing wave
+    follows the device round the head (moveSound) and fades out (80 ms) when
+    the scanner closes. The haptic ticks stay per frame. `scannerwav` also
+    writes the last wave as mixed (`wave.wav`). Checked with the owner's save
+    (two contacts, 5.8 and 10.8 tiles) and SDL's disk audio driver
+    (SDL_AUDIODRIVER=disk): the same gap in every wave of the mixer's output.
+  - Test ops `usescanner` (ScannerState for the selected soldier, no time
+    units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
+    three screens); test `scan`.
 
 ## Known gaps
 

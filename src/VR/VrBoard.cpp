@@ -348,6 +348,8 @@ struct Board::Impl
 	Mesh wire[2], arrow, pointer, goal;
 	Mesh cube;                         // unit cube for voxel effects
 	bool shadowPass = false;           // drawing into the shadow map: terrain and figures only
+	bool feedPass = false;             // drawing for the scanner's camera: no markers
+	BattleUnit *hiddenUnit = nullptr;  // ...and in its soldier view, not the soldier's own figure
 
 	// ---- voxel effects: particles (board voxel space), what spawned them, and lights for the room
 	struct Particle
@@ -1307,6 +1309,7 @@ void Board::Impl::drawUnits(const Shader &sh)
 		if (u->isOut()) continue;
 		if (!(u->getFaction() == FACTION_PLAYER || u->getVisible() || battle->getDebugMode())) continue;
 		if (u->getPosition().z > viewLevel && !shadowPass) continue;
+		if (u == hiddenUnit && !shadowPass) continue;
 		const UnitCard &card = it->second;
 		glm::vec3 p = card.visInit ? card.vis : unitVoxelPos(u);
 		int size = u->getArmor()->getSize();
@@ -1538,7 +1541,7 @@ void Board::Impl::drawBattle(const Shader &sh)
 
 	drawEffects(sh, M);
 
-	drawHud(sh, M);
+	if (!feedPass) drawHud(sh, M);
 	drawCurtain(sh);
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
@@ -2698,6 +2701,10 @@ void Board::update(Game *game, float dt)
 	}
 }
 
+void Board::setFeedPass(bool on) { _p->feedPass = on; }
+void Board::setHiddenUnit(BattleUnit *unit) { _p->hiddenUnit = unit; }
+glm::vec3 Board::voxelToWorld(const glm::vec3 &v) const { return glm::vec3(_p->boardMatrix() * glm::vec4(v.x, v.z, v.y, 1.f)); }
+
 void Board::setShadowPass(bool on, const glm::vec3 &light)
 {
 	// standees turn toward whoever looks at them: in the shadow pass that is the light, so they
@@ -3377,6 +3384,22 @@ void Board::centerOnTile(const glm::vec2 &tile)
 	if (!p.hasBattle || OpenXcom::VR::viewLocked(p)) return;
 	p.focus = glm::vec3(glm::clamp(tile.x, 0.f, (float)p.mx) * TILE_W, 0.f, glm::clamp(tile.y, 0.f, (float)p.my) * TILE_W);
 	syncCamera(p);
+}
+
+void Board::showRange(const glm::vec2 &tile, float half)
+{
+	Impl &p = *_p;
+	revalidate(p);
+	if (!p.hasBattle || OpenXcom::VR::viewLocked(p)) return;
+	// the square turned with the table, across the table's map area (a little margin)
+	float w = p.mapRect.z - p.mapRect.x, d = p.mapRect.w - p.mapRect.y;
+	float ext = 2.f * half * (std::fabs(std::cos(p.yaw)) + std::fabs(std::sin(p.yaw)));
+	if (w > 0.f && d > 0.f && ext > 0.f)
+	{
+		float fit = std::min(w, d) * 0.96f / ext;
+		if (p.tileSize > fit) p.tileSize = glm::clamp(fit, 0.02f, 0.14f);
+	}
+	centerOnTile(tile);
 }
 
 bool Board::globeSphere(glm::vec3 &center, float &radius) const

@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.15.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.15.0-scanner.12)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -228,6 +228,60 @@ stand) in an X-COM command center at a holographic war table:
   darkness, what your soldiers see and the flat screen stay as they are.
   Forced weather and a turned sun carry on into the next battles until you
   press AUTO / REAL.
+- **The motion scanner in your hand (scanner branch).** When a soldier uses a
+  motion scanner (the time units are spent as usual), the scanner from the
+  game's scanner screen forms in your right hand behind a rising green scan
+  line; then its screens switch on like old tubes (a line, then the picture)
+  and the first ping goes out, under a second after you used it. Closing runs
+  it backwards: the screens fold to a line and a dot and the scanner
+  dissolves. It is about 21 x 14 cm, held by its right edge, its screen
+  tipped up toward you; its screens have faint scanlines and darker edges.
+  - Its big screen is a camera in the radar's green, without the table's
+    markers (cursor, selection, path). In the **commander view** it looks out
+    of the back of the scanner, a little below where your hand points. In the
+    **soldier view** (green button) it looks out of the soldier's eyes on the
+    table: it starts looking where the soldier faces and turns as you turn the
+    scanner (held upright in front of you, it looks level); yellow and
+    blue raise and lower it a floor at a time (eye height, one and two floors
+    up), and the soldier's own figure isn't drawn. Lean your body to lean the
+    soldier: sideways or forward, up to a third of a tile from its middle (a
+    small knock in your hand says it can't lean further), enough to peek past
+    a corner it stands at, never through a wall. It always comes out in the
+    commander view; in it, blue and yellow zoom in and out.
+  - The picture only shows where the scanner's ping has been: every 3 seconds
+    a ping spreads from the soldier to the edge of the game's range (the same
+    19 x 19 tiles), the picture fills in behind it as scattered points, and
+    each movement contact lights up as a ring on its tile (on whatever is
+    there; like the game, it doesn't say which floor). The picture then
+    dissolves to black from the middle out; as the edge starts to go, the next
+    ping goes out. Beyond the range the screen stays black. Contacts out of
+    view get an arrow at the screen's edge.
+  - The bar at the top of the side panel is a compass showing where the camera
+    looks. The side display has the game's own radar picture (built from the
+    game's radar itself, so the mouse cursor never shows on it): in the
+    commander view turned the way the table lies in front of you, with the
+    patch of map the camera films outlined and a mark where the scanner is;
+    in the soldier view turned so the way the soldier looks is up, with its
+    view as a cone. Under it: how many contacts and how far and which way the
+    nearest is.
+  - Sounds: a low boom drawn in and a muffled thump as each ping leaves the
+    soldier; a double beep with a short echo as the wave reaches contacts
+    (with a tick in your hand), higher, louder and with its two beeps closer
+    together the nearer the contact is; a low hum swelling as the screens
+    switch on and closing down as they go off. They come from where the
+    scanner is, and follow it as you turn your head. Each wave's ping and
+    beeps are mixed as one sound, so the beeps keep their exact spacing. The
+    buttons are silent for now (you feel them).
+  - The camera always comes out at its normal zoom; the soldier view always
+    uses the normal view, whatever the commander view's zoom.
+  - When it comes out, the table centres on the soldier and zooms out if
+    needed so the whole range is on the table (it stays that way afterwards).
+    Press its buttons with your other hand's index finger; red closes it.
+    Letting go never closes it, and while it is out the map stays put and
+    nothing else reaches the game: the sticks, trackpads and level/zoom
+    buttons, grabbing the map, the trigger, Back and taps on the table and the
+    wall screen do nothing (any click on the game's scanner screen would close
+    it). The wall screen shows the game's scanner screen as before.
 - **Shots light up the night.** Lasers, plasma, rockets (their exhaust),
   incendiary rounds and blaster bombs light the ground and figures around them
   in their colour as they fly, stronger weapons brighter and further; their
@@ -406,6 +460,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrBoard.*` | Everything on the table: battlescape diorama, unit standees (a critically damped follower turns the game's ~33 steps a second into smooth motion at the headset's frame rate), tile picking, the HUD (wireframe cursor, selected-unit marker, path preview, readouts in the game's font), voxel fog of war, voxel effects (projectiles, explosions, smoke, fire), the whole-map minimap, globe. |
 | `VrHands.*` | Hand skeletons (from XR hand tracking or posed from controller inputs), collision against box colliders with per-finger joint solving, pinch / point gestures. |
 | `VrTable.*` | The table's control panel: hatches and spring buttons (battlescape and geoscape keys), spotted-alien buttons, the pop-up action board, the keyboard, the inventory tray with voxel item models, head/tile taps, the wrist minimap and the live wall screens. |
+| `VrScanner.*` | The motion scanner in the hand: shown while the game's ScannerState is up; voxel model from the scanner item's BIGOBS art; the ScannerView's area of the game frame turned by the device's heading on a round screen; the close button sends the game a right-click. |
 | `VrFloat.*` | Floating pop-up windows: picks the game's top non-screen state, copies its area of the game frame, the projection and voxel-assembly effects, finger touches and the laser. |
 | `VrBase.*` | The base on the table: voxel relief rebuilt from the base view's sprites, craft models, scaffolding, labels, finger taps / holds / placement. |
 | `VrWeather.*` | The sky over an outdoor battle: the sun's direction at the site and its height and colour from the mission's darkness, the weather roll, rain / snow / dust particles stopping at roofs, mist, cloud drift, lightning and procedural thunder. |
