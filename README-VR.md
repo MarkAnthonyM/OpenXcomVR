@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.16.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.16.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -147,8 +147,7 @@ stand) in an X-COM command center at a holographic war table:
   unlit ground shows faintly under a bright moon. When the real moon is below
   the horizon it is mirrored above it (the same direction, as high as it is
   low), so every night has moonlight. The sun and moon are never shown as objects: you see them
-  in their light. The room glows faintly in its colour on the side
-  it comes from at dawn, dusk and on moonlit nights, and cloud shadows drift
+  in their light (not even as a glow on the room's walls), and cloud shadows drift
   across the map by day and on moonlit nights, each mission at its own speed
   (up to about a tile a second, storms up to 1.4, with gusts): voxel
   clouds of quarter-tile blocks, lumpy and clustered with sunlit gaps between

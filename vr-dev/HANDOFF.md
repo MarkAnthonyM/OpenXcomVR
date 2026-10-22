@@ -328,7 +328,8 @@ Room and rendering
   sun or moon (a voxel disc with puffy clouds, stars, light shafts looked
   cartoony and took the menace away; weather.3): they show only through
   light. A coloured room light low on the light's
-  side, cloud shadows at night too (moonlit nights roll clouds 60%), and on a
+  side (removed in 0.16.1: the owner read its glow on the wall as a picture
+  of the sun or moon), cloud shadows at night too (moonlit nights roll clouds 60%), and on a
   moonlit night the unlit ground's brightness is at least uMoonFloor (up to
   0.05 for a full, high moon) times the cloud shadow. Weather and the (now
   empty) sky are drawn after the room's solid parts (Board::drawWeather): the

@@ -1151,20 +1151,6 @@ static void computeLights(float dt)
 	add(L.lightPos[1], L.lightCol[1] * S->roomTint * fill);  // (1-3: room fills)
 	add(L.lightPos[2], L.lightCol[2] * S->roomTint * fill);
 	add(L.lightPos[3], L.lightCol[3] * S->roomTint * fill);
-	// the light's side of the room glows faintly in its colour, low down, as if through haze (dawn, dusk
-	// and moonlit nights; nothing by day or under a starless sky)
-	if (S->sky.on && glm::length(S->sky.col) > 1e-3f)
-	{
-		glm::vec2 hz(S->sky.dir.x, S->sky.dir.z);
-		if (glm::length(hz) > 1e-3f)
-		{
-			hz = glm::normalize(hz);
-			float low = 1.f - glm::smoothstep(0.25f, 0.6f, S->sky.dir.y);
-			glm::vec3 c = S->sky.col / std::max(0.01f, std::max(S->sky.col.r, std::max(S->sky.col.g, S->sky.col.b)));
-			float k = (S->night > 0.9f ? 0.35f : 1.f) * low * glm::clamp(glm::length(S->sky.col) * 1.5f, 0.f, 1.f);
-			if (k > 0.01f) add(glm::vec3(T.x + hz.x * 2.0f, T.y + 0.35f, T.z + hz.y * 2.0f), c * 1.2f * k);
-		}
-	}
 	// lightning over the battle: a flash fills the room
 	if (S->sky.flash > 0.01f) add({T.x + 0.3f, T.y + 1.5f, T.z - 0.5f}, glm::vec3(0.75f, 0.82f, 1.0f) * 6.f * S->sky.flash);
 	add(S->panel.pos + glm::vec3(0.f, 0.f, 0.6f), S->gameGlow * 0.9f);          // the game screen's light
