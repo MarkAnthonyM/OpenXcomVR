@@ -543,6 +543,21 @@ Room and rendering
     directions x 45) - where the scanner points, added to the heading from
     then on (owner chose "start there, then follow your turns"); the compass
     and the side radar use that heading.
+  - scanner.8: the sounds the owner picked over several rounds of previews
+    (prototyped in Python, then ported to synthScan; the in-game WAVs match
+    the previews to 0.1 dB): ping = a reversed low boom (60-100 Hz) then a
+    muffled thump (it starts PING_LEAD = 0.25 s before each wave, so the
+    thump leaves with the wave; pingK counts the waves, the first leaves as
+    the tube is on); blips = a double beep at 1440 Hz +-2 semitones by
+    distance (near up), gap 10 ms (near) .. 60 ms (far), 130 ms beeps that
+    swell in over 60 ms, a three-tap echo (0.235/0.19/0.29 s), louder near
+    (modelled on a reference clip the owner sent; only measured, nothing of it
+    used); on = the low 50 Hz saw swell timed to the tube opening; off = the
+    same hum closing (filter shutting, 62->42 Hz) from the fold's start. No
+    button sounds for now (owner). Not run through an 8-bit/11 kHz "game
+    palette" (tried; the owner prefers clean unless they clash). The zoom
+    resets to 45 degrees each time it opens, and the soldier view always uses
+    45 (Impl::fov()).
   - Test ops `usescanner` (ScannerState for the selected soldier, no time
     units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
     three screens); test `scan`.

@@ -74,7 +74,7 @@ const float BUILD_END = 0.5f, OPEN_T = 0.85f;
 const float CRT_OFF = 0.25f, CLOSE_T = 0.65f;
 const glm::vec3 HOLO(0.35f, 1.f, 0.5f);
 const float FOVS[] = {25.f, 35.f, 45.f, 60.f, 75.f};
-const int FOV_N = 5, FOV_DEFAULT = 2;
+const int FOV_N = 5, FOV_DEFAULT = 2;  // 45 degrees (the soldier view always uses it)
 const char *DIRS[8] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
 
 inline uint32_t rgba(int r, int g, int b, int a = 255)
@@ -101,8 +101,9 @@ int dir8(float dx, float dy)
 }
 
 // ---- the scanner's sounds, made in code (the game has none that fit)
-enum ScanSound { SND_ON, SND_OFF, SND_PING, SND_CLICK, SND_CLICK_RED, SND_BLIP0, SND_BLIPS = 8, SND_COUNT = SND_BLIP0 + SND_BLIPS };
-const char *SND_NAME[SND_COUNT] = {"on", "off", "ping", "click", "click-red", "blip-1", "blip-2", "blip-3", "blip-4", "blip-5", "blip-6", "blip-7", "blip-8"};
+enum ScanSound { SND_ON, SND_OFF, SND_PING, SND_BLIP0, SND_BLIPS = 8, SND_COUNT = SND_BLIP0 + SND_BLIPS };
+const char *SND_NAME[SND_COUNT] = {"on", "off", "ping", "blip-1", "blip-2", "blip-3", "blip-4", "blip-5", "blip-6", "blip-7", "blip-8"};
+const float PING_LEAD = 0.25f;          // the ping's thump comes this long after it starts: it starts that early
 
 /// The scanner's sounds share one dark little space: the highs rolled off, then two short filtered echoes
 /// feeding back (a tail of `tail` seconds is added).
@@ -123,11 +124,17 @@ static std::vector<float> darkSpace(const std::vector<float> &x, int freq, float
 	return y;
 }
 
-/// One of the scanner's sounds (mono, -1..1) at a sample rate: low, slow and uneasy. Blips: 0 = a contact
-/// right by the soldier (louder, higher, harsher), 7 = at the far corner of the range (a faint low thump).
+/// One of the scanner's sounds (mono, -1..1) at a sample rate (the owner chose them from previews):
+/// - ping: a low boom played backwards, then a muffled thump (PING_LEAD in);
+/// - blips: a double beep near 1440 Hz in a small hard room; 0 = a contact right by the soldier (two
+///   semitones up, louder, the beeps 10 ms apart), 7 = at the far corner (two down, quieter, 60 ms apart);
+///   each beep swells in over 60 ms;
+/// - on: a low 50 Hz hum whose filter opens as it swells (0.35 s, the tube opening), a little crackle;
+/// - off: the same hum closing: full at first, its filter closing and its pitch sinking as it fades.
 std::vector<float> synthScan(int which, int freq)
 {
 	const float TAU = 6.2831853f;
+	const float k44 = 44100.f / (float)freq;              // the one-pole filters were tuned at 44.1 kHz
 	auto make = [&](float len) { return std::vector<float>((size_t)(len * freq), 0.f); };
 	auto normalize = [](std::vector<float> &v, float peak) {
 		float m = 1e-6f;
@@ -135,110 +142,98 @@ std::vector<float> synthScan(int which, int freq)
 		for (float &x : v) x *= peak / m;
 	};
 	uint32_t seed = 0x51c4u + (uint32_t)which * 977u;
-	auto noise = [&]() { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return (seed >> 8) / 8388608.f - 1.f; };
-	const float k44 = 44100.f / (float)freq;
+	auto rnd = [&]() { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return (seed >> 8) / 16777216.f; };
 	std::vector<float> v;
 	if (which == SND_PING)
 	{
-		// a low sonar boom: two tones a little apart (they throb), an octave under them, a breath of noise;
-		// a slow swell and a long fall
-		v = make(2.2f);
-		float p1 = 0.f, p2 = 0.f, p3 = 0.f, br = 0.f;
-		for (size_t i = 0; i < v.size(); ++i)
+		std::vector<float> boom = make(PING_LEAD), thump = make(0.4f);
+		float ph = 0.f;
+		for (size_t i = 0; i < boom.size(); ++i)
 		{
 			float t = (float)i / freq;
-			float f = 165.f - 18.f * std::min(t / 1.6f, 1.f);
-			p1 += TAU * f / freq; p2 += TAU * (f + 2.3f) / freq; p3 += TAU * f * 0.5f / freq;
-			float env = std::min(t / 0.06f, 1.f) * std::exp(-t / 0.65f);
-			br += (noise() - br) * 0.02f * k44;
-			float breath = br * 6.f * std::exp(-t / 0.25f);
-			v[i] = (std::sin(p1) + 0.8f * std::sin(p2) + 0.45f * std::sin(p3) + 0.12f * std::sin(3.f * p1)) * env + breath * 0.3f;
+			ph += TAU * (60.f + 40.f * std::exp(-t / 0.1f)) / freq;
+			boom[i] = std::sin(ph) * std::exp(-t / 0.08f);
 		}
-		v = darkSpace(v, freq, 1.0f);
-		normalize(v, 0.75f);
+		ph = 0.f;
+		for (size_t i = 0; i < thump.size(); ++i)
+		{
+			float t = (float)i / freq;
+			ph += TAU * (70.f * std::exp(-t / 0.05f) + 40.f) / freq;
+			thump[i] = std::sin(ph) * std::exp(-t / 0.06f) * 0.9f;
+		}
+		// the boom backwards, swelling in, then the thump
+		for (size_t i = 0; i < boom.size(); ++i)
+		{
+			float r = (float)i / (boom.size() - 1);
+			v.push_back(boom[boom.size() - 1 - i] * r * r);
+		}
+		v.insert(v.end(), thump.begin(), thump.end());
+		v = darkSpace(v, freq, 0.4f);
+		normalize(v, 0.55f);
 	}
 	else if (which >= SND_BLIP0)
 	{
-		// a contact: a muffled heartbeat thump (and a softer second one); the nearer, the louder, the higher,
-		// and the more a sour overtone and some grit come in
-		int k = which - SND_BLIP0;
-		float nearK = 1.f - k / (float)(SND_BLIPS - 1);   // 1 right by the soldier .. 0 at the far corner
-		float f0 = 58.f * std::pow(2.f, nearK);            // 58 .. 116 Hz
-		v = make(0.5f);
-		for (int beat = 0; beat < 2; ++beat)
+		const float n = 1.f - (which - SND_BLIP0) / (float)(SND_BLIPS - 1);   // 1 near .. 0 far
+		const float f = 1440.f * std::pow(2.f, (4.f * n - 2.f) / 12.f), gap = 0.06f - 0.05f * n, len = 0.13f, swell = 0.06f;
+		std::vector<float> x = make(len * 2.f + gap + 0.05f);
+		const float starts[2] = {0.f, len + gap}, gains[2] = {0.85f, 1.f};
+		for (size_t i = 0; i < x.size(); ++i)
 		{
-			float at = beat == 0 ? 0.f : 0.16f, g = beat == 0 ? 1.f : 0.55f;
-			float ph = 0.f, ph2 = 0.f;
-			for (size_t i = (size_t)(at * freq); i < v.size(); ++i)
+			float t = (float)i / freq;
+			for (int b = 0; b < 2; ++b)
 			{
-				float t = (float)i / freq - at;
-				float f = f0 * (1.f + 0.8f * std::exp(-t / 0.025f));
-				ph += TAU * f / freq;
-				ph2 += TAU * f * 2.83f / freq;              // a tritone over the octave: wrong-sounding
-				float env = std::min(t / 0.004f, 1.f) * std::exp(-t / 0.09f);
-				float x = std::sin(ph) + 0.35f * nearK * std::sin(ph2) * std::exp(-t / 0.05f);
-				x = std::tanh(x * (1.f + 2.5f * nearK)) / std::tanh(1.f + 2.5f * nearK);
-				v[i] += x * env * g;
+				float tt = t - starts[b];
+				if (tt < 0.f || tt > len) continue;
+				float s = std::min(tt / swell, 1.f);
+				x[i] += gains[b] * s * s * (3.f - 2.f * s) * std::min((len - tt) / 0.008f, 1.f) * std::sin(TAU * f * t);
 			}
 		}
-		v = darkSpace(v, freq, 0.5f);
-		normalize(v, 0.45f + 0.4f * nearK);
+		// a small, hard room: three echo taps around a quarter of a second, fed back
+		v.assign(x.size() + (size_t)(1.3f * freq), 0.f);
+		std::copy(x.begin(), x.end(), v.begin());
+		const struct { float d, g; } taps[3] = {{0.235f, 0.21f}, {0.19f, 0.09f}, {0.29f, 0.07f}};
+		for (size_t i = 0; i < v.size(); ++i)
+			for (const auto &tp : taps)
+			{
+				size_t d = (size_t)(tp.d * freq);
+				if (i >= d) v[i] += tp.g * v[i - d];
+			}
+		normalize(v, (0.55f + 0.45f * n) * 0.8f);
 	}
 	else if (which == SND_ON)
 	{
-		// power: a low electrical swell with a little crackle
-		v = make(0.9f);
+		const float swell = 0.35f, L = 0.65f + swell;
+		v = make(L);
 		float ph = 0.f, lp = 0.f;
 		for (size_t i = 0; i < v.size(); ++i)
 		{
 			float t = (float)i / freq;
 			ph += TAU * (50.f + 12.f * t) / freq;
 			float saw = std::fmod(ph / TAU, 1.f) * 2.f - 1.f;
-			float cut = (0.004f + 0.05f * std::min(t / 0.7f, 1.f)) * k44;   // it opens up as it swells
-			lp += (saw - lp) * std::min(1.f, cut);
-			float env = glm::smoothstep(0.f, 0.55f, t) * std::min((0.9f - t) / 0.2f, 1.f);
-			float crackle = (noise() > 0.995f ? noise() : 0.f) * std::min(t / 0.5f, 1.f);
+			lp += (saw - lp) * std::min(1.f, (0.004f + 0.05f * std::min(t / swell, 1.f)) * k44);
+			float env = std::pow(std::min(t / swell, 1.f), 1.5f) * std::min((L - t) / 0.25f, 1.f);
+			float crackle = rnd() > 0.995f ? (rnd() * 2.f - 1.f) * std::min(t / 0.2f, 1.f) : 0.f;
 			v[i] = lp * env * 2.f + crackle * 0.6f;
 		}
 		v = darkSpace(v, freq, 0.4f);
 		normalize(v, 0.55f);
 	}
-	else if (which == SND_OFF)
+	else // SND_OFF
 	{
-		// power off: a falling sub drop, with static fading out
-		v = make(1.0f);
-		float ph = 0.f, st = 0.f;
+		v = make(0.6f);
+		float ph = 0.f, lp = 0.f;
 		for (size_t i = 0; i < v.size(); ++i)
 		{
 			float t = (float)i / freq;
-			ph += TAU * (90.f * std::pow(30.f / 90.f, std::min(t / 0.6f, 1.f))) / freq;
-			st += (noise() - st) * 0.08f * k44;
-			float env = std::min(t / 0.01f, 1.f) * std::exp(-t / 0.35f);
-			v[i] = std::sin(ph) * env + st * 0.45f * std::exp(-t / 0.3f);
+			ph += TAU * (62.f - 20.f * std::min(t / 0.4f, 1.f)) / freq;
+			float saw = std::fmod(ph / TAU, 1.f) * 2.f - 1.f;
+			lp += (saw - lp) * std::min(1.f, 0.054f * std::pow(0.08f, std::min(t / 0.3f, 1.f)) * k44);
+			float env = std::min(t / 0.01f, 1.f) * (t < 0.2f ? 1.f : std::exp(-(t - 0.2f) / 0.09f));
+			float crackle = rnd() > 0.995f ? (rnd() * 2.f - 1.f) * std::exp(-t / 0.15f) : 0.f;
+			v[i] = lp * env * 2.f + crackle * 0.6f;
 		}
 		v = darkSpace(v, freq, 0.4f);
 		normalize(v, 0.55f);
-	}
-	else
-	{
-		// a button: a heavy relay clunk (red: lower and heavier, with a second clack)
-		bool red = which == SND_CLICK_RED;
-		v = make(red ? 0.25f : 0.15f);
-		float lp = 0.f;
-		for (int hit = 0; hit < (red ? 2 : 1); ++hit)
-		{
-			float at = hit == 0 ? 0.f : 0.07f, g = hit == 0 ? 1.f : 0.6f;
-			float f = red ? 62.f : 90.f;
-			for (size_t i = (size_t)(at * freq); i < v.size(); ++i)
-			{
-				float t = (float)i / freq - at;
-				lp += (noise() - lp) * 0.07f * k44;
-				v[i] += g * (std::sin(TAU * f * t) * std::exp(-t / 0.04f) + lp * 3.f * std::exp(-t / 0.006f)
-					+ 0.3f * std::sin(TAU * (red ? 310.f : 420.f) * t) * std::exp(-t / 0.03f));
-			}
-		}
-		v = darkSpace(v, freq, 0.3f);
-		normalize(v, 0.6f);
 	}
 	return v;
 }
@@ -279,6 +274,8 @@ struct HandScanner::Impl
 	// pointing the device; yellow / blue raise and lower it a floor at a time)
 	bool soldierView = false;
 	int eyeStep = 0;                // 0 the soldier's eye height, 1 and 2 floors above
+	/// The camera's field of view: the commander view zooms; the soldier view keeps the default.
+	float fov() const { return FOVS[soldierView ? FOV_DEFAULT : fovIdx]; }
 	float devHeading = 0.f;         // where the scanner itself points (degrees from the map's north)
 	float yawOffset = 0.f;          // soldier view: added to it, so the view starts where the soldier faces
 	BattleUnit *me = nullptr;       // the soldier who used the scanner
@@ -311,6 +308,7 @@ struct HandScanner::Impl
 	Mix_Chunk *snd[SND_COUNT] = {};
 	bool sndTried[SND_COUNT] = {};
 	int pings = 0, blips = 0;
+	int pingK = -1;                 // the last wave whose ping has sounded
 	bool soundOn = false;           // the power-on chirp, once the device has its place
 	void sound(int which, AudioSlot slot, float volume, const ScannerContext &ctx);
 	// the screens' pictures
@@ -702,7 +700,7 @@ void HandScanner::Impl::composeSide()
 	// square kept in it
 	const int S0 = 2 * TS, SN = 45 * TS;
 	const float cx = S0 + SN * 0.5f, cy = S0 + SN * 0.5f, Rr = SN * 0.5f;
-	const float fov = FOVS[fovIdx];
+	const float viewFov = fov();
 	const float th = glm::radians(radarRot);
 	const glm::vec2 rr(std::cos(th), std::sin(th)), uu(std::sin(th), -std::cos(th));
 	const float k = (float)radarW / (SN / std::sqrt(2.f));
@@ -755,8 +753,8 @@ void HandScanner::Impl::composeSide()
 				if (r > 3.f)
 				{
 					float rel = std::fabs(std::atan2(dx, -dy) * 57.29578f);
-					if (rel <= fov * 0.5f) o = mixc(o, rgba(170, 255, 140), 0.16f);
-					if (std::fabs(rel - fov * 0.5f) * 0.01745f * r < 1.6f) o = mixc(o, lit, 0.55f);
+					if (rel <= viewFov * 0.5f) o = mixc(o, rgba(170, 255, 140), 0.16f);
+					if (std::fabs(rel - viewFov * 0.5f) * 0.01745f * r < 1.6f) o = mixc(o, lit, 0.55f);
 				}
 			}
 			else if (footOk)
@@ -859,7 +857,9 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		p.pingT = 0.f;
 		p.lastTc = 0.f;
 		p.lastCycle = -1;
+		p.pingK = -1;
 		p.feedFresh = false;
+		p.fovIdx = FOV_DEFAULT;         // it always comes out at the default zoom
 		p.soldierView = false;      // it always comes out in the commander view
 		p.eyeStep = 0;
 		p.last = "open";
@@ -899,7 +899,15 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 	if (p.src) { p.cropRadar(ctx); p.scan(ctx); }
 	p.camera(ctx);
 
-	// the ping (once the screens are on): a tick in the holding hand as the wave passes each contact
+	// the ping sound starts PING_LEAD before each wave (its thump goes with the wave); the first wave leaves
+	// as the screens are on
+	if (p.phase == Impl::OPENING || p.phase == Impl::OPEN)
+	{
+		float w = p.phase == Impl::OPENING ? p.t - OPEN_T : p.pingT;   // seconds since the first wave
+		int k = (int)std::floor((w + PING_LEAD) / PING_CYCLE);
+		if (k > p.pingK) { p.pingK = k; p.sound(SND_PING, AUDIO_SCANNER_PING, 0.55f, ctx); }
+	}
+	// the waves (once the screens are on): a tick in the holding hand as the wave passes each contact
 	if (p.phase == Impl::OPEN)
 	{
 		p.pingT += dt;
@@ -908,7 +916,6 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		{
 			p.lastCycle = p.cycle();
 			p.lastTc = -1.f;
-			p.sound(SND_PING, AUDIO_SCANNER_PING, 0.55f, ctx);
 		}
 		// contacts the wave reached this frame: one blip (and tick) for them all, pitched by the nearest
 		float nearest = -1.f;
@@ -920,7 +927,7 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		if (nearest >= 0.f)
 		{
 			if (ctx.haptic) ctx.haptic(p.hand, 0.18f, 0.015f);
-			int k = std::min(SND_BLIPS - 1, (int)(nearest / CORNER * SND_BLIPS));
+			int k = std::min(SND_BLIPS - 1, (int)std::lround(nearest / CORNER * (SND_BLIPS - 1)));
 			p.sound(SND_BLIP0 + k, AUDIO_SCANNER_BLIP, 0.5f, ctx);
 		}
 		p.lastTc = now;
@@ -957,7 +964,6 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 		p.pending = -1;
 		p.pressT[b] = 0.f;
 		++p.presses;
-		p.sound(b == B_RED ? SND_CLICK_RED : SND_CLICK, AUDIO_SCANNER_UI, 0.45f, ctx);
 		if (ctx.haptic) { ctx.haptic(1 - p.hand, 0.5f, 0.04f); ctx.haptic(p.hand, 0.25f, 0.04f); }
 		std::string what;
 		if (b == B_RED)
@@ -982,7 +988,7 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 			if (p.soldierView) Log(LOG_INFO) << "[VR] scanner: soldier view starts facing " << (int)std::lround(facing) << " (scanner pointing " << (int)std::lround(p.devHeading) << ")";
 		}
 		p.last = BTN_NAME[b];
-		Log(LOG_INFO) << "[VR] scanner: " << BTN_NAME[b] << " button (" << what << ") fov=" << (int)FOVS[p.fovIdx] << " step=" << p.eyeStep;
+		Log(LOG_INFO) << "[VR] scanner: " << BTN_NAME[b] << " button (" << what << ") fov=" << (int)p.fov() << " step=" << p.eyeStep;
 	}
 	else p.pending = -1;
 }
@@ -1004,7 +1010,7 @@ bool HandScanner::feedCamera(glm::mat4 &view, glm::mat4 &proj, glm::vec3 &eye)
 	if (p.feedFresh && (++p.feedSkip & 1)) return false;
 	view = glm::lookAt(p.camPos, p.camPos + p.camDir, p.camUp);
 	// the soldier view is down among the figures: a much nearer near plane
-	proj = glm::perspective(glm::radians(FOVS[p.fovIdx]), 1.f, p.soldierView ? 0.0008f : 0.01f, 20.f);
+	proj = glm::perspective(glm::radians(p.fov()), 1.f, p.soldierView ? 0.0008f : 0.01f, 20.f);
 	eye = p.camPos;
 	p.feedVP = proj * view;
 	return true;
@@ -1061,7 +1067,7 @@ void HandScanner::Impl::camera(const ScannerContext &ctx)
 	if (!haveScan) return;
 	auto toTiles = [&](const glm::vec3 &w) { glm::vec3 r = w - origin; return glm::vec2(glm::dot(r, eastT), glm::dot(r, southT)); };
 	glm::vec3 right = glm::normalize(glm::cross(camDir, camUp)), up2 = glm::cross(right, camDir);
-	float tn = std::tan(glm::radians(FOVS[fovIdx]) * 0.5f);
+	float tn = std::tan(glm::radians(fov()) * 0.5f);
 	const float farDist = 30.f / std::max(1e-4f, std::sqrt(glm::dot(eastT, eastT))); // 30 tiles (world)
 	const float cx[4] = {-1.f, 1.f, 1.f, -1.f}, cy[4] = {-1.f, -1.f, 1.f, 1.f};
 	for (int i = 0; i < 4; ++i)
@@ -1296,7 +1302,7 @@ std::string HandScanner::status() const
 	if (p.phase != Impl::CLOSED)
 	{
 		o << " hand=" << (p.hand == 1 ? "right" : "left") << " heading=" << (int)std::lround(p.heading)
-			<< " " << DIRS[((int)std::lround(p.heading / 45.f)) % 8] << " fov=" << (int)FOVS[p.fovIdx]
+			<< " " << DIRS[((int)std::lround(p.heading / 45.f)) % 8] << " fov=" << (int)p.fov()
 			<< " view=" << (p.soldierView ? "soldier" : "commander") << " step=" << p.eyeStep << " radar=" << (int)std::lround(p.radarRot) << " contacts=" << p.contacts.size();
 		if (!p.contacts.empty())
 		{
