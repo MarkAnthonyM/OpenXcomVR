@@ -611,6 +611,24 @@ Room and rendering
   headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).
 
+## Parked ideas (owner: maybe later)
+
+- Sky: make the table's night match the game's night rules. The game counts
+  a tile as dark above darkness 9 (maxDarknessToSeeUnits): X-COM sees 9 tiles
+  there instead of 20. The table's sunset now runs to darkness 11 (red-orange,
+  sun 15 degrees up at 11), so darkness 10-11 still look like late dusk while
+  sight is already at night range. Idea: squeeze the sunset ramp (SUN_COL /
+  DAWN_COL / SUN_ELEV) into 0-9, blending between the steps, so the red-orange
+  low sun lands on 9; at 10-11 the sun is down (as on the globe there) and an
+  afterglow fades into night. Tried once in the preview (not kept, 0.16.1):
+  0-9 looked right, a little brighter ground at 9 but the colour held. The
+  afterglow failed: a red-orange tint on the sky fill barely showed, and with
+  the moon as key light (here a full moon mirrored high) 10-11 read as a cool
+  moonlit night, brighter than now. To make it work: the afterglow's light
+  should come low from the sunset side (a direction, not the fill), with the
+  moon kept weak at 10 and taking over at 11. The owner likes the current
+  dusk, the red-orange sunset most; keep that look whatever changes.
+
 ## Where things are
 
 `README-VR.md` has the file-by-file overview ("How it works") and the engine
