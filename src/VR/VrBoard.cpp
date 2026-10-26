@@ -2549,7 +2549,17 @@ std::vector<Board::UnitMarker> Board::unitMarkers() const
 		glm::vec3 w = glm::vec3(M * glm::vec4(local, 1.f));
 		glm::vec4 clip = p.clipRect();
 		if (w.x < clip.x || w.x > clip.z || w.z < clip.y || w.z > clip.w) continue;
-		out.push_back({u, w, std::max(0.016f, 6.f * k), u->getFaction() == p.battle->getSide()});
+		bool covered = false;
+		Position up = u->getPosition();
+		int size = u->getArmor()->getSize();
+		if (up.z + 1 <= std::min(p.viewLevel, p.mz - 1))
+			for (int dx = 0; dx < size && !covered; ++dx)
+				for (int dy = 0; dy < size && !covered; ++dy)
+				{
+					Tile *t = p.battle->getTile(Position(up.x + dx, up.y + dy, up.z + 1));
+					covered = t && t->isDiscovered(O_FLOOR) && t->getMapData(O_FLOOR);
+				}
+		out.push_back({u, w, std::max(0.016f, 6.f * k), u->getFaction() == p.battle->getSide(), covered});
 	}
 	return out;
 }
@@ -2565,18 +2575,21 @@ bool Board::tileUnder(const glm::vec3 &world, int &tx, int &ty, int &tz, float &
 	int x = (int)std::floor(l.x / TILE_W), y = (int)std::floor(l.z / TILE_W);
 	if (x < 0 || y < 0 || x >= p.mx || y >= p.my) return false;
 	// fog: the top of the fog bank is the tile at the highest fogged level (as on the flat map,
-	// clicking into the dark picks the tile at the level being viewed)
-	if (int f = p.fogTop(x, y))
-	{
-		tx = x; ty = y; tz = f - 1;
-		floorY = glm::vec3(M * glm::vec4(l.x, (float)((f - 1) * TILE_H + 13), l.z, 1.f)).y;
-		return true;
-	}
+	// clicking into the dark picks the tile at the level being viewed). An explored floor above it (the
+	// roof of a building not yet entered) comes first, as with the laser (raycast).
+	const int f = p.fogTop(x, y);
 	for (int z = std::min(p.viewLevel, p.mz - 1); z >= 0; --z)
 	{
+		if (z < f)
+		{
+			tx = x; ty = y; tz = f - 1;
+			floorY = glm::vec3(M * glm::vec4(l.x, (float)((f - 1) * TILE_H + 13), l.z, 1.f)).y;
+			return true;
+		}
 		Tile *t = p.battle->getTile(Position(x, y, z));
 		if (!t) continue;
-		bool floor = z == 0 || (t->isDiscovered(O_FLOOR) && (t->getMapData(O_FLOOR) || t->getMapData(O_OBJECT)));
+		// (a unit stands there: on top of something on the level below, which the game allows)
+		bool floor = z == 0 || (t->isDiscovered(O_FLOOR) && (t->getMapData(O_FLOOR) || t->getMapData(O_OBJECT) || t->getUnit()));
 		if (!floor) continue;
 		float fy = (float)(z * TILE_H - t->getTerrainLevel());
 		if (l.y < fy - 3.f && z > 0) continue; // below this floor: look further down
@@ -2606,6 +2619,7 @@ std::string Board::debugInfo() const
 		BattleUnit *u = p.battle->getSelectedUnit();
 		auto it = p.cards.find(u);
 		glm::vec3 v = (it != p.cards.end() && it->second.visInit) ? it->second.vis : glm::vec3(-1.f);
+		ss << " selected " << u->getId() << " at " << u->getPosition().x << "," << u->getPosition().y << "," << u->getPosition().z;
 		ss << " unit " << v.x << "," << v.z << " inView30 " << p.inView(v, 0.3f) << " inView60 " << p.inView(v, 0.6f);
 		// where the unit sits on the table (metres from the map's middle, +z toward the player)
 		float k = p.tileSize / TILE_W;

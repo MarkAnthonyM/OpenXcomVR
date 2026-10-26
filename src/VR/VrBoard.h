@@ -87,7 +87,9 @@ public:
 	BattlescapeState *battleState() const;
 	SavedBattleGame *battle() const;
 	/// Heads of the figures on the table (world), for finger taps.
-	struct UnitMarker { BattleUnit *unit; glm::vec3 head; float radius; bool ours; };
+	/// covered: an explored floor on the level above it is shown (a craft's deck over a soldier under it),
+	/// so its head can't be reached
+	struct UnitMarker { BattleUnit *unit; glm::vec3 head; float radius; bool ours; bool covered; };
 	std::vector<UnitMarker> unitMarkers() const;
 	/// Map tile under a world point (highest visible floor at or below it). floorY = its world height.
 	bool tileUnder(const glm::vec3 &world, int &tx, int &ty, int &tz, float &floorY) const;

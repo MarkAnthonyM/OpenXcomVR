@@ -148,6 +148,36 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   `0.13.0-scanner.1`, `0.14.0-scanner.2-4`, then `0.15.0-scanner.<n>`
   (0.15.0 merged in); merged into vr-prototype as 0.16.0 (scanner.12, owner
   approved). The button sounds were set aside (the buttons are silent).
+- Branch `vr-prototype-select` (from vr-prototype 0.16.1): fixes to tapping
+  soldiers and tiles on the table (owner's reports, with his save, now
+  vr-dev/test/saves/tap_test.asav, test `tap`); builds `0.16.1-select.<n>`.
+  - select.1 (VrTable::updateTaps, Board::tileUnder / unitMarkers):
+    1. A tap on the Skyranger's deck in front of a soldier inside selected
+       the soldier standing under that tile on the ground: heads were found
+       by distance only (a ball of max(1.6 cm, 6 voxels) + the fingertip),
+       before the tile. Now a head is skipped when an explored floor is shown
+       on the level right above it (UnitMarker::covered: show its level to
+       tap it), when the finger is over a floor higher than the unit
+       (tileUnder), and while the finger is pressing a tile (it went on down
+       through the deck onto that head).
+    2. Taps on enemies did nothing: any head the finger was in swallowed the
+       tap (touching), and only our own could be selected. Now someone
+       else's head lets the tap go on to its tile. While aiming (the current
+       action's targeting: shots, throws, psi), coming down onto any head
+       (own soldiers too, owner's choice, as the flat map's click; mind
+       control counts by the unit's current side) clicks its tile, once
+       (aimedAt: no tile tap until the finger is back above that height).
+    3. Roofs over buildings not yet entered didn't take taps (no buzz): the
+       fog check counted unexplored levels up from the ground and took the
+       fog bank's top (13 voxels into the level below the roof) before any
+       explored floor above it. Now explored floors from the top down come
+       first, as the laser's raycast already did; a tile with a unit on it
+       counts as a floor too (standing on something on the level below).
+    Test ops `aim [snap]` (start aiming the right-hand weapon) and
+    `pokehead x y z` (poke the head of whoever stands there); boardinfo
+    shows the selected unit and its position.
+    Test `v2` already failed on vr-prototype 0.16.1 (the walked soldier ends
+    0.062 m off centre, the check allows 0.06): not looked into yet.
 - Branch `vr-prototype-thunder` (from vr-prototype 0.14.0): better thunder,
   builds `0.14.0-thunder.<n>`; merged into vr-prototype as 0.15.0 (thunder.1, owner
   approved). The owner asked for the three improvements

@@ -1582,6 +1582,24 @@ static void runScript()
 							S->board.clickTile((int)num(0, 0), (int)num(1, 0), (int)num(2, 0), false);
 						}
 		}
+		else if (c.op == "aim")
+		{
+			// test helper: the selected unit starts aiming its right-hand weapon (aimed shot, or "snap"), as
+			// after picking it in the action menu
+			if (BattlescapeState *bs = S->board.battleState())
+				if (SavedBattleGame *sb = S->board.battle())
+					if (BattleUnit *u = sb->getSelectedUnit())
+						if (BattleItem *w = u->getRightHandWeapon())
+						{
+							BattleAction *a = bs->getBattleGame()->getCurrentAction();
+							a->actor = u;
+							a->weapon = w;
+							a->type = !c.args.empty() && c.args[0] == "snap" ? BA_SNAPSHOT : BA_AIMEDSHOT;
+							a->updateTU();
+							a->targeting = true;
+							bs->getBattleGame()->setupCursor();
+						}
+		}
 		else if (c.op == "clickabs")
 		{
 			S->board.clickTile((int)num(0, 0), (int)num(1, 0), (int)num(2, 0), num(3, 0) > 0.5);
@@ -1807,7 +1825,7 @@ static void runScript()
 			S->simStep = (to - S->simGrip.pos) / (float)n;
 			S->simFrames = n;
 		}
-		else if (c.op == "poketile" || c.op == "pokenear" || c.op == "pokeunit" || c.op == "pokebutton" || c.op == "pokemenu" || c.op == "pokekey" || c.op == "pokefloat" || c.op == "pokedome" || c.op == "pokebase" || c.op == "holdbase" || c.op == "pinchitem" || c.op == "pinchto")
+		else if (c.op == "poketile" || c.op == "pokenear" || c.op == "pokeunit" || c.op == "pokehead" || c.op == "pokebutton" || c.op == "pokemenu" || c.op == "pokekey" || c.op == "pokefloat" || c.op == "pokedome" || c.op == "pokebase" || c.op == "holdbase" || c.op == "pinchitem" || c.op == "pinchto")
 		{
 			// test macros that steer the scripted hand: poke a point with the index finger, or pinch
 			Hands probe;
@@ -1831,6 +1849,15 @@ static void runScript()
 				int n = (int)num(0, 0), k = 0;
 				for (auto &m : marks)
 					if (m.ours && m.unit != S->board.battle()->getSelectedUnit() && k++ == n) { target = m.head; ok = true; break; }
+			}
+			else if (c.op == "pokehead")
+			{
+				// pokehead x y z : the head of the unit standing on that tile (anyone's)
+				for (auto &m : S->board.unitMarkers())
+				{
+					Position up = m.unit->getPosition();
+					if (up.x == (int)num(0, 0) && up.y == (int)num(1, 0) && up.z == (int)num(2, 0)) { target = m.head; ok = true; break; }
+				}
 			}
 			else if (c.op == "pokebutton") ok = !c.args.empty() && S->table.buttonCenter(c.args[0], target);
 			glm::vec3 pushDir(0.f, -1.f, 0.f);

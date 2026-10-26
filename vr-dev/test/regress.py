@@ -66,6 +66,14 @@ def check_menu(log):
 def check_runs(log):
     return bool(boards(log)) or "no board readout"
 
+def check_tap(log):
+    sel = re.findall(r"\[VR\] board: .*? selected (\d+) at ([\d,]+)", log)
+    if len(sel) < 3: return "too few board readouts"
+    if sel[1][0] != "3": return "tapping the deck over a soldier selected unit %s" % sel[1][0]
+    if sel[2][0] != "2": return "the soldier under the deck couldn't be selected with the ground level shown"
+    return has("tapped tile 34,9,1", "tapped tile 15,5,2", "tapped tile 15,4,2", "tapped tile 16,2,2",
+               "aimed at the unit on 15,4,2 by tapping its head")(log)
+
 TESTS = [  # script, save, check, what it covers
     ("v1", "outside.asav", check_v1, "first soldier brought close; tapping soldiers keeps the view"),
     ("v2", "outside.asav", check_last_near, "after a walk the soldier is brought close"),
@@ -73,6 +81,7 @@ TESTS = [  # script, save, check, what it covers
     ("v4", "outside.asav", check_v4, "left trackpad swipes step the view level"),
     ("v5", "outside.asav", check_last_near, "next-soldier button brings the soldier close"),
     ("a2", "battle_test.asav", has("last='button alert0'"), "red spotted-alien button"),
+    ("tap", "tap_test.asav", check_tap, "taps: the deck over a soldier, the soldier under it, roofs over unexplored buildings, aiming at a head"),
     ("d1", "battle_test.asav", has("turned soldier toward 3,1"), "drag away from a soldier to turn it"),
     ("t6", "battle_test.asav", has("swapped STR_SMOKE_GRENADE with STR_RIFLE"), "tray: swap with the item in a hand"),
     ("i3", "battle_test.asav", has("warning STR_WEAPON_IS_ALREADY_LOADED", "loaded STR_RIFLE_CLIP into STR_RIFLE"), "tray: reload rules"),
