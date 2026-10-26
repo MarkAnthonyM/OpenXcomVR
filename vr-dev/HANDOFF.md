@@ -150,7 +150,8 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   approved). The button sounds were set aside (the buttons are silent).
 - Branch `vr-prototype-select` (from vr-prototype 0.16.1): fixes to tapping
   soldiers and tiles on the table (owner's reports, with his save, now
-  vr-dev/test/saves/tap_test.asav, test `tap`); builds `0.16.1-select.<n>`.
+  vr-dev/test/saves/tap_test.asav, test `tap`); builds `0.16.1-select.<n>`;
+  merged into vr-prototype as 0.17.0 (select.1, owner approved).
   - select.1 (VrTable::updateTaps, Board::tileUnder / unitMarkers):
     1. A tap on the Skyranger's deck in front of a soldier inside selected
        the soldier standing under that tile on the ground: heads were found
