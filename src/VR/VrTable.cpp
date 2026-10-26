@@ -196,6 +196,7 @@ struct Table::Impl
 	glm::vec2 dragDir[2];
 	BattleUnit *headInside[2] = {nullptr, nullptr};
 	float cooldown[2] = {0.f, 0.f};
+	float aimedAt[2] = {-1.f, -1.f};      // a head tap aimed there: no tile tap until the finger is back above this height
 	std::string lastEvent;
 
 	// wrist pad (right hand): whole-map minimap, tap with the other hand to move the table there
@@ -1491,20 +1492,59 @@ void Table::Impl::updateTaps(TableContext &ctx, const Hands &hands, float dt)
 		{
 			touching[h] = false;
 			headInside[h] = nullptr;
+			aimedAt[h] = -1.f;
 			if (dragging[h]) { dragging[h] = false; board->setTurnPreview(false, glm::vec2(0.f)); }
 			continue;
 		}
 		glm::vec3 tip = P.tip(F_INDEX);
 		float r = P.radius[fingerTip(F_INDEX)];
+		// a shot, throw or psi attack being aimed: tapping any figure aims at it, as clicking it does
+		BattleAction *act = bs ? bs->getBattleGame()->getCurrentAction() : nullptr;
+		const bool aiming = act && act->targeting;
+		// after aiming at a head the finger goes on down through the figure: no tile tap until it is back up
+		if (aimedAt[h] >= 0.f && tip.y > aimedAt[h]) aimedAt[h] = -1.f;
 
-		// tap a figure on the head: select it
+		// tap a figure on the head: one of ours selects it, while aiming any figure is aimed at; anyone
+		// else's head lets the tap go on to its tile
+		int fx, fy, fz;
+		float fFloor;
+		const bool fOver = board->tileUnder(tip, fx, fy, fz, fFloor);
 		BattleUnit *inside = nullptr;
 		bool ours = false;
+		// (a finger already pressing a tile doesn't pick up a head on its way through)
+		const bool pressing = touching[h] && !headInside[h];
 		for (const Board::UnitMarker &m : board->unitMarkers())
-			if (glm::length(tip - m.head) < m.radius + r) { inside = m.unit; ours = m.ours; break; }
+		{
+			if (pressing || m.covered || glm::length(tip - m.head) >= m.radius + r) continue;
+			// not through a floor: over a level above the figure (a craft's deck, a roof) the finger is on that
+			// level, not at the head of whoever stands below it
+			if (fOver && fz > m.unit->getPosition().z) continue;
+			inside = m.unit; ours = m.ours;
+			break;
+		}
 		// the soldier already selected: reaching through its head goes on to its tile (drag to turn)
 		if (inside && battle->getSelectedUnit() == inside) inside = nullptr;
-		if (inside && inside != headInside[h] && cooldown[h] <= 0.f && P.indexExtended && ours && bsTop)
+		if (inside && aiming)
+		{
+			// coming down onto the head (not brushing past it)
+			if (inside != headInside[h] && aimedAt[h] < 0.f && cooldown[h] <= 0.f && P.indexExtended && P.tipVelocity.y < -0.02f && bsTop && !ctx.handBusy[h])
+			{
+				Position up = inside->getPosition();
+				board->clickTile(up.x, up.y, up.z, false);
+				ctx.haptic(h, 0.45f, 0.02f);
+				cooldown[h] = 0.3f;
+				aimedAt[h] = tip.y + 0.005f;
+				std::ostringstream ss;
+				ss << "aimed at the unit on " << up.x << "," << up.y << "," << up.z << " by tapping its head";
+				lastEvent = ss.str();
+				Log(LOG_INFO) << "[VR] " << lastEvent;
+			}
+			headInside[h] = inside;
+			touching[h] = false;
+			continue;
+		}
+		if (inside && !ours) inside = nullptr;
+		if (inside && inside != headInside[h] && cooldown[h] <= 0.f && P.indexExtended && bsTop)
 		{
 			if (board->selectUnit(inside))
 			{
@@ -1561,7 +1601,7 @@ void Table::Impl::updateTaps(TableContext &ctx, const Hands &hands, float dt)
 		if (P.indexExtended && gap < 0.08f && !ctx.handBusy[h]) board->fingerHover(tx, ty, tz);
 		bool now = touching[h] ? gap < 0.012f : gap < 0.004f;
 		// put down on the selected soldier: that starts a turn, not a move
-		if (now && !touching[h] && selOk && cooldown[h] <= 0.f && P.indexExtended && bsTop && !ctx.handBusy[h]
+		if (now && !touching[h] && selOk && cooldown[h] <= 0.f && aimedAt[h] < 0.f && P.indexExtended && bsTop && !ctx.handBusy[h]
 			&& board->tileCoords(P.tip(F_INDEX), tileF) && glm::length(tileF - selC) < 0.8f * sel->getArmor()->getSize())
 		{
 			dragging[h] = true;
@@ -1570,7 +1610,7 @@ void Table::Impl::updateTaps(TableContext &ctx, const Hands &hands, float dt)
 			ctx.haptic(h, 0.2f, 0.015f);
 			continue;
 		}
-		if (now && !touching[h] && cooldown[h] <= 0.f && P.indexExtended && P.tipVelocity.y < -0.02f && bsTop && !ctx.handBusy[h])
+		if (now && !touching[h] && cooldown[h] <= 0.f && aimedAt[h] < 0.f && P.indexExtended && P.tipVelocity.y < -0.02f && bsTop && !ctx.handBusy[h])
 		{
 			board->clickTile(tx, ty, tz, false);
 			ctx.haptic(h, 0.45f, 0.02f);

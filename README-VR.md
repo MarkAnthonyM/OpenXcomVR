@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.16.1)
+# OpenXcom Extended — VR Tabletop (prototype 0.16.1-select.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -389,8 +389,8 @@ it has to be pulled most of the way.
 |---|---|
 | Press a table button | Same as clicking that battlescape button. Buttons travel about 5 mm, click near the bottom of the stroke (with a haptic tick) and spring back. A laser click on a button works too. |
 | Point your index finger just above the map | The game's cursor follows your fingertip (with its hit chance when aiming) |
-| Tap a soldier's head with your index finger | Select that soldier |
-| Tap a tile on the map with your index finger | Move the selected soldier there (with path preview on, tap again to confirm) |
+| Tap a soldier's head with your index finger | Select that soldier (a soldier under a craft's deck or a roof that is shown can't be tapped: show their level first). While aiming a shot, a throw or a psi attack, tapping anyone's head aims at them, your own soldiers too, as clicking them on the flat map does |
+| Tap a tile on the map with your index finger | Move the selected soldier there (with path preview on, tap again to confirm). Tapping through an enemy's head reaches its tile. A roof you have seen counts as the surface even over a building you haven't been in |
 | Put your finger on the selected soldier's tile and drag it across the map | Turn the soldier to face that way (the game's right-click turn); yellow arrows show the direction while you drag |
 | Pinch an item in the inventory tray: rest your index finger on the trigger and your thumb on A | The fingers close on the nearest item (it lights up as your hand approaches) and pick it up; lift either finger over a slot or hand to drop it there (costs TU like in the game). Dropping onto an occupied hand swaps the items. |
 | Press a key on the action board | Choose that firing mode / action, or Cancel |

@@ -1,0 +1,38 @@
+wait 9000
+cam 0.0 1.35 0.15 0 -35
+waitframes 2
+selectunit 3
+wait 800
+key 280
+wait 1500
+log --- deck: tile in front of the soldier inside, a soldier below it
+boardinfo
+poketile 34 9 1
+wait 1500
+boardinfo
+key 281
+wait 1500
+log --- ground level shown: the soldier under the deck can be selected
+pokehead 34 9 0
+wait 1500
+boardinfo
+selectunit 1
+wait 800
+gamecam 15 4 2
+wait 8000
+log --- roof: an empty roof tile
+poketile 15 5 2
+wait 1500
+log --- roof: the enemy's tile, not aiming
+poketile 15 4 2
+wait 1500
+log --- roof: a roof tile over an unexplored building (ground and floor below not yet seen)
+poketile 16 2 2
+wait 1500
+log --- roof: aiming, tap the enemy's head
+aim snap
+wait 500
+pokehead 15 4 2
+wait 6000
+status
+quit
