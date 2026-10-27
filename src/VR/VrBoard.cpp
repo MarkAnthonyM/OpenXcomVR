@@ -85,7 +85,7 @@ namespace VR
 // builds for the owner: shade.1 lights the ground under a landed craft as outdoors (the craft's own shadow,
 // figures' shadows where the sun gets in), shade.2 every roofed tile.
 enum RoofRule { ROOF_INDOORS, ROOF_UNDER_CRAFT_OUTDOORS, ROOF_ALL_OUTDOORS };
-static const RoofRule ROOF_RULE = ROOF_UNDER_CRAFT_OUTDOORS;
+static const RoofRule ROOF_RULE = ROOF_ALL_OUTDOORS;
 
 static const int TILE_W = 16;   // voxels per tile, horizontally
 static const int TILE_H = 24;   // voxels per tile, vertically
