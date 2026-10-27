@@ -148,6 +148,21 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   `0.13.0-scanner.1`, `0.14.0-scanner.2-4`, then `0.15.0-scanner.<n>`
   (0.15.0 merged in); merged into vr-prototype as 0.16.0 (scanner.12, owner
   approved). The button sounds were set aside (the buttons are silent).
+- Branch `vr-prototype-shade` (from vr-prototype 0.17.0): which roofed
+  tiles keep the soft indoor light (Board::Impl::indoors). The owner found no
+  figure shadows under the Skyranger (the low sun can't get under the deck, so
+  those tiles were indoors: a soft light in the sun's colour, which read as
+  sunlight without shadows) and liked the ground there lit as outdoors (the
+  craft's own shadow; figures' shadows where the sun gets in). Two test builds
+  to compare, chosen by ROOF_RULE at the top of VrBoard.cpp:
+  - shade.1, ROOF_UNDER_CRAFT_OUTDOORS: the ground under a landed craft is
+    outdoors: the floor right above belongs to the craft's map data sets
+    (Board::Impl::craftSets, from the craft in the battle's
+    RuleCraft::getBattlescapeTerrainData, BLANKS left out; SavedBattleGame
+    doesn't keep the craft's position) and nothing on the tile does. The cabin
+    and buildings stay indoors.
+  - shade.2, ROOF_ALL_OUTDOORS: every roofed tile is lit as outdoors (inside
+    buildings and the cabin too, only the sky fill where the roof shades).
 - Branch `vr-prototype-select` (from vr-prototype 0.16.1): fixes to tapping
   soldiers and tiles on the table (owner's reports, with his save, now
   vr-dev/test/saves/tap_test.asav, test `tap`); builds `0.16.1-select.<n>`;

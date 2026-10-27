@@ -31,6 +31,8 @@
 #include "../Mod/Mod.h"
 #include "../Mod/MapData.h"
 #include "../Mod/MapDataSet.h"
+#include "../Mod/RuleCraft.h"
+#include "../Mod/RuleTerrain.h"
 #include "../Mod/Armor.h"
 #include "../Mod/RuleGlobe.h"
 #include "../Mod/Polygon.h"
@@ -70,6 +72,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdlib>
+#include <set>
 #include <functional>
 #include <sstream>
 
@@ -77,6 +80,12 @@ namespace OpenXcom
 {
 namespace VR
 {
+
+// Roofed tiles the sun can't reach are lit as indoors: the soldiers' light stays a soft light there. Test
+// builds for the owner: shade.1 lights the ground under a landed craft as outdoors (the craft's own shadow,
+// figures' shadows where the sun gets in), shade.2 every roofed tile.
+enum RoofRule { ROOF_INDOORS, ROOF_UNDER_CRAFT_OUTDOORS, ROOF_ALL_OUTDOORS };
+static const RoofRule ROOF_RULE = ROOF_UNDER_CRAFT_OUTDOORS;
 
 static const int TILE_W = 16;   // voxels per tile, horizontally
 static const int TILE_H = 24;   // voxels per tile, vertically
@@ -255,9 +264,36 @@ struct Board::Impl
 	/// traces are kept until the sun moves or the terrain changes anywhere (see the chunk loop).
 	mutable std::unordered_map<int, bool> reachCache;
 	mutable glm::vec3 reachSun{0.f};
+	/// The landed craft's own map data sets (the Skyranger's PLANE), by name: the ground under the craft is
+	/// open at the sides, so it is lit as outdoors (see ROOF_RULE). Empty without a craft on the map.
+	std::set<std::string> craftSets;
+	void findCraftSets()
+	{
+		craftSets.clear();
+		SavedGame *sg = game ? game->getSavedGame() : nullptr;
+		if (!sg) return;
+		for (Base *b : *sg->getBases())
+			for (Craft *c : *b->getCrafts())
+				if (c->isInBattlescape() && c->getRules()->getBattlescapeTerrainData())
+					for (MapDataSet *ds : *c->getRules()->getBattlescapeTerrainData()->getMapDataSets())
+						if (ds && ds->getName() != "BLANKS") craftSets.insert(ds->getName());
+	}
+	bool craftPart(const MapData *d) const { return d && d->getDataset() && craftSets.count(d->getDataset()->getName()); }
+	/// The ground under a craft: the floor right above is the craft's, nothing on this tile is.
+	bool underCraft(const Position &p) const
+	{
+		if (craftSets.empty() || p.z + 1 >= battle->getMapSizeZ()) return false;
+		Tile *above = battle->getTile(Position(p.x, p.y, p.z + 1)), *t = battle->getTile(p);
+		if (!above || !t || !craftPart(above->getMapData(O_FLOOR))) return false;
+		for (int part = 0; part < O_MAX; ++part) if (craftPart(t->getMapData((TilePart)part))) return false;
+		return true;
+	}
 	bool indoors(const Position &p) const
 	{
 		if (!roofed(p)) return false;
+		// TEST BUILDS (owner compares): which roofed tiles keep the soft indoor light
+		if (ROOF_RULE == ROOF_ALL_OUTDOORS) return false;
+		if (ROOF_RULE == ROOF_UNDER_CRAFT_OUTDOORS && underCraft(p)) return false;
 		glm::vec3 sd = weather.sky().dir;
 		if (sd != reachSun) { reachCache.clear(); reachSun = sd; }
 		int key = (p.z * battle->getMapSizeY() + p.y) * battle->getMapSizeX() + p.x;
@@ -500,6 +536,7 @@ void Board::Impl::bindBattle(SavedBattleGame *save)
 	my = save->getMapSizeY();
 	mz = save->getMapSizeZ();
 	weather.begin(game, save, shadeOffset);
+	findCraftSets();
 	stopCache.assign((size_t)mx * my, 0.f);
 	openCache.assign((size_t)mx * my, 0);
 	stopTimer = 0.f;
