@@ -81,12 +81,6 @@ namespace OpenXcom
 namespace VR
 {
 
-// Roofed tiles the sun can't reach are lit as indoors: the soldiers' light stays a soft light there. Test
-// builds for the owner: shade.1 lights the ground under a landed craft as outdoors (the craft's own shadow,
-// figures' shadows where the sun gets in), shade.2 every roofed tile.
-enum RoofRule { ROOF_INDOORS, ROOF_UNDER_CRAFT_OUTDOORS, ROOF_ALL_OUTDOORS };
-static const RoofRule ROOF_RULE = ROOF_ALL_OUTDOORS;
-
 static const int TILE_W = 16;   // voxels per tile, horizontally
 static const int TILE_H = 24;   // voxels per tile, vertically
 static const int CHUNK = 8;     // tiles per chunk side
@@ -265,7 +259,7 @@ struct Board::Impl
 	mutable std::unordered_map<int, bool> reachCache;
 	mutable glm::vec3 reachSun{0.f};
 	/// The landed craft's own map data sets (the Skyranger's PLANE), by name: the ground under the craft is
-	/// open at the sides, so it is lit as outdoors (see ROOF_RULE). Empty without a craft on the map.
+	/// open at the sides, so it is lit as outdoors (indoors()). Empty without a craft on the map.
 	std::set<std::string> craftSets;
 	void findCraftSets()
 	{
@@ -291,9 +285,9 @@ struct Board::Impl
 	bool indoors(const Position &p) const
 	{
 		if (!roofed(p)) return false;
-		// TEST BUILDS (owner compares): which roofed tiles keep the soft indoor light
-		if (ROOF_RULE == ROOF_ALL_OUTDOORS) return false;
-		if (ROOF_RULE == ROOF_UNDER_CRAFT_OUTDOORS && underCraft(p)) return false;
+		// the ground under a landed craft is open at the sides: lit as outdoors, in the craft's own shadow
+		// (owner's choice of the 0.17.0-shade test builds; inside buildings and the cabin stay indoors)
+		if (underCraft(p)) return false;
 		glm::vec3 sd = weather.sky().dir;
 		if (sd != reachSun) { reachCache.clear(); reachSun = sd; }
 		int key = (p.z * battle->getMapSizeY() + p.y) * battle->getMapSizeX() + p.x;

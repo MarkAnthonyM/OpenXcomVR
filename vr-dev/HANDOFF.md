@@ -163,6 +163,8 @@ The New Battle flow is driven by blind clicks on the flat screen (see
     and buildings stay indoors.
   - shade.2, ROOF_ALL_OUTDOORS: every roofed tile is lit as outdoors (inside
     buildings and the cabin too, only the sky fill where the roof shades).
+  - shade.3: the owner chose shade.1; ROOF_RULE removed, indoors() skips
+    underCraft() tiles.
 - Branch `vr-prototype-select` (from vr-prototype 0.16.1): fixes to tapping
   soldiers and tiles on the table (owner's reports, with his save, now
   vr-dev/test/saves/tap_test.asav, test `tap`); builds `0.16.1-select.<n>`;
