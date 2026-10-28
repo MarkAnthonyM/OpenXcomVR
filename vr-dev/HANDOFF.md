@@ -168,7 +168,8 @@ The New Battle flow is driven by blind clicks on the flat screen (see
     highest explored floor above the fog, else the ground (updateStops), never
     at anything unseen. Test bursts (testburst) now give off an explosion's
     light (testFlashT) for the previews. Owner saw stills (tap_test.asav):
-    day, dusk, night, a blast in the dark.
+    day, dusk, night, a blast in the dark. Merged into vr-prototype as 0.19.0
+    (fog.1, owner approved after the headset).
 - Branch `vr-prototype-shade` (from vr-prototype 0.17.0): which roofed
   tiles keep the soft indoor light (Board::Impl::indoors). The owner found no
   figure shadows under the Skyranger (the low sun can't get under the deck, so
