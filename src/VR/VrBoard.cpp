@@ -405,6 +405,8 @@ struct Board::Impl
 	glm::vec3 beamA{0.f}, beamB{0.f}, beamColor{1.f};
 	struct Flash { glm::vec3 p; glm::vec3 col; };
 	std::vector<Flash> flashes;        // world-space lights for the room this frame
+	glm::vec3 testFlashAt{0.f};        // tests: a burst's light, as an explosion's (board voxels)
+	float testFlashT = 0.f;
 	// light that glowing shots and explosions throw onto the map (board voxels, radius in voxels).
 	// Table only: it brightens terrain and figures from their unlit colour, so it shows at night;
 	// the game's own lighting (and the flat screen) is untouched.
@@ -804,56 +806,57 @@ uint64_t Board::Impl::fogHash(int cx, int cy)
 	return h;
 }
 
-/// The fog volume: each fogged tile is a block of 4 x 4 little voxel columns with uneven tops, so
-/// the unexplored map reads as a bank of cloud. Only faces that can be seen are made.
+/// Fog of war (0.18.0-fog): unexplored ground is a dark void, as on the flat map, under a thin haze: two
+/// see-through layers over the unexplored ground (a few voxels above the
+/// highest fogged level), spilling half a tile onto explored ground so the known map fades into the
+/// dark. Drawn without depth writes: shots inside it show, and their light glows in it (shader).
 void Board::Impl::buildFog(int cx, int cy, Chunk &ch)
 {
-	const int SUB = 4;                 // columns per tile side
-	const float CW = TILE_W / (float)SUB;
-	auto hash = [](int a, int b) { uint32_t h = (uint32_t)(a * 73856093) ^ (uint32_t)(b * 19349663); h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15; return (h & 1023) / 1023.f; };
-	// height of a sub-column (voxels), 0 where there is no fog
-	auto colH = [&](int sx, int sy) -> float
+	const int SUB = 4;
+	const float CW = TILE_W / (float)SUB, SPILL = 0.6f;
+	// how much haze at a corner of the sub-grid (tile units), and the fogged level count it belongs to
+	auto amount = [&](int gx, int gy, int &lvl) -> float
 	{
-		int tx = sx >= 0 ? sx / SUB : -1, ty = sy >= 0 ? sy / SUB : -1;
-		int n = fogTop(tx, ty);
-		if (!n) return 0.f;
-		float top = (n - 1) * TILE_H + 15.f;
-		return top - std::floor(hash(sx, sy) * 6.f);
+		float u = gx / (float)SUB, v = gy / (float)SUB;
+		float best = 1e9f;
+		lvl = 0;
+		for (int ty = (int)std::floor(v) - 1; ty <= (int)std::floor(v) + 1; ++ty)
+			for (int tx = (int)std::floor(u) - 1; tx <= (int)std::floor(u) + 1; ++tx)
+			{
+				int n = fogTop(tx, ty);
+				if (!n) continue;
+				float dx = std::max(std::max(tx - u, 0.f), u - (tx + 1)), dy = std::max(std::max(ty - v, 0.f), v - (ty + 1));
+				float d = std::sqrt(dx * dx + dy * dy);
+				if (d < best || (d == best && n > lvl)) { best = d; lvl = n; }
+			}
+		if (best >= SPILL) return 0.f;
+		float k = best / SPILL;
+		return 1.f - k * k * (3.f - 2.f * k);
 	};
 	MeshData md;
+	const glm::vec4 col(0.050f, 0.058f, 0.082f, 1.f);
 	for (int sy = cy * CHUNK * SUB; sy < std::min(my, (cy + 1) * CHUNK) * SUB; ++sy)
 		for (int sx = cx * CHUNK * SUB; sx < std::min(mx, (cx + 1) * CHUNK) * SUB; ++sx)
 		{
-			float h = colH(sx, sy);
-			if (h <= 0.f) continue;
-			float shade = 0.92f + 0.16f * hash(sx * 7 + 3, sy * 5 + 1);
-			glm::vec4 topC = glm::vec4(0.31f, 0.35f, 0.44f, 1.f) * shade, sideC = glm::vec4(0.22f, 0.25f, 0.33f, 1.f) * shade;
-			topC.a = sideC.a = 1.f;
+			int l[4];
+			float a[4] = {amount(sx, sy + 1, l[0]), amount(sx + 1, sy + 1, l[1]), amount(sx + 1, sy, l[2]), amount(sx, sy, l[3])};
+			if (a[0] <= 0.f && a[1] <= 0.f && a[2] <= 0.f && a[3] <= 0.f) continue;
+			int lvl = std::max(std::max(l[0], l[1]), std::max(l[2], l[3]));
 			float x0 = sx * CW, x1 = x0 + CW, z0 = sy * CW, z1 = z0 + CW;
-			const float y0 = 0.4f;
-			// top (uv.x = 1: these vertices drift)
-			md.addQuad({x0, h, z1}, {x1, h, z1}, {x1, h, z0}, {x0, h, z0}, topC, MAT_FOG, {1, 0}, {1, 0}, {1, 0}, {1, 0});
-			// sides facing lower neighbours
-			struct N { int dx, dy; };
-			for (N nb : {N{1, 0}, N{-1, 0}, N{0, 1}, N{0, -1}})
+			for (int layer = 0; layer < 2; ++layer)
 			{
-				float hn = colH(sx + nb.dx, sy + nb.dy);
-				if (hn >= h) continue;
-				float lo = std::max(y0, hn);
-				glm::vec3 a, b; // edge on the ground plane, counter-clockwise seen from outside
-				if (nb.dx == 1) { a = {x1, 0, z1}; b = {x1, 0, z0}; }
-				else if (nb.dx == -1) { a = {x0, 0, z0}; b = {x0, 0, z1}; }
-				else if (nb.dy == 1) { a = {x0, 0, z1}; b = {x1, 0, z1}; }
-				else { a = {x1, 0, z0}; b = {x0, 0, z0}; }
-				glm::vec2 top = hn > 0.f ? glm::vec2(1, 0) : glm::vec2(1, 0);
-				md.addQuad(a + glm::vec3(0, lo, 0), b + glm::vec3(0, lo, 0), b + glm::vec3(0, h, 0), a + glm::vec3(0, h, 0), sideC, MAT_FOG,
-					{0, 0}, {0, 0}, top, top);
+				float y = (lvl - 1) * TILE_H + (layer ? 9.f : 3.f);
+				md.addQuad({x0, y, z1}, {x1, y, z1}, {x1, y, z0}, {x0, y, z0}, col, MAT_FOG,
+					{(float)layer, 2.f}, {(float)layer, 2.f}, {(float)layer, 2.f}, {(float)layer, 2.f});
+				size_t b = md.verts.size() - 4;
+				for (int i = 0; i < 4; ++i) md.verts[b + i].color.a = a[i];
 			}
 		}
 	ch.empty = md.indices.empty();
 	if (!ch.mesh) ch.mesh.reset(new Mesh());
 	ch.mesh->upload(md);
 }
+
 
 void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 {
@@ -866,11 +869,11 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 			glm::vec3 off((float)(x * TILE_W), (float)(z * TILE_H), (float)(y * TILE_W));
 			if (!t->isDiscovered(O_FLOOR))
 			{
-				// unexplored ground: a dark slab so the board keeps its shape (the fog volume covers it)
+				// unexplored ground: the void, a near-black slab (the haze drifts over it)
 				if (z == 0 && fogX >= 0)
 				{
 					float u0 = fogX / (float)ATLAS, v0 = fogY / (float)ATLAS, u1 = (fogX + 16) / (float)ATLAS, v1 = (fogY + 16) / (float)ATLAS;
-					float sb = shadeFactor(tileShade(t)); // as dark as the night around it
+					const float sb = 0.02f; // the void: near black, day and night
 					md.addQuad(off + glm::vec3(0, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, 0), off + glm::vec3(0, 0.5f, 0), glm::vec4(sb, sb, sb, 1.f), MAT_BOARD, {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0});
 				}
 				// walls already seen from outside stay standing (the flat map shows them too)
@@ -1566,8 +1569,10 @@ void Board::Impl::drawBattle(const Shader &sh)
 	sh.set("uModel", M);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDepthMask(GL_FALSE); // the haze: shots inside it still show
 	for (const Chunk &fc : fogChunks)
 		if (fc.mesh && !fc.empty) fc.mesh->draw();
+	glDepthMask(GL_TRUE);
 	glDisable(GL_BLEND);
 
 	drawEffects(sh, M);
@@ -1704,6 +1709,14 @@ void Board::Impl::updateEffects(float dt)
 	glows.clear();
 	glm::mat4 M = boardMatrix();
 	auto toWorld = [&](const glm::vec3 &v) { return glm::vec3(M * glm::vec4(v, 1.f)); };
+	if (testFlashT > 0.f)
+	{
+		// a test burst lights its surroundings like an explosion does (fading over half a second)
+		float k = std::min(1.f, testFlashT / 0.5f);
+		flashes.push_back({toWorld(testFlashAt + glm::vec3(0, 6, 0)), glm::vec3(1.f, 0.55f, 0.18f) * 2.5f * k});
+		glows.push_back({testFlashAt + glm::vec3(0, 8, 0), glm::vec3(1.f, 0.55f, 0.2f) * 2.2f * k, 16.f * 5.f});
+		testFlashT -= dt;
+	}
 	static uint32_t st = 777u;
 	Map *map = (bs && bs->getMap()) ? bs->getMap() : nullptr;
 
@@ -2605,16 +2618,16 @@ bool Board::tileUnder(const glm::vec3 &world, int &tx, int &ty, int &tz, float &
 	glm::vec3 l = glm::vec3(glm::inverse(M) * glm::vec4(world, 1.f));
 	int x = (int)std::floor(l.x / TILE_W), y = (int)std::floor(l.z / TILE_W);
 	if (x < 0 || y < 0 || x >= p.mx || y >= p.my) return false;
-	// fog: the top of the fog bank is the tile at the highest fogged level (as on the flat map,
-	// clicking into the dark picks the tile at the level being viewed). An explored floor above it (the
-	// roof of a building not yet entered) comes first, as with the laser (raycast).
+	// fog: the finger reaches the void on the ground, which picks the tile at the highest fogged level (as
+	// on the flat map, clicking into the dark picks the tile at the level being viewed). An explored floor
+	// above it (the roof of a building not yet entered) comes first, as with the laser (raycast).
 	const int f = p.fogTop(x, y);
 	for (int z = std::min(p.viewLevel, p.mz - 1); z >= 0; --z)
 	{
 		if (z < f)
 		{
 			tx = x; ty = y; tz = f - 1;
-			floorY = glm::vec3(M * glm::vec4(l.x, (float)((f - 1) * TILE_H + 13), l.z, 1.f)).y;
+			floorY = glm::vec3(M * glm::vec4(l.x, 0.5f, l.z, 1.f)).y;
 			return true;
 		}
 		Tile *t = p.battle->getTile(Position(x, y, z));
@@ -2787,7 +2800,8 @@ float Board::Impl::partTop(const MapData *d)
 }
 
 /// Where rain and snow stop in each column: the highest floor (a roof is the floor of the level above)
-/// or object there, the top of the fog of war over unexplored ground. Walls don't stop it.
+/// or object there; over unexplored ground the highest explored floor, else the void on the ground.
+/// Walls don't stop it.
 void Board::Impl::updateStops()
 {
 	if (!battle || stopCache.size() != (size_t)mx * my) return;
@@ -2796,7 +2810,24 @@ void Board::Impl::updateStops()
 		{
 			size_t i = (size_t)y * mx + x;
 			int nf = fogTop(x, y);
-			if (nf) { stopCache[i] = (nf - 1) * (float)TILE_H + 13.f; openCache[i] = 0; continue; }
+			if (nf)
+			{
+				// over the void: the highest explored floor above the fog (a roof seen from outside), else
+				// the ground; never anything not yet seen
+				float h = 0.5f;
+				for (int z = mz - 1; z >= nf; --z)
+				{
+					Tile *t = battle->getTile(Position(x, y, z));
+					if (!t || !t->isDiscovered(O_FLOOR)) continue;
+					const MapData *fl = t->getMapData(O_FLOOR), *ob = t->getMapData(O_OBJECT);
+					if (!fl && !ob) continue;
+					h = z * (float)TILE_H + std::max(fl ? std::max(partTop(fl), 0.5f) : 0.f, ob ? partTop(ob) : 0.f);
+					break;
+				}
+				stopCache[i] = h;
+				openCache[i] = 0;
+				continue;
+			}
 			float h = 0.f;
 			bool roof = false;
 			for (int z = mz - 1; z >= 0; --z)
@@ -3108,13 +3139,16 @@ bool Board::raycast(const glm::vec3 &o, const glm::vec3 &d, BoardHit &hit) const
 			if (tx < 0 || ty < 0 || tx >= p.mx || ty >= p.my) continue;
 			Tile *tile = p.battle->getTile(Position(tx, ty, z));
 			bool standable = tile && tile->isDiscovered(O_FLOOR) && (tile->getMapData(O_FLOOR) || tile->getMapData(O_OBJECT) || tile->getUnit());
-			if (p.fogTop(tx, ty) == z + 1) standable = true; // the top of the fog bank
+			// the void over unexplored ground: on the ground, picking the highest fogged level
+			const int f = p.fogTop(tx, ty);
+			if (f && z >= f) standable = standable && tile->isDiscovered(O_FLOOR);
+			else if (f) { if (z > 0) continue; standable = true; }
 			if (!standable && z > 0) continue;
 			glm::vec3 w = o + d * t;
 			if (w.x < clip.x || w.x > clip.z || w.z < clip.y || w.z > clip.w) return false;
 			hit.t = t;
 			hit.point = w;
-			hit.tileX = tx; hit.tileY = ty; hit.tileZ = z;
+			hit.tileX = tx; hit.tileY = ty; hit.tileZ = f ? std::max(z, f - 1) : z;
 			hit.globe = false;
 			return true;
 		}
@@ -3420,6 +3454,8 @@ glm::vec2 Board::minimapTile(const glm::vec2 &uv, bool align) const
 void Board::testBurst(int tx, int ty, int tz, bool big)
 {
 	_p->spawnBurst(glm::vec3(tx * TILE_W + 8.f, tz * TILE_H + 6.f, ty * TILE_W + 8.f), big, false);
+	_p->testFlashAt = glm::vec3(tx * TILE_W + 8.f, tz * TILE_H, ty * TILE_W + 8.f);
+	_p->testFlashT = 0.8f;
 }
 
 void Board::centerOnTile(const glm::vec2 &tile)

@@ -29,6 +29,9 @@ wait 1500
 log --- roof: a roof tile over an unexplored building (ground and floor below not yet seen)
 poketile 16 2 2
 wait 1500
+log --- the void: unexplored ground picks the highest fogged level (as the flat map's click into the dark)
+poketile 12 6 0
+wait 1500
 log --- roof: aiming, tap the enemy's head
 aim snap
 wait 500

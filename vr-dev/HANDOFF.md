@@ -148,6 +148,27 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   `0.13.0-scanner.1`, `0.14.0-scanner.2-4`, then `0.15.0-scanner.<n>`
   (0.15.0 merged in); merged into vr-prototype as 0.16.0 (scanner.12, owner
   approved). The button sounds were set aside (the buttons are silent).
+- Branch `vr-prototype-fog` (from vr-prototype 0.18.0): the fog of war
+  (owner: the table should feel as suspenseful as the flat map's darkness; on
+  the flat map a shot comes out of the black, and a building's dark outline
+  sometimes hints where from). Builds `0.18.0-fog.<n>`.
+  - fog.1: the voxel cloud bank is gone. Unexplored ground (fogTop) is a
+    near-black slab on the ground (buildChunk, z 0) under a haze
+    (Board::Impl::buildFog): two quads per quarter tile, 3 and 9 voxels over
+    the highest fogged level, vertex alpha 1 over fogged tiles fading to 0
+    0.6 tile out onto explored ground (smoothstep on the distance to the
+    nearest fogged tile), uv.y = 2 marks them. Drawn blended without depth
+    writes, so shots inside show. Shader (vMat 9, uv.y > 1.5): colour
+    (0.050, 0.058, 0.082) x drifting two-octave noise, alpha 0.75 / 0.45 x
+    density; it glows from the battle's own lights only (uFxFirst: the index
+    where Board::lights start in the light list) with exp(-d / 0.07) / d^2,
+    so a blast or shot shows roughly where, never what is there. Taps
+    (tileUnder) and the laser (raycast) reach the void on the ground and
+    still pick the highest fogged level; rain over the void stops at the
+    highest explored floor above the fog, else the ground (updateStops), never
+    at anything unseen. Test bursts (testburst) now give off an explosion's
+    light (testFlashT) for the previews. Owner saw stills (tap_test.asav):
+    day, dusk, night, a blast in the dark.
 - Branch `vr-prototype-shade` (from vr-prototype 0.17.0): which roofed
   tiles keep the soft indoor light (Board::Impl::indoors). The owner found no
   figure shadows under the Skyranger (the low sun can't get under the deck, so

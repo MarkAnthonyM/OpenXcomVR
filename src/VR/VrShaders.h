@@ -62,6 +62,7 @@ uniform float uScan;         // game panel scanlines: texels per game pixel row 
 uniform int uLightCount;
 uniform vec3 uLightPos[12];  // light 0 is the overhead light over the table and casts the shadows
 uniform vec3 uLightCol[12];
+uniform int uFxFirst;         // the first of the lights from the battle (shots, blasts, fires): the rest are the room's
 uniform float uAmbient;      // room ambient scale (night missions are darker)
 uniform float uAlert;        // 0..1: aliens in sight / alien turn, light strips go red
 uniform float uNight;
@@ -567,6 +568,27 @@ void sceneMain()
 	else if (vMat == 7) // glossy bezel / controller plastic
 	{
 		spec = 0.6; rough = 0.25;
+	}
+	else if (vMat == 9 && vUV.y > 1.5) // the void's haze: thin, dark, drifting; shots and blasts glow in it
+	{
+		vec2 p = vWorld.xz / 0.006;
+		float lay = vUV.x;
+		float n1 = noise(p * 0.045 + vec2(uTime * 0.035, -uTime * 0.022) + lay * 17.3);
+		float n2 = noise(p * 0.13 - vec2(uTime * 0.018, uTime * 0.03) + lay * 5.1);
+		float d = clamp(0.25 + 0.75 * n1 + 0.35 * n2 - 0.3, 0.0, 1.0);
+		vec3 glowL = vec3(0.0);
+		for (int i = 0; i < 12; ++i)
+		{
+			if (i >= uLightCount) break;
+			if (i < uFxFirst) continue;
+			vec3 L = uLightPos[i] - vWorld;
+			float dl = length(L);
+			glowL += uLightCol[i] * exp(-dl / 0.07) / max(dl * dl, 0.004);
+		}
+		vec3 c = base * (0.7 + 0.6 * d) + vec3(0.30, 0.31, 0.34) * glowL * 0.0035 * (0.4 + d);
+		float a = vColor.a * (lay > 0.5 ? 0.45 : 0.75) * (0.55 + 0.45 * d);
+		fragColor = vec4(c * uTint.rgb, a * uTint.a);
+		return;
 	}
 	else if (vMat == 9) // fog of war: voxel cloud, slowly churning
 	{
