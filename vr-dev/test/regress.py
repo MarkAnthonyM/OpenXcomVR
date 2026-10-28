@@ -71,7 +71,7 @@ def check_tap(log):
     if len(sel) < 3: return "too few board readouts"
     if sel[1][0] != "3": return "tapping the deck over a soldier selected unit %s" % sel[1][0]
     if sel[2][0] != "2": return "the soldier under the deck couldn't be selected with the ground level shown"
-    return has("tapped tile 34,9,1", "tapped tile 15,5,2", "tapped tile 15,4,2", "tapped tile 16,2,2",
+    return has("tapped tile 34,9,1", "tapped tile 15,5,2", "tapped tile 15,4,2", "tapped tile 16,2,2", "tapped tile 12,6,2",
                "aimed at the unit on 15,4,2 by tapping its head")(log)
 
 TESTS = [  # script, save, check, what it covers

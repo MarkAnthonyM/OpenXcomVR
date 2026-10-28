@@ -129,6 +129,7 @@ struct State
 	glm::mat4 shadowVP{1.f};
 	// lights for this frame (0 = overhead key light with shadows)
 	int lightCount = 0;
+	int fxLightFirst = 12;   // where the battle's own lights (shots, blasts, fires) start
 	glm::vec3 lightPos[12], lightCol[12];
 	glm::vec3 gameGlow{0.f};
 	glm::vec3 roomTint{1.f};  // the room takes on a little of the sun's colour during an outdoor battle
@@ -1029,6 +1030,7 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uHoleCount", 0);
 	sh.set("uTex", 0);
 	sh.set("uLightCount", S->lightCount);
+	sh.set("uFxFirst", S->fxLightFirst);
 	for (int i = 0; i < S->lightCount; ++i)
 	{
 		std::string p = "uLightPos[" + std::to_string(i) + "]";
@@ -1166,6 +1168,7 @@ static void computeLights(float dt)
 		add(c + glm::vec3(std::cos(a) * rx, 0.f, std::sin(a) * rz), glm::vec3(1.6f, 0.07f, 0.03f) * S->alertLevel);
 	}
 	// muzzle flashes, explosions, fires on the table: the brightest few
+	S->fxLightFirst = n;
 	extra.clear();
 	S->board.lights(extra);
 	std::sort(extra.begin(), extra.end(), [](const std::pair<glm::vec3, glm::vec3> &a, const std::pair<glm::vec3, glm::vec3> &b)

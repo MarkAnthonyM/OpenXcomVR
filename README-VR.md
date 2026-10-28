@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.18.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.18.0-fog.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -13,8 +13,8 @@ stand) in an X-COM command center at a holographic war table:
   head, and the path preview arrows and TU / energy numbers appear on the tiles
   when the game's path preview option is on. The hit chance the flat screen
   shows next to the aiming cursor (UFO Extender accuracy option) floats next
-  to the box. Unexplored ground is buried under a bank of voxel fog (you can
-  still tap into it to target a wall); projectiles, explosions, smoke and fire
+  to the box. Unexplored ground is a dark void, as on the flat map, under a
+  thin drifting haze (you can still tap into it to target a wall); projectiles, explosions, smoke and fire
   are voxel effects styled after the weapon: tracers, red laser beams that
   leave crackling static hanging in the air, green plasma bolts, rockets with
   smoke trails. Within each weapon class the effect grows bolder with the
@@ -118,8 +118,14 @@ stand) in an X-COM command center at a holographic war table:
 - **Night is as dark as on the flat map.** Every tile and figure on the table
   is darkened by the game's own light level for it, using the same steps as the
   game's palette shading (measured from the palette, applied in linear light),
-  so lit areas, flares and fires stand out and unlit ground is near black; the
-  fog over unexplored ground darkens with the night too.
+  so lit areas, flares and fires stand out and unlit ground is near black.
+- **Fog of war: darkness, as on the flat map.** Unexplored ground is a near-black
+  void, day or night, under a thin dark haze that drifts slowly; the explored
+  map fades into it over half a tile. Walls and roofs you have seen stand at
+  full height against it, so a building can show as a dark shape in the dark
+  while open ground gives nothing away. Shots fired from the dark come out of
+  it from where they were fired, and shots and blasts light the haze around
+  them: you see roughly where, never what is there.
 - **The sun and moon over the mission.** On an outdoor mission the table is
   lit by the sun standing where it really stands over the landing site at
   that hour (the far edge of the table is north), while the game's own
@@ -443,8 +449,8 @@ headset on.
   look soft in the headset.
 - Items lying on the floor are not shown on the table map yet (they are in the
   tray's ground area and on the screen).
-- The fog hides unexplored ground up to the level you are viewing; walls seen
-  from outside stay visible, as on the flat map.
+- The fog hides unexplored ground up to the level you are viewing; walls and
+  roofs seen from outside stay visible, as on the flat map.
 - Windows only for now. The code still compiles on Linux (that build drives
   the automated desktop-preview tests), but it is not packaged or supported.
 
