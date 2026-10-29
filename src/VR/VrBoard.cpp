@@ -354,6 +354,7 @@ struct Board::Impl
 	bool alienView = false;
 	bool savedView = false;
 	float savedYaw = 0.f, savedTile = 0.055f;
+	float alienZoom = 1.f;       // the player's zoom during the alien turn, against the flat view's (kept for the battle's later alien turns)
 	glm::vec3 savedFocus{0.f};
 	glm::vec4 win{0.f, 0.f, 1e6f, 1e6f}; // the flat screen's map area: centre and half sizes along its diagonals (tiles, u = x - y, v = x + y)
 	float reveal = 1.f;          // 0 all dark .. 1 the window shown (dissolving in and out)
@@ -552,6 +553,7 @@ void Board::Impl::bindBattle(SavedBattleGame *save)
 	mz = save->getMapSizeZ();
 	weather.begin(game, save, shadeOffset);
 	findCraftSets();
+	alienZoom = 1.f;
 	stopCache.assign((size_t)mx * my, 0.f);
 	openCache.assign((size_t)mx * my, 0);
 	stopTimer = 0.f;
@@ -1059,7 +1061,12 @@ void Board::Impl::followFlatScreen(Camera *cam)
 	// the area along the table's width and depth, in tiles (one step along a diagonal is 0.71 tile)
 	float tw = 2.f * win.z * 0.70710678f, td = 2.f * win.w * 0.70710678f;
 	float w = mapRect.z - mapRect.x, d = mapRect.w - mapRect.y;
-	if (tw > 0.f && td > 0.f && w > 0.f && d > 0.f) tileSize = glm::clamp(std::min(w / tw, d / td) * 0.98f, 0.02f, 0.14f);
+	if (tw > 0.f && td > 0.f && w > 0.f && d > 0.f)
+	{
+		float fit = std::min(w / tw, d / td) * 0.98f;
+		alienZoom = glm::clamp(alienZoom, 0.02f / fit, 0.14f / fit);
+		tileSize = glm::clamp(fit * alienZoom, 0.02f, 0.14f);
+	}
 }
 
 /// The map's things are drawn only through the window (and dissolve in and out of it); everything else
@@ -3451,7 +3458,8 @@ void Board::zoom(float f)
 {
 	if (_p->hasBase) return;
 	Impl &p = *_p;
-	if (p.hasBattle && OpenXcom::VR::viewLocked(p)) return; // the alien turn: the flat screen's view
+	// the alien turn: zooming works (from the flat view's zoom, kept for later alien turns); turning doesn't
+	if (p.hasBattle && OpenXcom::VR::viewLocked(p)) { p.alienZoom *= f; return; }
 	if (p.hasBattle) p.tileSize = glm::clamp(p.tileSize * f, 0.02f, 0.14f);
 	else if (p.hasGlobe)
 	{
@@ -3662,7 +3670,8 @@ bool Board::canGrab(const glm::vec3 &hand) const
 
 void Board::beginGrab(int hand, const glm::vec3 &pos)
 {
-	if (OpenXcom::VR::viewLocked(*_p)) return;
+	// (the alien turn: only both hands, to zoom; see updateGrab)
+	if (OpenXcom::VR::viewLocked(*_p) && !_p->alienView) return;
 	_p->held[hand] = true;
 	_p->lastHand[hand] = pos;
 }
@@ -3681,6 +3690,19 @@ void Board::updateGrab(int hand, const glm::vec3 &pos)
 	}
 	revalidate(p);
 	int other = 1 - hand;
+	if (p.hasBattle && OpenXcom::VR::viewLocked(p))
+	{
+		// the alien turn: both hands pinch to zoom; nothing slides or turns
+		if (p.held[other])
+		{
+			glm::vec3 o = p.lastHand[other];
+			float l0 = glm::length(glm::vec2(p.lastHand[hand].x - o.x, p.lastHand[hand].z - o.z));
+			float l1 = glm::length(glm::vec2(pos.x - o.x, pos.z - o.z));
+			if (l0 > 0.05f && l1 > 0.05f) p.alienZoom *= l1 / l0;
+		}
+		p.lastHand[hand] = pos;
+		return;
+	}
 	if (p.hasBattle)
 	{
 		if (p.held[other])

@@ -181,6 +181,12 @@ The New Battle flow is driven by blind clicks on the flat screen (see
     interference (Wall::shown / useShown hold the jammed picture; no
     UnitInfoState is made for aliens). renderMinimap shows static during
     the alien turn. boardinfo shows alienTurn / hidden / reveal / win.
+  - hidden.2: zooming works in the alien turn (owner: too close to check
+    things): Board::Impl::alienZoom multiplies the flat view's fitting zoom
+    (followFlatScreen), clamped to the usual 0.02-0.14 m tiles; set by
+    Board::zoom (trackpad) and a two-hand pinch (beginGrab lets the hands
+    in, updateGrab only zooms then); kept for the battle's later alien
+    turns, reset in bindBattle. Turning and sliding stay locked.
 - Branch `vr-prototype-fog` (from vr-prototype 0.18.0): the fog of war
   (owner: the table should feel as suspenseful as the flat map's darkness; on
   the flat map a shot comes out of the black, and a building's dark outline
@@ -295,7 +301,8 @@ The table and its view
   what the flat screen shows; it takes the flat view's turn and zoom and
   jumps with the flat camera (no glide); Hidden Movement or a full-screen
   state over the map (the next turn's screen) = all dark. Nothing is frozen:
-  the table updates underneath. Sliding, turning and zooming are locked; the
+  the table updates underneath. Sliding and turning are locked (zooming
+  works, hidden.2); the
   player's view is restored for their turn. Battle lights still light the
   room (owner: an unseen war around you). Battle monitors and the wrist
   minimap are jammed for the whole alien turn.
