@@ -2,6 +2,7 @@
 # Runs the desktop preview with a test script (see HANDOFF.md, "Testing").
 #   vr-dev/test/run.sh v1 -load outside.asav       (script name from vr-dev/test/scripts, or a path)
 # Screenshots go to $VR_RUN/shots; the game's log is $VR_RUN/user/openxcom.log.
+# A run is stopped after VR_RUN_TIMEOUT seconds (default 400; slow machines need the margin).
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 vr_linux_env
@@ -12,7 +13,7 @@ S="$1"; shift
 # -vrDebugPanel true) into its config, which would carry them into the next tests
 cp "$VR_REPO/vr-dev/test/options.cfg" "$VR_RUN/cfg/options.cfg"
 pgrep -x Xvfb >/dev/null || { (setsid nohup Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &); sleep 2; }
-cd "$VR_RUN" && DISPLAY=:99 OXCE_VR_SCRIPT="$S" timeout 200 "$VR_PREVIEW_BUILD/bin/openxcom" \
+cd "$VR_RUN" && DISPLAY=:99 OXCE_VR_SCRIPT="$S" timeout "${VR_RUN_TIMEOUT:-400}" "$VR_PREVIEW_BUILD/bin/openxcom" \
 	-data "$VR_RUN/data/" -user "$VR_RUN/user/" -cfg "$VR_RUN/cfg/" -vrMode 2 \
 	-displayWidth 1280 -displayHeight 800 -playIntro false "$@" > "$VR_RUN/last.log" 2>&1
 rc=$?
