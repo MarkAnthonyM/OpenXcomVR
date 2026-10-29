@@ -1097,6 +1097,7 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uFadeCount", 0);
 	sh.set("uShadowPass", 0);
 	sh.set("uFeed", 0);
+	sh.set("uWinOn", 0);
 	sh.set("uBuild", 0);
 	sh.set("uCrt", glm::vec3(1.f, 1.f, 0.f));
 	sh.set("uScanK", 0.12f);
@@ -1268,6 +1269,7 @@ static void renderScannerFeed()
 	glDisable(GL_FRAMEBUFFER_SRGB);
 	S->scanner.endFeed();
 	sh.set("uFeed", 0);
+	sh.set("uWinOn", 0);
 }
 
 static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye, bool drawHands)

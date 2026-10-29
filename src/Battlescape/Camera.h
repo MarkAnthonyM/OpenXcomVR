@@ -46,6 +46,9 @@ private:
 	Map *_map;
 public:
 	static const int SCROLL_BORDER = 5;
+	/// VR tabletop: the part of the screen the map is drawn in (pixels), so the table can show the same area.
+	int vrScreenWidth() const { return _screenWidth; }
+	int vrVisibleMapHeight() const { return _visibleMapHeight; }
 	static const int SCROLL_DIAGONAL_EDGE = 60;
 	/// Creates a new camera.
 	Camera(int spriteWidth, int spriteHeight, int mapsize_x, int mapsize_y, int mapsize_z, Map *map, int visibleMapHeight);

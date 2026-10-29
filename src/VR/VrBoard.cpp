@@ -345,7 +345,26 @@ struct Board::Impl
 	static constexpr float NEAR_SPOT = 0.45f;
 	void focusOnUnit(const BattleUnit *u, Camera *cam);
 	bool hidden = false;         // the game is showing "Hidden Movement"
-	float curtain = 0.f;         // 0 open .. 1 the table fully covered
+	float curtain = 0.f;         // (unused since 0.9.1: the alien turn's darkness below covers the table)
+	// The alien turn (0.19.0-hidden): the table shows what the flat screen shows, through a window in the
+	// darkness, turned and zoomed like the flat view, jumping where the flat camera goes; while the game shows
+	// Hidden Movement it is all dark. The rest of the map and the table stay dark: nothing on the table gives
+	// anything away. Turning and zooming are locked; the player's own view comes back for their turn.
+	static constexpr float FLAT_YAW = -0.78539816f; // the flat screen's top (the map's north-west) away from the player
+	bool alienView = false;
+	bool savedView = false;
+	float savedYaw = 0.f, savedTile = 0.055f;
+	glm::vec3 savedFocus{0.f};
+	glm::vec4 win{0.f, 0.f, 1e6f, 1e6f}; // the flat screen's map area: centre and half sizes along its diagonals (tiles, u = x - y, v = x + y)
+	float reveal = 1.f;          // 0 all dark .. 1 the window shown (dissolving in and out)
+	float fallT = -1.f;          // seconds since the darkness began to fall (it flickers), -1 when not falling
+	bool winOn = false;          // the darkness and the window are in use
+	static constexpr float REVEAL_IN = 0.06f, FALL_T = 0.35f;
+	void followFlatScreen(Camera *cam);
+	void applyWin(const Shader &sh, bool on) const;
+	void drawCover(const Shader &sh);
+	Mesh coverMesh;
+	glm::vec4 coverRect{0.f};
 	std::vector<uint32_t> hiddenText; // "HIDDEN MOVEMENT" in the big font (RGBA), for banner and minimaps
 	int hiddenTextW = 0, hiddenTextH = 0;
 	Texture hiddenTex;
@@ -1022,6 +1041,61 @@ void Board::Impl::renderUnitCard(BattleUnit *u, UnitCard &card, int apparentOffs
 	card.tex->update(card.px.data(), card.w, card.h);
 }
 
+/// The alien turn: the table looks where the flat screen looks, as it looks: the map's north-west corner
+/// away from the player, zoomed so the flat screen's map area fills the table, centred on the screen's
+/// middle at the level shown. win is that area: the flat projection puts a tile at screen x = (x - y) * 16 +
+/// offset, y = (x + y) * 8 - level * 24 + offset (Camera::convertMapToScreen), its floor's middle 16, 32
+/// pixels into the sprite.
+void Board::Impl::followFlatScreen(Camera *cam)
+{
+	Position off = cam->getMapOffset();
+	float W = (float)cam->vrScreenWidth(), H = (float)cam->vrVisibleMapHeight();
+	float u = (W * 0.5f - off.x - 16.f) / 16.f;
+	float v = (H * 0.5f - off.y - 32.f + viewLevel * 24.f) / 8.f + 1.f;
+	win = glm::vec4(u, v, W / 32.f, H / 16.f);
+	float X = (u + v) * 0.5f, Y = (v - u) * 0.5f;
+	focusTarget = glm::vec3(X * TILE_W, 0.f, Y * TILE_W);
+	yaw = FLAT_YAW;
+	// the area along the table's width and depth, in tiles (one step along a diagonal is 0.71 tile)
+	float tw = 2.f * win.z * 0.70710678f, td = 2.f * win.w * 0.70710678f;
+	float w = mapRect.z - mapRect.x, d = mapRect.w - mapRect.y;
+	if (tw > 0.f && td > 0.f && w > 0.f && d > 0.f) tileSize = glm::clamp(std::min(w / tw, d / td) * 0.98f, 0.02f, 0.14f);
+}
+
+/// The map's things are drawn only through the window (and dissolve in and out of it); everything else
+/// is left to the darkness under them (drawCover).
+void Board::Impl::applyWin(const Shader &sh, bool on) const
+{
+	bool use = on && winOn && !shadowPass && !feedPass;
+	sh.set("uWinOn", use ? 1 : 0);
+	if (!use) return;
+	sh.set("uWin", win);
+	sh.set("uWinReveal", reveal);
+	sh.set("uWinInv", glm::inverse(boardMatrix()));
+}
+
+/// The darkness over the whole map area of the table during the alien turn: the void's colour with its
+/// drifting haze (shader), lit only by the battle's own flashes. It lies just above the table's glass and
+/// under the map's ground, so the window's map covers it.
+void Board::Impl::drawCover(const Shader &sh)
+{
+	if (!winOn || shadowPass || feedPass) return;
+	if (coverRect != mapRect)
+	{
+		coverRect = mapRect;
+		MeshData md;
+		float y = surfaceY() + 0.0006f;
+		md.addQuad({mapRect.x, y, mapRect.w}, {mapRect.z, y, mapRect.w}, {mapRect.z, y, mapRect.y}, {mapRect.x, y, mapRect.y},
+			glm::vec4(0.050f, 0.058f, 0.082f, 1.f), MAT_FOG, {0, 3}, {0, 3}, {0, 3}, {0, 3});
+		coverMesh.upload(md);
+	}
+	sh.set("uMode", 0);
+	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uModel", glm::mat4(1.f));
+	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
+	coverMesh.draw();
+}
+
 void Board::Impl::updateBattle(float dt)
 {
 	animTime += dt;
@@ -1036,7 +1110,61 @@ void Board::Impl::updateBattle(float dt)
 		bool busy = bs->getBattleGame() && bs->getBattleGame()->isBusy();
 		bool tapped = tapSelect > 0.f;
 		tapSelect = std::max(0.f, tapSelect - dt);
-		if (bs->getMap()->getProjectile())
+		const bool alienTurn = !playerTurn && !battle->getDebugMode();
+		// is the flat game showing its map at all? Not under a full-screen state (the next turn's screen,
+		// the inventory): only small windows may sit over it
+		bool mapOnScreen = false;
+		if (game)
+			for (auto it = game->getStates().rbegin(); it != game->getStates().rend(); ++it)
+				if ((*it)->isScreen()) { mapOnScreen = *it == (State*)bs; break; }
+		if (alienTurn && !alienView)
+		{
+			// the alien turn begins: the player's view is kept for their next turn
+			alienView = true;
+			savedView = true;
+			savedYaw = yaw;
+			savedTile = tileSize;
+			savedFocus = focusTarget;
+			inShot = false;
+			returnIn = -1.f;
+		}
+		else if (!alienTurn && alienView)
+		{
+			alienView = false;
+			if (savedView) { yaw = savedYaw; tileSize = savedTile; focus = focusTarget = savedFocus; }
+			savedView = false;
+			lastSelected = sel; // (the view stays as the player left it: no bringing the first soldier close)
+			camSet = c;
+			camSetValid = true;
+		}
+		if (alienView)
+		{
+			followFlatScreen(cam);
+			// shown: dissolving in at once; hidden: the darkness falls, flickering
+			if (!hidden && mapOnScreen) { fallT = -1.f; reveal = std::min(1.f, reveal + dt / REVEAL_IN); }
+			else if (reveal > 0.f || fallT >= 0.f)
+			{
+				if (fallT < 0.f) fallT = 0.f;
+				fallT += dt;
+				float base = std::max(0.f, 1.f - fallT / FALL_T);
+				float flick = std::fmod(fallT * 23.f + std::floor(fallT * 7.f) * 0.37f, 1.f) > 0.45f ? 1.f : 0.15f;
+				reveal = base * flick;
+				if (base <= 0.f) { reveal = 0.f; fallT = -1.f; }
+			}
+			winOn = true;
+			lastSelected = sel;
+			walkedLast = false;
+			walkedUnit = sel;
+		}
+		else
+		{
+			// back to the player: the whole map dissolves in, once the flat game shows it
+			win = glm::vec4(0.f, 0.f, 1e6f, 1e6f);
+			fallT = -1.f;
+			if (mapOnScreen || !winOn) reveal = std::min(1.f, reveal + dt / REVEAL_IN);
+			winOn = reveal < 1.f;
+		}
+		if (!alienView && bs->getMap()->getProjectile())
 		{
 			if (!inShot)
 			{
@@ -1047,8 +1175,10 @@ void Board::Impl::updateBattle(float dt)
 			}
 			sinceProjectile = 0.f;
 		}
-		else sinceProjectile += dt;
+		else if (!alienView) sinceProjectile += dt;
 
+		if (!alienView)
+		{
 		// The table keeps its own view. The game's camera is followed when the game moves it on purpose:
 		// another soldier selected, an alien button pressed, a shot being chased, the alien turn's visible
 		// action. Its automatic "centre on the soldier" after a move is ignored (the table settles on the
@@ -1161,8 +1291,7 @@ void Board::Impl::updateBattle(float dt)
 		}
 		walkedLast = walkingNow;
 		walkedUnit = sel;
-		// no curtain any more (0.9.1): while the movement is hidden the table simply shows nothing new
-		// (see the freezes below and in updateEffects), and its view ignores the game's camera
+		}
 		curtain = 0.f;
 	}
 	else
@@ -1170,16 +1299,16 @@ void Board::Impl::updateBattle(float dt)
 		viewLevel = mz - 1;
 	}
 	if (!focusInit) { focus = focusTarget; focusInit = true; }
-	if (!held[0] && !held[1])
+	if (alienView) focus = focusTarget; // jumps with the flat camera (under the darkness), no glide
+	else if (!held[0] && !held[1])
 	{
 		float a = 1.f - std::exp(-dt * 5.f);
 		focus += (focusTarget - focus) * a;
 	}
 
-	// rebuild changed chunks; after the first build only a few per frame, to avoid hitches.
-	// While the movement is hidden nothing changes on the table (doors, broken walls, smoke): the
-	// flat game doesn't show those either until the aliens come into view or the turn ends.
-	int budget = hidden ? 0 : 6;
+	// rebuild changed chunks; after the first build only a few per frame, to avoid hitches (during the
+	// alien turn everything goes on underneath the darkness)
+	int budget = 6;
 	for (int z = 0; z < mz; ++z)
 		for (int cy = 0; cy < cyN; ++cy)
 			for (int cx = 0; cx < cxN; ++cx)
@@ -1197,12 +1326,11 @@ void Board::Impl::updateBattle(float dt)
 				}
 				if (h == ch.hash) continue;
 				if (ch.mesh && budget-- <= 0) continue;
-				if (hidden && ch.mesh) continue;
 				buildChunk(cx, cy, z, ch);
 				ch.hash = h;
 			}
 	// fog volume, a few columns per frame after the first build
-	int fogBudget = hidden ? 0 : 4;
+	int fogBudget = 4;
 	for (int cy = 0; cy < cyN; ++cy)
 		for (int cx = 0; cx < cxN; ++cx)
 		{
@@ -1210,7 +1338,6 @@ void Board::Impl::updateBattle(float dt)
 			uint64_t h = fogHash(cx, cy);
 			if (h == fc.hash) continue;
 			if (fc.mesh && fogBudget-- <= 0) continue;
-			if (hidden && fc.mesh) continue;
 			buildFog(cx, cy, fc);
 			fc.hash = h;
 		}
@@ -1233,7 +1360,6 @@ void Board::Impl::updateBattle(float dt)
 		it = alive ? std::next(it) : cards.erase(it);
 	}
 	if (fingerFrames > 0) --fingerFrames;
-	if (!hidden || smokeSnap.size() != (size_t)mx * my * mz)
 	{
 		smokeSnap.assign((size_t)mx * my * mz, 0);
 		fireSnap.assign((size_t)mx * my * mz, 0);
@@ -1723,7 +1849,7 @@ void Board::Impl::updateEffects(float dt)
 	// projectile: pick a style from what was fired; trails leave particles behind
 	// while the movement is hidden, shots and blasts out of sight aren't shown (the flat game shows
 	// "Hidden Movement" then; a shot your soldiers can see makes it show the map, and so the table)
-	const Projectile *pr = (map && !hidden) ? map->getProjectile() : nullptr;
+	const Projectile *pr = map ? map->getProjectile() : nullptr;
 	projectileSeen = pr != nullptr;
 	if (pr != lastProjectile)
 	{
@@ -1853,7 +1979,7 @@ void Board::Impl::updateEffects(float dt)
 	if (beamFade > 0.f) beamFade -= dt;
 
 	// explosions: a burst the first time each one shows up
-	if (map && !hidden)
+	if (map)
 	{
 		std::vector<const void*> now;
 		for (Explosion *e : *map->getExplosions())
@@ -2658,6 +2784,7 @@ std::string Board::debugInfo() const
 	const Impl &p = *_p;
 	std::ostringstream ss;
 	ss << "focus " << p.focus.x << "," << p.focus.z << " target " << p.focusTarget.x << "," << p.focusTarget.z << " tileSize " << p.tileSize << " yaw " << p.yaw;
+	if (p.alienView || p.winOn) ss << " alienTurn " << p.alienView << " hidden " << p.hidden << " reveal " << p.reveal << " win " << p.win.x << "," << p.win.y << "," << p.win.z << "," << p.win.w;
 	if (p.battle && p.battle->getSelectedUnit())
 	{
 		BattleUnit *u = p.battle->getSelectedUnit();
@@ -2951,9 +3078,11 @@ void Board::drawWeather(const Shader &sh) const
 	if (!p.hasBattle || p.hasBase || p.shadowPass || !p.atlas.tex.valid()) return;
 	// after the room's solid parts (the back wall screens too): see-through things last
 	sh.set("uClip", p.clipRect());
+	p.applyWin(sh, true);
 	p.weather.draw(sh, p.boardMatrix());
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
 	if (Options::vrDebugPanel) const_cast<Impl&>(p).drawSkyMarker(sh);
+	p.applyWin(sh, false);
 }
 
 namespace
@@ -3105,7 +3234,13 @@ void Board::Impl::drawSkyMarker(const Shader &sh)
 void Board::draw(const Shader &sh, const glm::mat4 &, const glm::vec3 &eye, double)
 {
 	if (_p->hasBase) _p->baseView.draw(sh, _p->viewer); // labels face the head, not each eye (they must match in both)
-	else if (_p->hasBattle && _p->atlas.tex.valid()) _p->drawBattle(sh);
+	else if (_p->hasBattle && _p->atlas.tex.valid())
+	{
+		_p->applyWin(sh, true);
+		_p->drawBattle(sh);
+		_p->applyWin(sh, false);
+		_p->drawCover(sh);
+	}
 	else if (_p->hasGlobe) _p->drawGlobe(sh);
 }
 
@@ -3302,6 +3437,7 @@ void Board::rotate(float r)
 {
 	if (_p->hasBase) return;
 	Impl &p = *_p;
+	if (p.hasBattle && OpenXcom::VR::viewLocked(p)) return; // the alien turn: the flat screen's view
 	if (p.hasBattle) p.yaw += r;
 	else if (p.hasGlobe && p.globe)
 	{
@@ -3315,6 +3451,7 @@ void Board::zoom(float f)
 {
 	if (_p->hasBase) return;
 	Impl &p = *_p;
+	if (p.hasBattle && OpenXcom::VR::viewLocked(p)) return; // the alien turn: the flat screen's view
 	if (p.hasBattle) p.tileSize = glm::clamp(p.tileSize * f, 0.02f, 0.14f);
 	else if (p.hasGlobe)
 	{
@@ -3345,6 +3482,23 @@ bool Board::renderMinimap(std::vector<uint32_t> &px, int S, bool align)
 	Impl &p = *_p;
 	revalidate(p);
 	if (!p.hasBattle || !p.battle || S <= 0) return false;
+	if (p.alienView)
+	{
+		// the alien turn: jammed, like the wall monitors (nothing of the map)
+		static uint32_t seed = 12345u;
+		px.assign((size_t)S * S, 0u);
+		int roll = (int)(p.animTime * 40.f) % std::max(1, S);
+		for (int y = 0; y < S; ++y)
+			for (int x = 0; x < S; ++x)
+			{
+				seed = seed * 1664525u + 1013904223u;
+				int n = (int)((seed >> 24) & 255);
+				int band = std::abs(y - roll) < 6 ? 20 : 0;
+				int v = std::min(255, n * (y & 1 ? 18 : 28) / 255 + band);
+				px[(size_t)y * S + x] = 0xFF000000u | ((uint32_t)(v + 6) << 16) | ((uint32_t)(v + 2) << 8) | (uint32_t)v;
+			}
+		return true;
+	}
 	if (p.curtain > 0.5f)
 	{
 		// the movement is hidden: no map, just the game's message

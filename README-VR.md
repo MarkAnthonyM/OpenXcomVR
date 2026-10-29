@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.19.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.19.0-hidden.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -24,11 +24,18 @@ stand) in an X-COM command center at a holographic war table:
   bring the soldier close to you (a soldier you tap on the table is already in
   reach, so the view stays put), near your side of the map with most of the table in front of
   it; a walking soldier is kept in view; shots are followed to the impact and
-  the table glides back to where it was a moment later. During the alien turn
-  it follows the game while aliens are in view. While the flat game shows
-  **Hidden Movement** the table stays where it is and shows nothing new: no
-  shots or blasts out of sight, and doors, broken walls, smoke and fire keep
-  how they looked until the aliens come into view or your turn starts.
+  the table glides back to where it was a moment later. **During the alien
+  turn** the table goes dark and shows only what the flat screen shows: it
+  turns and zooms to the flat game's view (the corner of the map at the top
+  of the flat screen away from you) and jumps wherever the flat camera goes,
+  under the darkness. While the flat game shows **Hidden Movement** the whole
+  table is dark (the darkness falls with a flicker); when the flat game shows
+  something, the area it shows dissolves in at once, and everything outside
+  it stays dark, the map's edges too. Shots and blasts out of sight still
+  light the room. The monitors beside the game screen and the squad roster
+  are jammed, static, from the start of the alien turn until yours, and the
+  wrist minimap shows static too. Your own view (turn, zoom, place) comes
+  back for your turn.
 - **Geoscape** – the globe is a dome rising out of the table, tilted toward
   you, with bases, craft, UFOs and mission sites as markers and the real
   day/night terminator. Its upper half stands about 22 cm tall, so the wall
@@ -384,8 +391,8 @@ finished walking, is placed close to you; tapping a soldier on the table never
 moves the view: `NEAR_SPOT` in `VrBoard.cpp`
 (0.45 of half the map's depth toward your side) sets how close. After a shot
 the game leaves its camera on the impact; the table looks there for 0.8 s and
-then goes back, unless you moved the map in the meantime. During the alien turn you can't slide the map; you can turn
-and zoom it.
+then goes back, unless you moved the map in the meantime. During the alien turn you can't slide, turn
+or zoom the map: it shows the flat game's view.
 
 Grabbing is deliberate: on the Index the grip has to be **squeezed** (force
 sensor, not just touched) for about a tenth of a second; on other controllers

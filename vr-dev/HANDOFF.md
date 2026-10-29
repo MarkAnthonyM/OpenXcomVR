@@ -148,6 +148,39 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   `0.13.0-scanner.1`, `0.14.0-scanner.2-4`, then `0.15.0-scanner.<n>`
   (0.15.0 merged in); merged into vr-prototype as 0.16.0 (scanner.12, owner
   approved). The button sounds were set aside (the buttons are silent).
+- Branch `vr-prototype-hidden` (from vr-prototype 0.19.0): the alien turn /
+  hidden movement (owner: levels could be seen moving as hidden aliens took
+  stairs, and the monitors showed the acting alien's stats). Builds
+  `0.19.0-hidden.<n>`.
+  - hidden.1: Board::Impl::alienView (side not the player's, no debug).
+    followFlatScreen(): yaw FLAT_YAW (-45 degrees: the flat screen's top, the
+    map's north-west, away from the player), focus snapped every frame to the
+    flat screen's middle worked out from Camera::getMapOffset and the new
+    Camera::vrScreenWidth / vrVisibleMapHeight (tile floor middle at sprite
+    16, 32; x - y = (W/2 - off.x - 16) / 16, x + y = (H/2 - off.y - 32 +
+    level * 24) / 8 + 1), win = that area as half sizes W/32, H/16 along the
+    diagonals, tileSize fitting it to the map area (x0.98). reveal: rises in
+    REVEAL_IN 0.06 s while the flat game shows its map (not Hidden Movement,
+    and the top full-screen State is the BattlescapeState: mapOnScreen),
+    falls over FALL_T 0.35 s with a flicker otherwise. The shader's main()
+    discards map fragments outside the window or not yet revealed (uWinOn,
+    uWin, uWinReveal, uWinInv; quarter-tile cells dissolve, the edge dithered
+    over 0.7 tile) for everything Board draws (terrain, units, effects, HUD,
+    haze, weather, sky marker); drawCover() lays an opaque quad over the
+    whole map area 0.6 mm above the table glass, under the map's ground (MAT_
+    FOG, uv.y 3: the void colour with drifting haze, glowing from battle
+    lights). The view (yaw, zoom, focus) is saved when the alien turn starts
+    and restored at the player's (no bringing the first soldier close then);
+    the whole map dissolves back in once the flat game shows it. Removed: the
+    freezes (chunk and fog rebuilds, smoke/fire snapshot, shots and blasts
+    hidden while the movement was hidden). Board::rotate / zoom respect
+    viewLocked. VrTable: jam / jamPicture: the stats, minimap and roster
+    monitors tear up (rows thrown, colours split, flashes) over what they
+    showed, fade into dark rolling static by 0.9 s, flicker every few
+    seconds, and come back at the player's turn through 0.6 s of
+    interference (Wall::shown / useShown hold the jammed picture; no
+    UnitInfoState is made for aliens). renderMinimap shows static during
+    the alien turn. boardinfo shows alienTurn / hidden / reveal / win.
 - Branch `vr-prototype-fog` (from vr-prototype 0.18.0): the fog of war
   (owner: the table should feel as suspenseful as the flat map's darkness; on
   the flat map a shot comes out of the black, and a building's dark outline
@@ -258,11 +291,14 @@ The table and its view
 - Shots: the table follows the game camera chasing the projectile, looks at
   the impact for 0.8 s, then goes back to where it was (unless the player
   moved the map).
-- Alien turn: the table follows the game while aliens are visible; sliding is
-  locked (turning and zooming allowed). Hidden movement: no curtain (removed
-  in 0.9.1); the table keeps its view and freezes what it shows (terrain,
-  fog of war, tile smoke/fire, no shots or blasts) until the map is shown
-  again, so nothing gives an alien away.
+- Alien turn (0.19.0-hidden, owner): the table is dark except a window on
+  what the flat screen shows; it takes the flat view's turn and zoom and
+  jumps with the flat camera (no glide); Hidden Movement or a full-screen
+  state over the map (the next turn's screen) = all dark. Nothing is frozen:
+  the table updates underneath. Sliding, turning and zooming are locked; the
+  player's view is restored for their turn. Battle lights still light the
+  room (owner: an unseen war around you). Battle monitors and the wrist
+  minimap are jammed for the whole alien turn.
 - Night: tiles and figures are darkened by the game's own shade with factors
   measured from the battlescape palette, in linear light
   (`shadeFactor()` in `VrBoard.cpp`); the fog darkens too.
