@@ -116,6 +116,13 @@ build_linux() {
 			sys=$(ls /usr/lib/x86_64-linux-gnu/lib$l.so.1 2>/dev/null || true)
 			[ -n "$sys" ] && ln -sf "$sys" "$VR_LP/lib/lib$l.so"
 		done
+		# SDL 1.2's SDL_opengl.h includes GL/glu.h, which libglvnd doesn't have; the game calls no GLU
+		# function, so without the system's (libglu1-mesa-dev) a stand-in that only includes gl.h will do
+		if [ ! -f /usr/include/GL/glu.h ]; then
+			printf '%s\n' '/* Stand-in for GL/glu.h (libglu1-mesa-dev), desktop preview only: SDL_opengl.h includes it,' \
+				' * but the game never calls a GLU function. Written by vr-dev/setup.sh. */' \
+				'#ifndef OXCE_VR_GLU_STUB' '#define OXCE_VR_GLU_STUB' '#include <GL/gl.h>' '#endif' > "$VR_LP/include/GL/glu.h"
+		fi
 		done_ linux-headers
 	fi
 	)
