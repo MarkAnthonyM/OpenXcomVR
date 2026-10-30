@@ -358,7 +358,7 @@ struct Board::Impl
 	glm::vec3 savedFocus{0.f};
 	glm::vec4 win{0.f, 0.f, 1e6f, 1e6f}; // the flat screen's map area: centre and half sizes along its diagonals (tiles, u = x - y, v = x + y)
 	float reveal = 1.f;          // 0 all dark .. 1 the window shown (dissolving in and out)
-	float fallT = -1.f;          // seconds since the darkness began to fall (it flickers), -1 when not falling
+	float fallT = -1.f;          // seconds since the darkness began to fall, -1 when not falling
 	bool winOn = false;          // the darkness and the window are in use
 	static constexpr float REVEAL_IN = 0.06f, FALL_T = 0.35f;
 	void followFlatScreen(Camera *cam);
@@ -1147,15 +1147,14 @@ void Board::Impl::updateBattle(float dt)
 		if (alienView)
 		{
 			followFlatScreen(cam);
-			// shown: dissolving in at once; hidden: the darkness falls, flickering
+			// shown: dissolving in at once; hidden: the darkness falls (dissolving, no flicker: owner, hidden.3)
 			if (!hidden && mapOnScreen) { fallT = -1.f; reveal = std::min(1.f, reveal + dt / REVEAL_IN); }
 			else if (reveal > 0.f || fallT >= 0.f)
 			{
 				if (fallT < 0.f) fallT = 0.f;
 				fallT += dt;
 				float base = std::max(0.f, 1.f - fallT / FALL_T);
-				float flick = std::fmod(fallT * 23.f + std::floor(fallT * 7.f) * 0.37f, 1.f) > 0.45f ? 1.f : 0.15f;
-				reveal = base * flick;
+				reveal = base;
 				if (base <= 0.f) { reveal = 0.f; fallT = -1.f; }
 			}
 			winOn = true;

@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.19.0-hidden.2)
+# OpenXcom Extended — VR Tabletop (prototype 0.19.0-hidden.3)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -30,7 +30,7 @@ stand) in an X-COM command center at a holographic war table:
   of the flat screen away from you) and jumps wherever the flat camera goes,
   under the darkness. You can still zoom (trackpad or both hands); your zoom
   is kept for the battle's later alien turns. While the flat game shows **Hidden Movement** the whole
-  table is dark (the darkness falls with a flicker); when the flat game shows
+  table is dark (the darkness falls, dissolving); when the flat game shows
   something, the area it shows dissolves in at once, and everything outside
   it stays dark, the map's edges too. Shots and blasts out of sight still
   light the room. The monitors beside the game screen and the squad roster

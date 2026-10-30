@@ -162,7 +162,7 @@ The New Battle flow is driven by blind clicks on the flat screen (see
     diagonals, tileSize fitting it to the map area (x0.98). reveal: rises in
     REVEAL_IN 0.06 s while the flat game shows its map (not Hidden Movement,
     and the top full-screen State is the BattlescapeState: mapOnScreen),
-    falls over FALL_T 0.35 s with a flicker otherwise. The shader's main()
+    falls over FALL_T 0.35 s otherwise (a flicker until hidden.3). The shader's main()
     discards map fragments outside the window or not yet revealed (uWinOn,
     uWin, uWinReveal, uWinInv; quarter-tile cells dissolve, the edge dithered
     over 0.7 tile) for everything Board draws (terrain, units, effects, HUD,
@@ -187,6 +187,8 @@ The New Battle flow is driven by blind clicks on the flat screen (see
     Board::zoom (trackpad) and a two-hand pinch (beginGrab lets the hands
     in, updateGrab only zooms then); kept for the battle's later alien
     turns, reset in bindBattle. Turning and sliding stay locked.
+  - hidden.3: the darkness falls without the flicker (owner), a plain
+    dissolve over FALL_T; the monitors keep their glitch.
 - Branch `vr-prototype-fog` (from vr-prototype 0.18.0): the fog of war
   (owner: the table should feel as suspenseful as the flat map's darkness; on
   the flat map a shot comes out of the black, and a building's dark outline
