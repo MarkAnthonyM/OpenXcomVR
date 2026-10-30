@@ -189,6 +189,13 @@ The New Battle flow is driven by blind clicks on the flat screen (see
     turns, reset in bindBattle. Turning and sliding stay locked.
   - hidden.3: the darkness falls without the flicker (owner), a plain
     dissolve over FALL_T; the monitors keep their glitch.
+  - hidden.4: no dissolving specks either (owner: distracting): the window
+    fades evenly (main(): fragments mixed toward the darkness's colour by
+    reveal, see-through ones fading out, discarded at 0). Its edge stays
+    dithered and fixed (winInside); a smooth edge (mixing toward that colour
+    by distance) showed light outlines around the window's unexplored
+    ground, which is darker than the darkness. Same timings (REVEAL_IN
+    0.06 s in, FALL_T 0.35 s out).
 - Branch `vr-prototype-fog` (from vr-prototype 0.18.0): the fog of war
   (owner: the table should feel as suspenseful as the flat map's darkness; on
   the flat map a shot comes out of the black, and a building's dark outline

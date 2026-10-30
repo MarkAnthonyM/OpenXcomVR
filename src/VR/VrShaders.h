@@ -632,9 +632,9 @@ void sceneMain()
 	fragColor = vec4(col * uTint.rgb, vColor.a * uTint.a);
 }
 
-/// The alien turn's window: is this point of the map shown? Pixels in quarter-tile cells dissolve in and out
-/// (uWinReveal), and the window's edge is dithered over half a tile.
-bool winKeep()
+/// The alien turn's window: is this point inside it? Its edge is dithered over 0.7 tile (quarter-tile cells,
+/// fixed: they don't move).
+bool winInside()
 {
 	vec3 m = (uWinInv * vec4(vWorld, 1.0)).xyz / 16.0;
 	float u = m.x - m.z, v = m.x + m.z;
@@ -642,13 +642,20 @@ bool winKeep()
 	float fade = 1.0 - smoothstep(0.0, 0.7, out1);
 	vec2 cell = floor(m.xz * 4.0);
 	float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
-	return h < uWinReveal * fade;
+	return h < fade;
 }
 
 void main()
 {
 	sceneMain();
-	if (uWinOn == 1 && !winKeep()) discard;
+	if (uWinOn == 1)
+	{
+		// the whole view fades evenly in and out (uWinReveal; owner, hidden.4: no dissolving specks),
+		// toward the darkness's own colour; see-through things fade out with it
+		if (uWinReveal <= 0.002 || !winInside()) discard;
+		fragColor.rgb = mix(vec3(0.035, 0.040, 0.057), fragColor.rgb, uWinReveal);
+		if (fragColor.a < 0.999) fragColor.a *= uWinReveal; // (solid surfaces keep theirs)
+	}
 	if (uFeed == 1) fragColor.rgb = feedColor(fragColor.rgb);
 	if (uBuild == 1) fragColor.rgb += uBuildGlow * gBuildEdge;
 }
