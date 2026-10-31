@@ -245,6 +245,197 @@ Mix_Chunk *thunderSound(bool nearStrike, int variant)
 	chunks[k][variant] = Mix_QuickLoad_RAW(buf, (Uint32)(s.size() * channels * 2));
 	return chunks[k][variant];
 }
+
+// ---- rain and wind, made in code like the thunder: loops a few seconds long, their ends crossfaded into
+// their starts so they repeat without a seam (the filters are tuned for 22-44 kHz)
+
+/// A one-pole low-pass at about hz.
+struct LowPass
+{
+	float a = 0.f, y = 0.f;
+	LowPass(float hz, int freq) { a = 1.f - std::exp(-6.2832f * hz / (float)freq); }
+	float operator()(float x) { y += (x - y) * a; return y; }
+};
+/// A resonant band-pass (state-variable filter) whose centre can move.
+struct BandPass
+{
+	float low = 0.f, band = 0.f;
+	float operator()(float x, float hz, float q, int freq)
+	{
+		float f = 2.f * std::sin(3.14159f * std::min(hz, freq * 0.2f) / (float)freq);
+		float high = x - low - band / q;
+		band += f * high;
+		low += f * band;
+		return band;
+	}
+};
+
+/// Loops `len` seconds: makes `len + xf` with gen, then fades the extra into the start (equal power: the
+/// layers are noise, so they don't cancel).
+template <class Gen> std::vector<float> loopOf(float len, float xf, int freq, Gen gen)
+{
+	const int n = (int)(len * freq), x = (int)(xf * freq);
+	std::vector<float> s((size_t)(n + x));
+	for (int i = 0; i < n + x; ++i) s[(size_t)i] = gen(i);
+	for (int i = 0; i < x; ++i)
+	{
+		float k = (float)i / x;
+		s[(size_t)i] = s[(size_t)i] * std::sqrt(k) + s[(size_t)(n + i)] * std::sqrt(1.f - k);
+	}
+	s.resize((size_t)n);
+	return s;
+}
+/// Scales a sound to an RMS level (clipping the rare peak softly).
+void toRms(std::vector<float> &s, float rms)
+{
+	double sum = 0.0;
+	for (float v : s) sum += (double)v * v;
+	float cur = (float)std::sqrt(sum / std::max<size_t>(1, s.size()));
+	float g = cur > 1e-9f ? rms / cur : 0.f;
+	for (float &v : s) v = std::tanh(v * g);
+}
+
+/// Drops landing: each a tick of bright noise, now and then with a short ring (a drop on a puddle or a
+/// hard surface). `rate` drops a second, sizes mostly small with the odd big one; `bright` how far up
+/// their noise reaches (a muffled 0 .. a crisp 1).
+struct Drops
+{
+	struct Hit { int at; float amp, tau, ring, ringHz, ringTau; };
+	std::vector<Hit> hits;
+	Rng rng;
+	int freq;
+	LowPass lp;
+	float hp = 0.f;
+	Drops(uint32_t seed, float rate, float bright, int n, int freq_) : rng(seed), freq(freq_), lp(2500.f + 6000.f * bright, freq_)
+	{
+		float t = 0.f;
+		while (true)
+		{
+			t += -std::log(std::max(1e-6f, rng.f())) / rate;
+			int at = (int)(t * freq);
+			if (at >= n) break;
+			float a = std::pow(rng.f(), 2.5f) * 0.9f + 0.1f;
+			bool ring = rng.f() < 0.35f;
+			hits.push_back(Hit{at, a, rng.r(0.0008f, 0.003f), ring ? a * rng.r(0.2f, 0.45f) : 0.f, rng.r(1400.f, 4200.f), rng.r(0.006f, 0.02f)});
+		}
+	}
+	size_t next = 0;
+	std::vector<Hit> live;
+	float operator()(int i)
+	{
+		while (next < hits.size() && hits[next].at <= i) live.push_back(hits[next++]);
+		float noise = 0.f, tone = 0.f;
+		for (size_t k = 0; k < live.size();)
+		{
+			const Hit &h = live[k];
+			float t = (float)(i - h.at) / freq;
+			float e = std::exp(-t / h.tau), er = h.ring > 0.f ? std::exp(-t / h.ringTau) : 0.f;
+			noise += h.amp * e;
+			// the ring falls a little in pitch as it fades
+			if (h.ring > 0.f) tone += h.ring * er * std::sin(6.2832f * h.ringHz * t * (1.f - 0.15f * t / (h.ringTau * 4.f)));
+			if (e < 0.002f && er < 0.002f) { live[k] = live.back(); live.pop_back(); }
+			else ++k;
+		}
+		float w = rng.f() * 2.f - 1.f;
+		// the ticks' noise: band-limited (a high-pass by subtracting a slow copy, then the brightness low-pass)
+		hp += (w - hp) * 0.08f;
+		return lp((w - hp) * noise) + tone;
+	}
+};
+
+/// The rain all around the room, as heard from indoors: a muffled wash with drops in it, a little
+/// different in each ear (so it surrounds rather than sitting in the middle of the head). Strength: 0
+/// drizzle, 1 steady, 2 thunderstorm.
+std::vector<float> synthRainRoom(int strength, int ear, int freq)
+{
+	static const float rate[3] = {120.f, 450.f, 1400.f}, washK[3] = {0.25f, 0.55f, 1.f}, cutHz[3] = {1300.f, 1700.f, 2300.f};
+	const float len = 6.f, xf = 0.6f;
+	const int n = (int)((len + xf) * freq);
+	Rng rng(0x5a17u + (uint32_t)strength * 31u + (uint32_t)ear * 7777u);
+	Drops drops(0xd409u + (uint32_t)strength * 131u + (uint32_t)ear * 911u, rate[strength], 0.f, n, freq);
+	LowPass wash1(cutHz[strength], freq), wash2(cutHz[strength], freq), dropLp(cutHz[strength] * 1.4f, freq), rumble(120.f, freq);
+	float hp = 0.f;
+	float brown = 0.f;
+	std::vector<float> s = loopOf(len, xf, freq, [&](int i)
+	{
+		float w = rng.f() * 2.f - 1.f;
+		float hiss = wash2(wash1(w));
+		hp += (hiss - hp) * (150.f * 6.2832f / freq);
+		brown = (brown + w * 0.02f) * 0.998f;
+		return (hiss - hp) * washK[strength] + dropLp(drops(i)) * 0.6f + rumble(brown) * 0.4f * washK[strength];
+	});
+	toRms(s, 0.16f);
+	return s;
+}
+
+/// The rain on the table: drops pattering close by, crisp, with a little hiss under them.
+std::vector<float> synthRainTable(int strength, int freq)
+{
+	static const float rate[3] = {35.f, 140.f, 420.f}, hissK[3] = {0.04f, 0.1f, 0.2f};
+	const float len = 4.7f, xf = 0.4f;
+	const int n = (int)((len + xf) * freq);
+	Rng rng(0x7ab1u + (uint32_t)strength * 53u);
+	Drops drops(0x91c3u + (uint32_t)strength * 17u, rate[strength], 0.7f, n, freq);
+	LowPass hissLp(7000.f, freq);
+	float hp = 0.f;
+	std::vector<float> s = loopOf(len, xf, freq, [&](int i)
+	{
+		float w = hissLp(rng.f() * 2.f - 1.f);
+		hp += (w - hp) * (2500.f * 6.2832f / freq);
+		return drops(i) + (w - hp) * hissK[strength];
+	});
+	toRms(s, strength == 0 ? 0.07f : 0.12f);
+	return s;
+}
+
+/// A blizzard's wind: noise through two moving resonances (the howl) over a low rush, swelling in gusts.
+std::vector<float> synthWind(int freq)
+{
+	const float len = 12.f, xf = 1.5f;
+	Rng rng(0x3e1du);
+	BandPass b1, b2;
+	LowPass rush(300.f, freq), rush2(300.f, freq);
+	std::vector<float> s = loopOf(len, xf, freq, [&](int i)
+	{
+		float t = (float)i / freq;
+		float w = rng.f() * 2.f - 1.f;
+		float g = 0.55f + 0.3f * std::sin(t * 6.2832f / 6.5f) + 0.15f * std::sin(t * 6.2832f / 2.3f + 1.f);
+		float f1 = 280.f + 220.f * g + 60.f * std::sin(t * 6.2832f / 1.7f);
+		float f2 = 650.f + 400.f * g + 90.f * std::sin(t * 6.2832f / 2.9f + 2.f);
+		float howl = b1(w, f1, 6.f, freq) * 0.5f + b2(w, f2, 9.f, freq) * 0.25f * g;
+		return (howl + rush2(rush(w)) * 2.5f) * g;
+	});
+	toRms(s, 0.15f);
+	return s;
+}
+
+enum Loop { LOOP_ROOM, LOOP_TABLE, LOOP_WIND, LOOPS };
+const AudioSlot LOOP_SLOT[LOOPS] = {AUDIO_RAIN_ROOM, AUDIO_RAIN_TABLE, AUDIO_WIND};
+
+/// A weather loop as a mixer chunk (the room's rain in stereo), made the first time it is needed and kept.
+Mix_Chunk *loopSound(int loop, int strength)
+{
+	static Mix_Chunk *chunks[LOOPS][3] = {};
+	static bool tried[LOOPS][3] = {};
+	strength = glm::clamp(strength, 0, 2);
+	if (tried[loop][strength]) return chunks[loop][strength];
+	int freq = audioFreq();
+	if (!freq) return nullptr;
+	tried[loop][strength] = true;
+	if (loop == LOOP_ROOM) chunks[loop][strength] = makeStereoChunk(synthRainRoom(strength, 0, freq), synthRainRoom(strength, 1, freq));
+	else chunks[loop][strength] = makeChunk(loop == LOOP_TABLE ? synthRainTable(strength, freq) : synthWind(freq));
+	return chunks[loop][strength];
+}
+}
+
+bool writeWeatherLoopWav(const std::string &path, const std::string &which, int strength)
+{
+	const int freq = 44100;
+	strength = glm::clamp(strength, 0, 2);
+	std::vector<float> s = which == "room" ? synthRainRoom(strength, 0, freq) : which == "table" ? synthRainTable(strength, freq) : synthWind(freq);
+	bool ok = writeWav(path, s, freq);
+	Log(LOG_INFO) << "[VR] weather loop " << which << " " << strength << (ok ? " written to " : " NOT written to ") << path;
+	return ok;
 }
 
 bool writeThunderWav(const std::string &path, bool nearStrike, int variant)
@@ -300,6 +491,19 @@ struct Weather::Impl
 	float flashAmp = 1.f;               // this strike's brightness (near 1, far dim)
 	bool lastNear = false;
 	int strength = 1;                   // rain/snow: 0 light, 1 steady, 2 heavy
+	// the rain's and wind's loops (LOOP_ROOM, LOOP_TABLE, LOOP_WIND): each fades in and out on its own channel
+	struct LoopPlay { int channel = -1, key = -1; float level = 0.f, volume = 0.f, want = 0.f; };
+	LoopPlay loops[LOOPS];
+	void updateSound(float dt, const WeatherView &v);
+	void reset();
+	void stopSound(int fadeMs)
+	{
+		for (LoopPlay &l : loops)
+		{
+			fadeOut(l.channel, fadeMs);
+			l = LoopPlay();
+		}
+	}
 	bool haze = false;                  // a blizzard's pale haze (drawn like the mist)
 	float gustPhase = 0.f;
 	float gust() const                  // steady and heavy rain/snow rise and ease over a minute or so
@@ -404,7 +608,14 @@ const SkyLight &Weather::sky() const { return _p->sky; }
 
 void Weather::end()
 {
-	Impl &p = *_p;
+	_p->reset();
+	_p->stopSound(800);
+}
+
+/// Back to no weather; the sound carries on (a re-roll keeps it, or fades it to the new weather's).
+void Weather::Impl::reset()
+{
+	Impl &p = *this;
 	p.active = false;
 	p.outdoor = false;
 	p.sky = SkyLight();
@@ -418,8 +629,8 @@ void Weather::end()
 
 void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 {
-	end();
 	Impl &p = *_p;
+	p.reset();
 	p.info = SkyInfo();
 	if (!game || !battle) return;
 	p.active = true;
@@ -736,6 +947,53 @@ void Weather::strike()
 	if (_p->kind == RAIN) _p->startStrike();
 }
 
+/// The rain's sound: a wash all around the room and drops pattering on the table (from where the table is,
+/// quieter the further away), louder the harder it rains and rising and easing with the gusts; a
+/// blizzard's wind, leaning towards the ear it blows from. Flurries and steady snow are silent.
+void Weather::Impl::updateSound(float dt, const WeatherView &v)
+{
+	static const float ROOM[3] = {0.3f, 0.5f, 0.75f}, TABLE[3] = {0.45f, 0.6f, 0.8f}, WIND = 0.7f;
+	const float IN_S = 2.f, OUT_S = 1.f;  // fades: when the weather starts, and when it stops or changes
+	bool rain = kind == RAIN, blizzard = kind == SNOW && strength == 2;
+	float g = strength >= 1 ? 0.8f + 0.2f * gust() : 1.f;
+	loops[LOOP_ROOM].want = rain ? ROOM[strength] * g : 0.f;
+	loops[LOOP_TABLE].want = rain ? TABLE[strength] * g : 0.f;
+	loops[LOOP_WIND].want = blizzard ? WIND * (0.55f + 0.45f * gust() / 1.4f) : 0.f;
+	// where the table's middle is, as heard
+	glm::vec3 c(v.center.x, v.top * 0.3f, v.center.y);
+	glm::vec2 toTable(c.x - v.viewer.x, c.z - v.viewer.z);
+	float tableAngle = glm::length(toTable) > 1e-3f ? thunderAngle(v, glm::normalize(toTable)) : 0.f;
+	float tableDist = glm::length(c - v.viewer) * v.metersPerVoxel;    // metres
+	// the wind comes from upwind: which ear that is
+	float windPan = 0.f;
+	{
+		glm::vec2 f(v.viewerFwd.x, v.viewerFwd.z);
+		if (glm::length(f) > 1e-4f) { f = glm::normalize(f); windPan = glm::dot(-wind, glm::vec2(-f.y, f.x)); }
+	}
+	for (int i = 0; i < LOOPS; ++i)
+	{
+		LoopPlay &l = loops[i];
+		int key = i == LOOP_WIND ? 0 : strength;
+		if (l.channel >= 0 && !playing(l.channel)) { Log(LOG_INFO) << "[VR] weather sound: loop " << i << " was stopped (the game re-opened its sound?)"; l.channel = -1; }
+		if (l.want > 0.f && (l.channel < 0 || l.key != key))
+		{
+			// a new strength starts over from silence; the old one is cut (the forced changes in tests)
+			if (l.channel >= 0 && l.key != key) l.level = 0.f;
+			bool was = l.channel >= 0;
+			l.channel = playLoop(LOOP_SLOT[i], loopSound(i, key));
+			l.key = key;
+			Log(LOG_INFO) << "[VR] weather sound: loop " << i << " strength " << key << (was ? " restarted" : " started") << " on channel " << l.channel;
+		}
+		if (l.want > 0.f) { l.volume = l.want; l.level = std::min(1.f, l.level + dt / IN_S); }
+		else l.level = std::max(0.f, l.level - dt / OUT_S);
+		if (l.channel < 0) continue;
+		if (l.level <= 0.f && l.want <= 0.f) { Mix_HaltChannel(l.channel); l.channel = -1; l.key = -1; continue; }
+		setLevel(l.channel, l.volume * l.level);
+		if (i == LOOP_TABLE) placeLoop(l.channel, tableAngle, glm::smoothstep(0.4f, 4.f, tableDist) * 0.8f);
+		else if (i == LOOP_WIND) placeLoop(l.channel, 0.f, 0.f, windPan);
+	}
+}
+
 void Weather::Impl::respawnFalling(Drop &d, const WeatherView &v, bool anywhere)
 {
 	float x0 = std::max(0.f, v.center.x - v.radius), x1 = std::min(v.mx * TILE_W, v.center.x + v.radius);
@@ -776,7 +1034,7 @@ void Weather::Impl::respawnDust(Drop &d, const WeatherView &v)
 void Weather::update(float dt, const WeatherView &v)
 {
 	Impl &p = *_p;
-	if (!p.active || !p.outdoor) return;
+	if (!p.active || !p.outdoor) { p.stopSound(800); return; }  // (indoors: no weather to hear)
 	dt = std::min(dt, 0.1f);
 	p.time += dt;
 	p.fade = v.fade;
@@ -830,6 +1088,8 @@ void Weather::update(float dt, const WeatherView &v)
 				}
 		}
 	}
+
+	p.updateSound(dt, v);
 
 	// the open sky over the ground, for the mist (fog of war and roofs change)
 	p.maskTimer -= dt;
@@ -1046,8 +1306,13 @@ std::string Weather::status() const
 		<< " clouds=" << (int)(p.sky.cloud * 100) << " drawn=" << p.drawn << " strikes=" << p.strikes
 		<< " moon=" << (int)(p.info.moonIllum * 100) << "%," << (int)p.info.moonAlt << (p.info.moonMirrored ? ",mirrored" : "") << " glow=" << std::lround(p.sky.boost * 100.f) << "%"
 		<< " cloudspeed=" << std::lround(p.cloudSpeed)
-		<< (p.kind == RAIN || p.kind == SNOW ? std::string(" strength=") + std::to_string(p.strength) : std::string())
-;
+		<< (p.kind == RAIN || p.kind == SNOW ? std::string(" strength=") + std::to_string(p.strength) : std::string());
+	// the weather's sound: how loud each loop is meant to be now (% of the game's sound volume)
+	static const char *loopName[LOOPS] = {"room", "table", "wind"};
+	std::string snd;
+	for (int i = 0; i < LOOPS; ++i)
+		if (p.loops[i].want > 0.f) snd += std::string(snd.empty() ? "" : ",") + loopName[i] + ":" + std::to_string((int)std::lround(p.loops[i].want * 100.f));
+	o << " sound=" << (snd.empty() ? "-" : snd);
 	return o.str();
 }
 

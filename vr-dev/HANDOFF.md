@@ -155,6 +155,32 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   ticks, status). Status adds `tiles=<n>` when they differ. Test `bigscan`
   (save `bigunit.asav`: outside.asav with the sectoid made a moving reaper at
   10,24,0) expects contacts=6 tiles=9.
+- Branch `vr-prototype-rain` (from vr-prototype 0.20.1): the weather's
+  sound (owner: rain had none). Owner's choices: rain both all around the
+  room and on the table; snow silent except a blizzard's wind. Builds
+  `0.20.1-rain.<n>`.
+  - rain.1: three loops made in code (VrWeather.cpp, like the thunder),
+    their ends crossfaded into their starts (loopOf, equal power): the room
+    (synthRainRoom: muffled noise wash, rumble and low-passed drops; a
+    different noise per ear, a stereo chunk, so it surrounds), the table
+    (synthRainTable: crisp drop ticks, some with a short falling ring, over
+    a faint hiss; mono, placed with Mix_SetPosition at the table's middle,
+    distance from WeatherView::metersPerVoxel), the wind (synthWind: noise
+    through two moving resonances over a low rush, gusting; leaned towards
+    the upwind ear with Mix_SetPanning, at most ~2/3 in the far ear). Made
+    per strength on first use and kept. Channels: AudioSlot AUDIO_RAIN_ROOM,
+    AUDIO_RAIN_TABLE, AUDIO_WIND (VrAudio: playLoop, setLevel, placeLoop,
+    makeStereoChunk). Impl::updateSound sets each loop's level every frame:
+    room 0.3/0.5/0.75, table 0.45/0.6/0.8 by strength, x(0.8+0.2 gust) when
+    steady or heavy; wind 0.7 scaled by the gust; fades 2 s in, 1 s out.
+    A re-roll (debug panel, test `weather` op) keeps the loops (begin() uses
+    Impl::reset(), only end() stops the sound), so a change crossfades;
+    leaving the battle or going indoors fades them out (0.8 s).
+    Status: `sound=room:<%>,table:<%>` / `wind:<%>` / `-`. Test op
+    `weatherwav <path> room|table|wind <strength>`; test `rainwav` writes
+    them all to shots/. Playback can be checked without a sound card:
+    `SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE=<file>` on run.sh (raw s16
+    stereo at 22050 Hz; it doesn't keep real time on this machine).
 - Branch `vr-prototype-hidden` (from vr-prototype 0.19.0): the alien turn /
   hidden movement (owner: levels could be seen moving as hidden aliens took
   stairs, and the monitors showed the acting alien's stats). Builds

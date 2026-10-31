@@ -57,6 +57,7 @@ struct WeatherView
 	float radius = 0.f;                  // ...and how far it reaches
 	glm::vec3 viewer{0.f};               // the player's head
 	glm::vec3 viewerFwd{0.f, 0.f, -1.f}; // ...and where it faces (thunder comes from where its strike was)
+	float metersPerVoxel = 0.f;          // the table's scale (how far away the table's rain sounds)
 	std::vector<glm::vec4> fade;         // hands and the cursor (xyz, radius): the weather thins out there
 	float light = 1.f;                   // how bright the map is (the game's darkness, 0..1)
 	std::function<float(int, int)> stop; // a tile column: the height rain and snow stop at (a roof, the ground)
@@ -102,6 +103,9 @@ struct SkyInfo
 
 /// Tests: a thunder variant (near or far) as a WAV file.
 bool writeThunderWav(const std::string &path, bool nearStrike, int variant);
+/// Tests: one of the weather's sound loops as a WAV file: "room" (rain all around, left ear) or "table"
+/// (rain on the table) at a strength (0 drizzle .. 2 thunderstorm), or "wind" (a blizzard's).
+bool writeWeatherLoopWav(const std::string &path, const std::string &which, int strength);
 
 class Weather
 {

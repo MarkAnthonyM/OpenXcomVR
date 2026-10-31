@@ -1,0 +1,9 @@
+wait 3000
+weatherwav shots/rain_room_0.wav room 0
+weatherwav shots/rain_room_1.wav room 1
+weatherwav shots/rain_room_2.wav room 2
+weatherwav shots/rain_table_0.wav table 0
+weatherwav shots/rain_table_1.wav table 1
+weatherwav shots/rain_table_2.wav table 2
+weatherwav shots/wind.wav wind 0
+quit

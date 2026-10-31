@@ -1394,6 +1394,7 @@ void Board::Impl::updateBattle(float dt)
 		v.radius = std::max(mapRect.z - mapRect.x, mapRect.w - mapRect.y) * 0.5f / k * 1.15f;
 		v.viewer = glm::vec3(inv * glm::vec4(viewer, 1.f));
 		v.viewerFwd = glm::vec3(inv * glm::vec4(listenerFwd, 0.f));
+		v.metersPerVoxel = k;
 		for (const glm::vec3 &h : handPts) v.fade.push_back(glm::vec4(glm::vec3(inv * glm::vec4(h, 1.f)), 0.07f / k));
 		if (cursorSet && battle->getTile(cursorTile))
 			v.fade.push_back(glm::vec4((cursorTile.x + 0.5f) * TILE_W, cursorTile.z * TILE_H + 8.f, (cursorTile.y + 0.5f) * TILE_W, 1.4f * TILE_W));

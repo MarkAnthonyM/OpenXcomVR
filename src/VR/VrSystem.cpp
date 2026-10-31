@@ -1947,6 +1947,7 @@ static void runScript()
 				<< " contact=" << hp.contact[fingerTip(F_INDEX)] << " pinch=" << hp.pinch << " | " << S->floatWin.status()
 				<< " | " << S->board.baseStatus() << " | " << S->board.weatherStatus() << " | " << S->table.debugPanel().status() << " | " << S->scanner.status();
 		}
+		else if (c.op == "weatherwav") { writeWeatherLoopWav(c.args.size() > 0 ? c.args[0] : "rain.wav", c.args.size() > 1 ? c.args[1] : "room", (int)num(2, 1)); }
 		else if (c.op == "thunderwav") { writeThunderWav(c.args.size() > 0 ? c.args[0] : "thunder.wav", num(1, 1) > 0.5, (int)num(2, 0)); }
 		else if (c.op == "shot") { S->pendingShot = c.args.empty() ? "vr_shot.png" : c.args[0]; return; }
 		else if (c.op == "gameshot" && !S->pixels.empty())
