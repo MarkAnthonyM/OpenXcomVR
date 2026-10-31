@@ -196,6 +196,7 @@ The New Battle flow is driven by blind clicks on the flat screen (see
     by distance) showed light outlines around the window's unexplored
     ground, which is darker than the darkness. Same timings (REVEAL_IN
     0.06 s in, FALL_T 0.35 s out).
+  Merged into vr-prototype as 0.20.0 (hidden.4, owner approved).
 - Branch `vr-prototype-fog` (from vr-prototype 0.18.0): the fog of war
   (owner: the table should feel as suspenseful as the flat map's darkness; on
   the flat map a shot comes out of the black, and a building's dark outline
