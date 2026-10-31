@@ -62,6 +62,10 @@ uniform float uScan;         // game panel scanlines: texels per game pixel row 
 uniform int uLightCount;
 uniform vec3 uLightPos[12];  // light 0 is the overhead light over the table and casts the shadows
 uniform vec3 uLightCol[12];
+uniform int uWinOn;           // the alien turn: the map shows only through the flat screen's window (1)
+uniform vec4 uWin;            // the window: centre and half sizes along the flat view's diagonals (tiles: u = x - y, v = x + y)
+uniform float uWinReveal;     // 0 all dark .. 1 the window shown (pixels dissolve in and out)
+uniform mat4 uWinInv;         // world -> map voxels
 uniform int uFxFirst;         // the first of the lights from the battle (shots, blasts, fires): the rest are the room's
 uniform float uAmbient;      // room ambient scale (night missions are darker)
 uniform float uAlert;        // 0..1: aliens in sight / alien turn, light strips go red
@@ -569,6 +573,25 @@ void sceneMain()
 	{
 		spec = 0.6; rough = 0.25;
 	}
+	else if (vMat == 9 && vUV.y > 2.5) // the alien turn's darkness over the table: the void and its haze in one
+	{
+		vec2 p = vWorld.xz / 0.006;
+		float n1 = noise(p * 0.045 + vec2(uTime * 0.035, -uTime * 0.022));
+		float n2 = noise(p * 0.13 - vec2(uTime * 0.018, uTime * 0.03) + 9.7);
+		float d = clamp(0.25 + 0.75 * n1 + 0.35 * n2 - 0.3, 0.0, 1.0);
+		vec3 glowL = vec3(0.0);
+		for (int i = 0; i < 12; ++i)
+		{
+			if (i >= uLightCount) break;
+			if (i < uFxFirst) continue;
+			vec3 L = uLightPos[i] - vWorld;
+			float dl = length(L);
+			glowL += uLightCol[i] * exp(-dl / 0.07) / max(dl * dl, 0.004);
+		}
+		vec3 c = base * (0.5 + 0.45 * d) + vec3(0.30, 0.31, 0.34) * glowL * 0.0035 * (0.4 + d);
+		fragColor = vec4(c, 1.0);
+		return;
+	}
 	else if (vMat == 9 && vUV.y > 1.5) // the void's haze: thin, dark, drifting; shots and blasts glow in it
 	{
 		vec2 p = vWorld.xz / 0.006;
@@ -609,9 +632,30 @@ void sceneMain()
 	fragColor = vec4(col * uTint.rgb, vColor.a * uTint.a);
 }
 
+/// The alien turn's window: is this point inside it? Its edge is dithered over 0.7 tile (quarter-tile cells,
+/// fixed: they don't move).
+bool winInside()
+{
+	vec3 m = (uWinInv * vec4(vWorld, 1.0)).xyz / 16.0;
+	float u = m.x - m.z, v = m.x + m.z;
+	float out1 = max(max(abs(u - uWin.x) - uWin.z, 0.0), max(abs(v - uWin.y) - uWin.w, 0.0));
+	float fade = 1.0 - smoothstep(0.0, 0.7, out1);
+	vec2 cell = floor(m.xz * 4.0);
+	float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+	return h < fade;
+}
+
 void main()
 {
 	sceneMain();
+	if (uWinOn == 1)
+	{
+		// the whole view fades evenly in and out (uWinReveal; owner, hidden.4: no dissolving specks),
+		// toward the darkness's own colour; see-through things fade out with it
+		if (uWinReveal <= 0.002 || !winInside()) discard;
+		fragColor.rgb = mix(vec3(0.035, 0.040, 0.057), fragColor.rgb, uWinReveal);
+		if (fragColor.a < 0.999) fragColor.a *= uWinReveal; // (solid surfaces keep theirs)
+	}
 	if (uFeed == 1) fragColor.rgb = feedColor(fragColor.rgb);
 	if (uBuild == 1) fragColor.rgb += uBuildGlow * gBuildEdge;
 }

@@ -131,7 +131,50 @@ struct Wall
 	bool live = false;
 	float timer = 0.f;
 	glm::vec3 avg{0.f};         // average colour (the light the screen throws into the room)
+	std::vector<uint32_t> shown; // what the screen shows while it is jammed (px stays the real picture)
+	bool useShown = false;
 };
+
+/// A jammed screen (the alien turn): the picture torn up (rows thrown sideways, colours split, flashes) by
+/// tear 0..1, and drowned in dark rolling static by snow 0..1. base may be empty (static only).
+static void jamPicture(const std::vector<uint32_t> &base, int w, int h, float tear, float snow, uint32_t seed, std::vector<uint32_t> &out)
+{
+	out.assign((size_t)w * h, 0xFF000000u);
+	bool pic = base.size() == (size_t)w * h;
+	auto hash = [](uint32_t a) { a ^= a >> 16; a *= 0x7feb352du; a ^= a >> 15; a *= 0x846ca68bu; a ^= a >> 16; return a; };
+	uint32_t rng = hash(seed * 2654435761u + 1u);
+	float flash = (hash(seed * 31u + 7u) & 1023) / 1023.f < 0.12f * tear ? 1.6f : 1.f;
+	int roll = (int)(seed * 3u) % std::max(1, h);
+	for (int y = 0; y < h; ++y)
+	{
+		uint32_t rb = hash(seed * 7919u + (uint32_t)(y / 3) * 104729u);
+		int shift = ((rb & 1023) / 1023.f) < 0.35f * tear ? (int)(((rb >> 10) & 255) / 255.f * 80.f - 40.f) : 0;
+		int split = (int)std::lround(3.f * tear);
+		float line = (y & 1) ? 0.7f : 1.f;
+		float band = std::abs(y - roll) < 5 ? 1.f : 0.f;
+		for (int x = 0; x < w; ++x)
+		{
+			float r = 0.f, g = 0.f, b = 0.f;
+			if (pic)
+			{
+				auto at = [&](int xx) { xx = ((xx % w) + w) % w; return base[(size_t)y * w + xx]; };
+				r = (at(x + shift + split) & 255) / 255.f;
+				g = ((at(x + shift) >> 8) & 255) / 255.f;
+				b = ((at(x + shift - split) >> 16) & 255) / 255.f;
+				r *= flash; g *= flash; b *= flash;
+			}
+			rng = rng * 1664525u + 1013904223u;
+			float n = (rng >> 24) / 255.f;
+			float sv = (0.05f + 0.16f * n + 0.06f * band) * line;
+			float k = pic ? snow : 1.f;
+			r = r * (1.f - k) + sv * k * 0.95f;
+			g = g * (1.f - k) + sv * k;
+			b = b * (1.f - k) + sv * k * 1.15f;
+			auto c = [](float v) { return (uint32_t)std::min(255.f, std::max(0.f, v * 255.f)); };
+			out[(size_t)y * w + x] = 0xFF000000u | (c(b) << 16) | (c(g) << 8) | c(r);
+		}
+	}
+}
 
 struct Table::Impl
 {
@@ -354,6 +397,11 @@ struct Table::Impl
 	void updateGlobeTaps(TableContext &ctx, const Hands &hands, float dt);
 	void updateWalls(TableContext &ctx, float dt);
 	void updateBattleWalls(TableContext &ctx);
+	// the alien turn: the battle monitors (stats, minimap, roster) are jammed from its start to the player's
+	bool jam = false;
+	float jamT = 0.f, unjamT = -1.f;
+	uint32_t jamFrame = 0;
+	std::vector<uint32_t> jamBase[3];
 	void drawWall(const Shader &sh, const Wall &w) const;
 };
 
@@ -2179,6 +2227,9 @@ void Table::Impl::updateWalls(TableContext &ctx, float dt)
 		if (stats) { delete stats; stats = nullptr; statsUnit = nullptr; }
 		if (minimap) { delete minimap; minimap = nullptr; minimapFor = nullptr; }
 		walls[1].live = false;
+		jam = false;
+		unjamT = -1.f;
+		for (Wall &w : walls) w.useShown = false;
 		// geoscape dashboards: research and production on the left, craft and UFOs on the right
 		if (!geo) { for (Wall &w : walls) w.live = false; return; }
 		if (walls[0].timer <= 0.f)
@@ -2199,18 +2250,68 @@ void Table::Impl::updateWalls(TableContext &ctx, float dt)
 	else
 	{
 		walls[3].live = walls[4].live = false;
-		updateBattleWalls(ctx);
+		// the alien turn jams the monitors: a burst of interference over what they showed, then dark static
+		// with a flicker now and then; the player's turn brings them back through another burst. Nothing of
+		// the alien turn is drawn on them (the stats screen would show the alien that is acting).
+		const bool alien = battle && battle->getSide() != FACTION_PLAYER && !battle->getDebugMode();
+		++jamFrame;
+		if (alien && !jam)
+		{
+			jam = true;
+			jamT = 0.f;
+			unjamT = -1.f;
+			for (int i = 0; i < 3; ++i) jamBase[i] = walls[i].live ? walls[i].px : std::vector<uint32_t>();
+		}
+		else if (!alien && jam)
+		{
+			jam = false;
+			unjamT = 0.f;
+		}
+		if (jam)
+		{
+			jamT += dt;
+			for (int i = 0; i < 3; ++i)
+			{
+				Wall &w = walls[i];
+				if (w.tw <= 0 || w.th <= 0) { w.tw = i == 1 ? 256 : 320; w.th = i == 1 ? 256 : 200; }
+				float tear = 1.f - glm::smoothstep(0.5f, 1.1f, jamT), snow = glm::smoothstep(0.15f, 0.9f, jamT);
+				// once settled, a short flicker every few seconds (each screen its own)
+				if (jamT > 1.2f && std::fmod(jamT * 0.31f + i * 0.37f, 1.f) < 0.035f) tear = 0.7f;
+				jamPicture(jamBase[i], w.tw, w.th, tear, snow, jamFrame * 3u + (uint32_t)i, w.shown);
+				w.useShown = true;
+				w.live = true;
+			}
+		}
+		else
+		{
+			updateBattleWalls(ctx);
+			if (unjamT >= 0.f)
+			{
+				unjamT += dt;
+				float k = 1.f - unjamT / 0.6f;
+				for (int i = 0; i < 3; ++i)
+				{
+					Wall &w = walls[i];
+					if (k <= 0.f || !w.live) { w.useShown = false; continue; }
+					jamPicture(w.px, w.tw, w.th, k, k * 0.8f, jamFrame * 3u + (uint32_t)i, w.shown);
+					w.useShown = true;
+				}
+				if (k <= 0.f) unjamT = -1.f;
+			}
+		}
 	}
 	for (Wall &w : walls)
-		if (w.live && !w.px.empty())
+		if (w.live && !(w.useShown ? w.shown : w.px).empty())
 		{
+			const std::vector<uint32_t> &img = w.useShown ? w.shown : w.px;
+			if (img.size() != (size_t)w.tw * w.th) continue;
 			if (!w.tex.valid() || w.tex.width() != w.tw || w.tex.height() != w.th) w.tex.create(w.tw, w.th, true, true);
-			w.tex.update(w.px.data(), w.tw, w.th);
+			w.tex.update(img.data(), w.tw, w.th);
 			glm::vec3 sum(0.f);
 			int n = 0;
-			for (size_t i = 0; i < w.px.size(); i += 7, ++n)
+			for (size_t i = 0; i < img.size(); i += 7, ++n)
 			{
-				uint32_t c = w.px[i];
+				uint32_t c = img[i];
 				sum += glm::vec3((c & 255) / 255.f, ((c >> 8) & 255) / 255.f, ((c >> 16) & 255) / 255.f);
 			}
 			w.avg = n ? sum / (float)n : glm::vec3(0.f);

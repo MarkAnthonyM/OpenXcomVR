@@ -70,6 +70,25 @@ build_linux() {
 	(
 	vr_linux_env
 	B="$VRDEV/build/deps-linux"
+	if ! is_done linux-headers; then
+		# first: SDL's configure only builds its OpenGL support when it finds these headers
+		log "Linux: glm and OpenGL headers"
+		rm -rf "$VR_LP/include/glm"; cp -a "$VR_SRC/glm/glm" "$VR_LP/include/glm"
+		# no OpenGL -dev package needed: headers from libglvnd, link names for the runtime libraries
+		for d in GL KHR EGL GLES2; do [ -d "$VR_SRC/libglvnd/include/$d" ] && { rm -rf "$VR_LP/include/$d"; cp -a "$VR_SRC/libglvnd/include/$d" "$VR_LP/include/$d"; }; done
+		for l in GL EGL; do
+			sys=$(ls /usr/lib/x86_64-linux-gnu/lib$l.so.1 2>/dev/null || true)
+			[ -n "$sys" ] && ln -sf "$sys" "$VR_LP/lib/lib$l.so"
+		done
+		# SDL 1.2's SDL_opengl.h includes GL/glu.h, which libglvnd doesn't have; the game calls no GLU
+		# function, so without the system's (libglu1-mesa-dev) a stand-in that only includes gl.h will do
+		if [ ! -f /usr/include/GL/glu.h ]; then
+			printf '%s\n' '/* Stand-in for GL/glu.h (libglu1-mesa-dev), desktop preview only: SDL_opengl.h includes it,' \
+				' * but the game never calls a GLU function. Written by vr-dev/setup.sh. */' \
+				'#ifndef OXCE_VR_GLU_STUB' '#define OXCE_VR_GLU_STUB' '#include <GL/gl.h>' '#endif' > "$VR_LP/include/GL/glu.h"
+		fi
+		done_ linux-headers
+	fi
 	if ! is_done linux-sdl; then
 		log "Linux: SDL 1.2"
 		copy_src SDL-1.2 "$B/SDL-1.2"; cd "$B/SDL-1.2"
@@ -106,17 +125,6 @@ build_linux() {
 			-DDYNAMIC_LOADER=ON -DBUILD_TESTS=OFF -DPRESENTATION_BACKEND=xlib -DBUILD_WITH_XLIB_HEADERS=ON >/dev/null
 		cmake --build "$B/openxr" -j"$JOBS" >/dev/null && cmake --install "$B/openxr" >/dev/null
 		done_ linux-openxr
-	fi
-	if ! is_done linux-headers; then
-		log "Linux: glm and OpenGL headers"
-		rm -rf "$VR_LP/include/glm"; cp -a "$VR_SRC/glm/glm" "$VR_LP/include/glm"
-		# no OpenGL -dev package needed: headers from libglvnd, link names for the runtime libraries
-		for d in GL KHR EGL GLES2; do [ -d "$VR_SRC/libglvnd/include/$d" ] && { rm -rf "$VR_LP/include/$d"; cp -a "$VR_SRC/libglvnd/include/$d" "$VR_LP/include/$d"; }; done
-		for l in GL EGL; do
-			sys=$(ls /usr/lib/x86_64-linux-gnu/lib$l.so.1 2>/dev/null || true)
-			[ -n "$sys" ] && ln -sf "$sys" "$VR_LP/lib/lib$l.so"
-		done
-		done_ linux-headers
 	fi
 	)
 }
