@@ -123,6 +123,8 @@ TESTS = [  # script, save, check, what it covers
     ("scan", "outside.asav", has("scanner: open in the right hand", "table centred on the soldier", "contacts=5 nearest=1,W feed=on", "blue button (zoom in) fov=35",
                                  "green button (soldier view)", "view=soldier step=0", "yellow button (view higher)", "view=soldier step=1", "(limit)", "green button (commander view)", "red button (close)", "scanner: closed"),
      "the motion scanner in the hand: the table fits the range, camera with the ping, compass, side radar; zoom, soldier view, its height and leaning, close (shots/scanner_*.png)"),
+    ("bigscan", "bigunit.asav", has("contacts=6 nearest=1,W feed=on", "tiles=9", "scanner screens shots/bigscan_screens.png saved"),
+     "a reaper (2x2) beside the scanner's soldier counts as one contact, though it shows as four circles (shots/bigscan_screens.png: MOTION 6)"),
     ("mm", None, check_menu, "the main menu at start doesn't flash a floating window"),
     ("br", None, has("float: open N8OpenXcom13BriefingStateE", "float: touch 160,172"), "the briefing floats; touching OK starts the battle"),
 ]

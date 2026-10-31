@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.20.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.20.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -278,7 +278,9 @@ stand) in an X-COM command center at a holographic war table:
     patch of map the camera films outlined and a mark where the scanner is;
     in the soldier view turned so the way the soldier looks is up, with its
     view as a cone. Under it: how many contacts and how far and which way the
-    nearest is.
+    nearest is. A big unit (a reaper, a cyberdisc: 2 x 2 tiles) shows as four
+    rings, as on the game's scanner, but counts as one contact, with one beep
+    and one tick when the wave reaches its nearest tile (0.20.1).
   - Sounds: a low boom drawn in and a muffled thump as each ping leaves the
     soldier; a double beep with a short echo as the wave reaches contacts
     (with a tick in your hand), higher, louder and with its two beeps closer

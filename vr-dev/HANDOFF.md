@@ -148,6 +148,13 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   `0.13.0-scanner.1`, `0.14.0-scanner.2-4`, then `0.15.0-scanner.<n>`
   (0.15.0 merged in); merged into vr-prototype as 0.16.0 (scanner.12, owner
   approved). The button sounds were set aside (the buttons are silent).
+  0.20.1 (fix on vr-prototype, owner report): a 2x2 unit (reaper, cyberdisc)
+  counted as four contacts, with four beeps. scan() now keeps two lists:
+  `contacts` per tile (the rings and arrows, as the game draws them) and
+  `units` per unit at its nearest tile (the count, nearest, beeps, haptic
+  ticks, status). Status adds `tiles=<n>` when they differ. Test `bigscan`
+  (save `bigunit.asav`: outside.asav with the sectoid made a moving reaper at
+  10,24,0) expects contacts=6 tiles=9.
 - Branch `vr-prototype-hidden` (from vr-prototype 0.19.0): the alien turn /
   hidden movement (owner: levels could be seen moving as hidden aliens took
   stairs, and the monitors showed the acting alien's stats). Builds

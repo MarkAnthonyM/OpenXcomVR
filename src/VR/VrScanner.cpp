@@ -318,7 +318,8 @@ struct HandScanner::Impl
 	std::vector<uint32_t> radar;
 	int radarW = 0, radarH = 0;
 	struct Contact { int dx, dy, size; float dist; glm::vec3 world; };
-	std::vector<Contact> contacts;
+	std::vector<Contact> contacts;  // one per tile, as the game draws them (a big unit is four)
+	std::vector<Contact> units;     // one per unit, at its nearest tile: what's counted, beeped and ticked
 	glm::vec3 origin{0.f}, eastT{0.f}, southT{0.f}; // the soldier's tile (world), one tile east / south over its length squared
 	bool haveScan = false;
 	float pingT = 0.f, lastTc = 0.f;
@@ -651,6 +652,8 @@ void HandScanner::Impl::cropRadar(const ScannerContext &ctx)
 void HandScanner::Impl::scan(const ScannerContext &ctx)
 {
 	contacts.clear();
+	units.clear();
+	std::vector<BattleUnit *> seen;
 	haveScan = false;
 	SavedBattleGame *battle = (ctx.game && ctx.game->getSavedGame()) ? ctx.game->getSavedGame()->getSavedBattle() : nullptr;
 	me = battle ? battle->getSelectedUnit() : nullptr;
@@ -666,19 +669,23 @@ void HandScanner::Impl::scan(const ScannerContext &ctx)
 		for (int x = -9; x < 10; ++x)
 		{
 			int size = -1;
+			float dist = std::sqrt((float)(x * x + y * y));
+			glm::vec3 world = ctx.tileCenter(p.x + x, p.y + y, p.z);
 			for (int z = 0; z < battle->getMapSizeZ(); ++z)
 			{
 				Tile *t = battle->getTile(Position(p.x + x, p.y + y, z));
 				// (the soldier with the scanner isn't a contact)
-				if (t && t->getUnit() && t->getUnit() != me && t->getUnit()->getMotionPoints())
-					size = std::max(size, std::min(5, t->getUnit()->getMotionPoints() / 5));
+				BattleUnit *u = t ? t->getUnit() : nullptr;
+				if (!u || u == me || !u->getMotionPoints()) continue;
+				int us = std::min(5, u->getMotionPoints() / 5);
+				size = std::max(size, us);
+				// the unit itself, once, at the tile of it nearest the soldier (a 2x2 unit covers four tiles)
+				size_t i = std::find(seen.begin(), seen.end(), u) - seen.begin();
+				if (i == seen.size()) { seen.push_back(u); units.push_back(Contact{x, y, us, dist, world}); }
+				else if (dist < units[i].dist) units[i] = Contact{x, y, us, dist, world};
 			}
 			if (size < 0) continue;
-			Contact c;
-			c.dx = x; c.dy = y; c.size = size;
-			c.dist = std::sqrt((float)(x * x + y * y));
-			c.world = ctx.tileCenter(p.x + x, p.y + y, p.z);
-			contacts.push_back(c);
+			contacts.push_back(Contact{x, y, size, dist, world});
 		}
 }
 
@@ -800,15 +807,15 @@ void HandScanner::Impl::composeSide()
 		}
 	// the readout
 	std::string l1, l2, l3;
-	if (contacts.empty()) l1 = "NO MOTION";
+	if (units.empty()) l1 = "NO MOTION";
 	else
 	{
 		std::ostringstream a, c;
-		a << "CONTACTS " << contacts.size();
+		a << "CONTACTS " << units.size();
 		l1 = a.str();
-		if (text(l1).w > SIDE.w() - 2) { std::ostringstream b; b << "MOTION " << contacts.size(); l1 = b.str(); }
-		const Contact *n = &contacts[0];
-		for (const Contact &q : contacts) if (q.dist < n->dist) n = &q;
+		if (text(l1).w > SIDE.w() - 2) { std::ostringstream b; b << "MOTION " << units.size(); l1 = b.str(); }
+		const Contact *n = &units[0];
+		for (const Contact &q : units) if (q.dist < n->dist) n = &q;
 		l2 = "NEAREST";
 		if (n->dx == 0 && n->dy == 0) c << "HERE";
 		else c << (int)std::lround(n->dist) << " " << DIRS[dir8((float)n->dx, (float)n->dy)];
@@ -879,9 +886,9 @@ void HandScanner::Impl::playWave(float late, const ScannerContext &ctx)
 		if (voice[which].empty()) voice[which] = synthScan(which, freq);
 		return voice[which];
 	};
-	// the blips: one where the wave reaches each contact, pitched by the nearest of those reached together
+	// the blips: one where the wave reaches each unit (its nearest tile), pitched by the nearest of those reached together
 	std::vector<float> dists;
-	for (const Contact &c : contacts) dists.push_back(c.dist);
+	for (const Contact &c : units) dists.push_back(c.dist);
 	std::sort(dists.begin(), dists.end());
 	struct Blip { size_t at; int which; };
 	std::vector<Blip> blipsAt;
@@ -1000,7 +1007,7 @@ void HandScanner::update(const ScannerContext &ctx, const Hands &hands, float dt
 			p.lastCycle = p.cycle();
 			p.lastTc = -1.f;
 		}
-		for (const Impl::Contact &c : p.contacts)
+		for (const Impl::Contact &c : p.units)
 		{
 			float t0 = c.dist / PING_SPEED;
 			if (t0 > p.lastTc && t0 <= now)
@@ -1421,16 +1428,17 @@ std::string HandScanner::status() const
 	{
 		o << " hand=" << (p.hand == 1 ? "right" : "left") << " heading=" << (int)std::lround(p.heading)
 			<< " " << DIRS[((int)std::lround(p.heading / 45.f)) % 8] << " fov=" << (int)p.fov()
-			<< " view=" << (p.soldierView ? "soldier" : "commander") << " step=" << p.eyeStep << " radar=" << (int)std::lround(p.radarRot) << " contacts=" << p.contacts.size();
-		if (!p.contacts.empty())
+			<< " view=" << (p.soldierView ? "soldier" : "commander") << " step=" << p.eyeStep << " radar=" << (int)std::lround(p.radarRot) << " contacts=" << p.units.size();
+		if (!p.units.empty())
 		{
-			const Impl::Contact *n = &p.contacts[0];
-			for (const Impl::Contact &q : p.contacts) if (q.dist < n->dist) n = &q;
+			const Impl::Contact *n = &p.units[0];
+			for (const Impl::Contact &q : p.units) if (q.dist < n->dist) n = &q;
 			o << " nearest=" << (int)std::lround(n->dist) << "," << DIRS[dir8((float)n->dx, (float)n->dy)];
 		}
 		o << " feed=" << (p.feedFresh ? "on" : "off") << " pings=" << p.pings << " blips=" << p.blips
 			<< " look=" << (int)std::lround(glm::degrees(std::asin(glm::clamp(p.camDir.y, -1.f, 1.f)))) << (p.haveEye ? " eye" : "")
 			<< " lean=" << std::lround(p.lean.x * 100) / 100.f << "," << std::lround(p.lean.y * 100) / 100.f << (p.leanAtLimit ? "(limit)" : "");
+		if (p.contacts.size() != p.units.size()) o << " tiles=" << p.contacts.size(); // (a big unit: more circles than units)
 	}
 	o << " presses=" << p.presses << " last=" << p.last;
 	return o.str();
