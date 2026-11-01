@@ -73,6 +73,7 @@ build_linux() {
 	if ! is_done linux-headers; then
 		# first: SDL's configure only builds its OpenGL support when it finds these headers
 		log "Linux: glm and OpenGL headers"
+		mkdir -p "$VR_LP/include" "$VR_LP/lib"
 		rm -rf "$VR_LP/include/glm"; cp -a "$VR_SRC/glm/glm" "$VR_LP/include/glm"
 		# no OpenGL -dev package needed: headers from libglvnd, link names for the runtime libraries
 		for d in GL KHR EGL GLES2; do [ -d "$VR_SRC/libglvnd/include/$d" ] && { rm -rf "$VR_LP/include/$d"; cp -a "$VR_SRC/libglvnd/include/$d" "$VR_LP/include/$d"; }; done
