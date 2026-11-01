@@ -123,8 +123,12 @@ build_linux() {
 	if ! is_done linux-openxr; then
 		log "Linux: OpenXR loader"
 		cmake -S "$VR_SRC/OpenXR-SDK" -B "$B/openxr" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$VR_LP" \
-			-DDYNAMIC_LOADER=ON -DBUILD_TESTS=OFF -DPRESENTATION_BACKEND=xlib -DBUILD_WITH_XLIB_HEADERS=ON >/dev/null
-		cmake --build "$B/openxr" -j"$JOBS" >/dev/null && cmake --install "$B/openxr" >/dev/null
+			-DDYNAMIC_LOADER=ON -DBUILD_TESTS=OFF -DPRESENTATION_BACKEND=xlib -DBUILD_WITH_XLIB_HEADERS=ON \
+			-DCMAKE_C_FLAGS="-I$VR_LP/include" -DCMAKE_CXX_FLAGS="-I$VR_LP/include" >/dev/null
+		# the EGL headers come from libglvnd in our prefix (no system -dev package in the cloud workspace);
+		# stop here if the loader didn't build, so the preview never quietly builds without VR
+		cmake --build "$B/openxr" -j"$JOBS" >/dev/null || { echo "OpenXR loader failed to build"; exit 1; }
+		cmake --install "$B/openxr" >/dev/null || exit 1
 		done_ linux-openxr
 	fi
 	)

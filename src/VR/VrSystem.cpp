@@ -26,6 +26,8 @@
 #include "../Savegame/BattleUnit.h"
 #include "../Savegame/Tile.h"
 #include "../Savegame/SavedGame.h"
+#include "../Mod/MapData.h"
+#include "../Mod/MapDataSet.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/Craft.h"
 #include "../Savegame/Ufo.h"
@@ -1808,6 +1810,41 @@ static void runScript()
 			// gamecam x y z : centre the flat game camera on a tile (tests of off-screen behaviour)
 			if (BattlescapeState *bs = S->board.battleState())
 				bs->getMap()->getCamera()->centerOnPosition(Position((int)num(0, 0), (int)num(1, 0), (int)num(2, 0)));
+		}
+		else if (c.op == "reveal")
+		{
+			// reveal : the whole map explored, as the game's own debug reveal (looking at terrain without fog)
+			if (SavedBattleGame *sb = S->game->getSavedGame() ? S->game->getSavedGame()->getSavedBattle() : nullptr)
+				for (int i = 0; i < sb->getMapSizeXYZ(); ++i)
+					for (int part = 0; part < O_MAX; ++part) sb->getTile(i)->setDiscovered(true, (TilePart)part);
+		}
+		else if (c.op == "findset")
+		{
+			// findset NAME : log the tiles that use a terrain set (e.g. UFO1, PLANE) and centre the table on them
+			SavedBattleGame *sb = S->game->getSavedGame() ? S->game->getSavedGame()->getSavedBattle() : nullptr;
+			std::string want = c.args.empty() ? "" : c.args[0];
+			int x0 = 1 << 30, y0 = 1 << 30, z0 = 1 << 30, x1 = -1, y1 = -1, z1 = -1, n = 0;
+			for (int i = 0; sb && i < sb->getMapSizeXYZ(); ++i)
+			{
+				Tile *t = sb->getTile(i);
+				bool hit = false;
+				for (int part = 0; part < O_MAX && !hit; ++part)
+				{
+					MapData *md = t->getMapData((TilePart)part);
+					hit = md && md->getDataset() && md->getDataset()->getName() == want;
+				}
+				if (!hit) continue;
+				Position p = t->getPosition();
+				x0 = std::min(x0, (int)p.x); y0 = std::min(y0, (int)p.y); z0 = std::min(z0, (int)p.z);
+				x1 = std::max(x1, (int)p.x); y1 = std::max(y1, (int)p.y); z1 = std::max(z1, (int)p.z);
+				++n;
+			}
+			if (n)
+			{
+				Log(LOG_INFO) << "[VR] findset " << want << ": " << n << " tiles, x " << x0 << "-" << x1 << " y " << y0 << "-" << y1 << " z " << z0 << "-" << z1;
+				S->board.centerOnTile(glm::vec2((x0 + x1 + 1) * 0.5f, (y0 + y1 + 1) * 0.5f));
+			}
+			else Log(LOG_INFO) << "[VR] findset " << want << ": none";
 		}
 		else if (c.op == "hand")
 		{

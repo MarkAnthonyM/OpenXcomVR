@@ -8,5 +8,6 @@ if [ ! -f "$VR_PREVIEW_BUILD/build.ninja" ]; then
 	cmake -S "$VR_REPO" -B "$VR_PREVIEW_BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DOXCE_VR=ON \
 		-DCMAKE_PREFIX_PATH="$VR_LP" -DCMAKE_BUILD_RPATH="$VR_LP/lib"
 fi
+grep -q "VrSystem.cpp" "$VR_PREVIEW_BUILD/build.ninja" || { echo "CMake left VR out of the build (OpenXR or glm not found: see its warnings; rerun vr-dev/setup.sh linux)"; exit 1; }
 cmake --build "$VR_PREVIEW_BUILD" -j"$(nproc)"
 echo "preview: $VR_PREVIEW_BUILD/bin/openxcom"
