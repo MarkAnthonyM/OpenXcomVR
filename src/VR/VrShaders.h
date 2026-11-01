@@ -651,9 +651,11 @@ void main()
 	if (uWinOn == 1)
 	{
 		// the whole view fades evenly in and out (uWinReveal; owner, hidden.4: no dissolving specks),
-		// toward the darkness's own colour; see-through things fade out with it
+		// toward the darkness as it shows on the table (near black: rain.2, owner: it washed out to grey
+		// first when this was the cover's own colour, which the glass darkens); see-through things fade
+		// out with it
 		if (uWinReveal <= 0.002 || !winInside()) discard;
-		fragColor.rgb = mix(vec3(0.035, 0.040, 0.057), fragColor.rgb, uWinReveal);
+		fragColor.rgb = mix(vec3(0.0012, 0.0016, 0.0030), fragColor.rgb, uWinReveal);
 		if (fragColor.a < 0.999) fragColor.a *= uWinReveal; // (solid surfaces keep theirs)
 	}
 	if (uFeed == 1) fragColor.rgb = feedColor(fragColor.rgb);

@@ -155,6 +155,45 @@ The New Battle flow is driven by blind clicks on the flat screen (see
   ticks, status). Status adds `tiles=<n>` when they differ. Test `bigscan`
   (save `bigunit.asav`: outside.asav with the sectoid made a moving reaper at
   10,24,0) expects contacts=6 tiles=9.
+- Branch `vr-prototype-rain` (from vr-prototype 0.20.1): the weather's
+  sound (owner: rain had none). Owner's choices: rain both all around the
+  room and on the table; snow silent except a blizzard's wind. Builds
+  `0.20.1-rain.<n>`.
+  - rain.1: three loops made in code (VrWeather.cpp, like the thunder),
+    their ends crossfaded into their starts (loopOf, equal power): the room
+    (synthRainRoom: muffled noise wash, rumble and low-passed drops; a
+    different noise per ear, a stereo chunk, so it surrounds), the table
+    (synthRainTable: crisp drop ticks, some with a short falling ring, over
+    a faint hiss; mono, placed with Mix_SetPosition at the table's middle,
+    distance from WeatherView::metersPerVoxel), the wind (synthWind: noise
+    through two moving resonances over a low rush, gusting; leaned towards
+    the upwind ear with Mix_SetPanning, at most ~2/3 in the far ear). Made
+    per strength on first use and kept. Channels: AudioSlot AUDIO_RAIN_ROOM,
+    AUDIO_RAIN_TABLE, AUDIO_WIND (VrAudio: playLoop, setLevel, placeLoop,
+    makeStereoChunk). Impl::updateSound sets each loop's level every frame:
+    room 0.3/0.5/0.75, table 0.45/0.6/0.8 by strength, x(0.8+0.2 gust) when
+    steady or heavy; wind 0.7 scaled by the gust; fades 2 s in, 1 s out.
+    A re-roll (debug panel, test `weather` op) keeps the loops (begin() uses
+    Impl::reset(), only end() stops the sound), so a change crossfades;
+    leaving the battle or going indoors fades them out (0.8 s).
+    Status: `sound=room:<%>,table:<%>` / `wind:<%>` / `-`. Test op
+    `weatherwav <path> room|table|wind <strength>`; test `rainwav` writes
+    them all to shots/. Playback can be checked without a sound card:
+    `SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE=<file>` on run.sh (raw s16
+    stereo at 22050 Hz; it doesn't keep real time on this machine).
+  - rain.2 (owner: the table's patter sounded cartoony, like birds
+    chirping; should be rain on earth or grass; all too loud, should sit
+    under the music): Drops has no ringing tones any more (they chirped),
+    each tick swells in over 0.3 ms; the table is soft dull taps (low-pass
+    ~3.4 kHz, 1.5-5 ms, even sizes, 90/350/1000 a second) over a fluttering
+    rustle (noise 1.2-4.5 kHz trembling at ~35 Hz), high-passed at 250 Hz:
+    centroid ~3.5 kHz (was ~6 kHz). Levels about a third of rain.1: room
+    0.1/0.16/0.24, table 0.12/0.17/0.24, wind 0.22.
+    Also the alien turn's fade (owner: it went washed-out grey instead of
+    to black): main() mixed the map toward (0.035, 0.040, 0.057), which on
+    screen is ~52-67/255, while the darkness under it shows at ~4-10/255
+    (the glass darkens the cover). It now mixes toward (0.0012, 0.0016,
+    0.0030), the darkness as it shows.
 - Branch `vr-prototype-hidden` (from vr-prototype 0.19.0): the alien turn /
   hidden movement (owner: levels could be seen moving as hidden aliens took
   stairs, and the monitors showed the acting alien's stats). Builds

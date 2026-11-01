@@ -73,6 +73,57 @@ Mix_Chunk *makeChunk(const std::vector<float> &mono)
 	return Mix_QuickLoad_RAW(buf, (Uint32)(mono.size() * channels * 2));
 }
 
+Mix_Chunk *makeStereoChunk(const std::vector<float> &left, const std::vector<float> &right)
+{
+	int freq = 0, channels = 0;
+	Uint16 format = 0;
+	size_t n = std::min(left.size(), right.size());
+	if (!n || !Mix_QuerySpec(&freq, &format, &channels) || format != AUDIO_S16SYS || channels < 1) return nullptr;
+	Uint8 *buf = (Uint8*)SDL_malloc(n * channels * 2);
+	if (!buf) return nullptr;
+	Sint16 *out = (Sint16*)buf;
+	auto s16 = [](float v) { return (Sint16)(std::max(-1.f, std::min(1.f, v)) * 32000.f); };
+	for (size_t i = 0; i < n; ++i)
+	{
+		if (channels == 1) { out[i] = s16((left[i] + right[i]) * 0.5f); continue; }
+		for (int c = 0; c < channels; ++c) out[i * channels + c] = s16(c % 2 ? right[i] : left[i]);
+	}
+	return Mix_QuickLoad_RAW(buf, (Uint32)(n * channels * 2));
+}
+
+int playLoop(AudioSlot slot, Mix_Chunk *chunk)
+{
+	int ch = audioChannel(slot);
+	if (ch < 0 || !chunk) return -1;
+	Mix_Volume(ch, 0);
+	if (Mix_PlayChannel(ch, chunk, -1) < 0) return -1;
+	Mix_SetPosition(ch, 0, 0);
+	return ch;
+}
+
+void setLevel(int channel, float volume)
+{
+	if (channel >= 0) Mix_Volume(channel, (int)std::lround(Options::soundVolume * std::max(0.f, std::min(1.f, volume))));
+}
+
+void placeLoop(int channel, float angleDeg, float distance, float pan)
+{
+	if (channel < 0) return;
+	if (!Options::StereoSound) { Mix_SetPosition(channel, 0, 0); return; }
+	if (pan < 2.f)
+	{
+		// at most about two thirds as loud in the far ear
+		pan = std::max(-1.f, std::min(1.f, pan)) * 0.35f;
+		Mix_SetPanning(channel, (Uint8)std::lround(255.f * std::min(1.f, 1.f - pan)), (Uint8)std::lround(255.f * std::min(1.f, 1.f + pan)));
+		return;
+	}
+	int a = (int)std::lround(angleDeg) % 360;
+	if (a < 0) a += 360;
+	Mix_SetPosition(channel, (Sint16)a, (Uint8)std::lround(255.f * std::max(0.f, std::min(1.f, distance))));
+}
+
+bool playing(int channel) { return channel >= 0 && Mix_Playing(channel); }
+
 bool writeWav(const std::string &path, const std::vector<float> &mono, int freq)
 {
 	FILE *f = fopen(path.c_str(), "wb");
