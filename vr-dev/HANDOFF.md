@@ -33,8 +33,21 @@ package and publish a version, and what was decided along the way.
    llvm-mingw, fetches every dependency at its pinned commit, builds the
    Linux and Windows libraries into `~/vrdev`). Takes a while; re-runs skip
    finished steps. `vr-dev/setup.sh linux` or `windows` does one half.
+   In the cloud workspace Ubuntu's apt is unreachable: setup.sh puts the
+   OpenGL headers in place before building SDL (SDL built without them
+   fails every test with "X11 driver not configured with OpenGL"; if that
+   happens, delete the linux-sdl stamp in `$VRDEV/stamps` and re-run) and
+   writes a stand-in `GL/glu.h` when the system has none.
 3. Ask the owner to attach his X-COM: UFO Defense folder (or a zip of it). It
    can't be in the repo. Then `vr-dev/test/setup-data.sh <folder-or-zip>`.
+   If he sends a RAR (it has happened even when named .zip): with "package
+   managers" allowed in his Capabilities settings, npm works through the
+   session proxy once its no-proxy list is overridden, e.g.
+   `npm install --noproxy="localhost,127.0.0.1" --proxy $HTTPS_PROXY node-unrar-js@2.0.2`
+   in a scratch folder, then extract with a few lines of Node and point
+   setup-data.sh at the extracted XCOM folder. Building third-party code
+   from GitHub source (e.g. libarchive) was refused by the session's
+   security check; use the npm package.
 4. `vr-dev/build-preview.sh` and `python3 vr-dev/test/regress.py`: every line
    should say `ok`.
 5. `vr-dev/build-windows.sh` builds `openxcom.exe`.
@@ -78,7 +91,9 @@ python3 vr-dev/test/regress.py v3 i3            # some of it
   unit 1 rifle), `outside` (six soldiers walked out of the Skyranger: unit 1
   rifle, 2 rocket launcher, 3 heavy cannon, 4 laser rifle, 5 heavy laser,
   7 heavy plasma), `night` (battle start at night), `outnight` (`outside`
-  with global shade 15), `newbattle`, `geo_test` (geoscape).
+  with global shade 15), `newbattle`, `geo_test` (geoscape), `tap_test`
+  (the tap test's roofs and soldiers), `bigunit` (`outside` with its sectoid
+  made a moving reaper next to unit 7: the scanner's big-unit test).
 - The owner can send save files from his game for specific situations; they
   need the same mods (plain xcom1) and an OXCE 8.7.1-compatible version.
 
@@ -119,7 +134,15 @@ Script commands (one per line; numbers are optional with defaults):
 
 Practical notes: the first 9 s of every script are loading (`wait 9000`).
 The New Battle flow is driven by blind clicks on the flat screen (see
-`scripts/nb3.txt`). The preview has no audio device; that error is harmless.
+`scripts/nb3.txt`). The preview has no audio device; that error is harmless
+(to exercise sound, run with `SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE=<file>`:
+raw s16 stereo at 22050 Hz, not in real time).
+
+On this slow machine (2 CPUs): run.sh stops a run after `VR_RUN_TIMEOUT`
+seconds (default 400; the tap test needs ~250). Known flaky: `bh` (even
+with its longer wait), and the first test after the machine or Xvfb
+restarts (it can segfault; a rerun passes). If every test suddenly fails
+with things missing, Xvfb has died: run.sh restarts it on the next run.
 
 ## Versions and releases
 
