@@ -181,6 +181,19 @@ The New Battle flow is driven by blind clicks on the flat screen (see
     them all to shots/. Playback can be checked without a sound card:
     `SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE=<file>` on run.sh (raw s16
     stereo at 22050 Hz; it doesn't keep real time on this machine).
+  - rain.2 (owner: the table's patter sounded cartoony, like birds
+    chirping; should be rain on earth or grass; all too loud, should sit
+    under the music): Drops has no ringing tones any more (they chirped),
+    each tick swells in over 0.3 ms; the table is soft dull taps (low-pass
+    ~3.4 kHz, 1.5-5 ms, even sizes, 90/350/1000 a second) over a fluttering
+    rustle (noise 1.2-4.5 kHz trembling at ~35 Hz), high-passed at 250 Hz:
+    centroid ~3.5 kHz (was ~6 kHz). Levels about a third of rain.1: room
+    0.1/0.16/0.24, table 0.12/0.17/0.24, wind 0.22.
+    Also the alien turn's fade (owner: it went washed-out grey instead of
+    to black): main() mixed the map toward (0.035, 0.040, 0.057), which on
+    screen is ~52-67/255, while the darkness under it shows at ~4-10/255
+    (the glass darkens the cover). It now mixes toward (0.0012, 0.0016,
+    0.0030), the darkness as it shows.
 - Branch `vr-prototype-hidden` (from vr-prototype 0.19.0): the alien turn /
   hidden movement (owner: levels could be seen moving as hidden aliens took
   stairs, and the monitors showed the acting alien's stats). Builds

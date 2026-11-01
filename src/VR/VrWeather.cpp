@@ -295,18 +295,20 @@ void toRms(std::vector<float> &s, float rms)
 	for (float &v : s) v = std::tanh(v * g);
 }
 
-/// Drops landing: each a tick of bright noise, now and then with a short ring (a drop on a puddle or a
-/// hard surface). `rate` drops a second, sizes mostly small with the odd big one; `bright` how far up
-/// their noise reaches (a muffled 0 .. a crisp 1).
+/// Drops landing: each a soft tick of noise that swells in over a fraction of a millisecond and dies away
+/// in a few. `rate` drops a second; `bright` how far up their noise reaches (a muffled 0 .. a crisp 1);
+/// `tau0`..`tau1` how long they last (s); `spread` how uneven their sizes are (1 even .. 3 the odd big one).
+/// (No ringing tones: rain.1's rang like birds chirping, owner.)
 struct Drops
 {
-	struct Hit { int at; float amp, tau, ring, ringHz, ringTau; };
+	struct Hit { int at; float amp, tau; };
 	std::vector<Hit> hits;
 	Rng rng;
 	int freq;
 	LowPass lp;
 	float hp = 0.f;
-	Drops(uint32_t seed, float rate, float bright, int n, int freq_) : rng(seed), freq(freq_), lp(2500.f + 6000.f * bright, freq_)
+	Drops(uint32_t seed, float rate, float bright, int n, int freq_, float tau0 = 0.0008f, float tau1 = 0.003f, float spread = 2.5f)
+		: rng(seed), freq(freq_), lp(2500.f + 6000.f * bright, freq_)
 	{
 		float t = 0.f;
 		while (true)
@@ -314,9 +316,7 @@ struct Drops
 			t += -std::log(std::max(1e-6f, rng.f())) / rate;
 			int at = (int)(t * freq);
 			if (at >= n) break;
-			float a = std::pow(rng.f(), 2.5f) * 0.9f + 0.1f;
-			bool ring = rng.f() < 0.35f;
-			hits.push_back(Hit{at, a, rng.r(0.0008f, 0.003f), ring ? a * rng.r(0.2f, 0.45f) : 0.f, rng.r(1400.f, 4200.f), rng.r(0.006f, 0.02f)});
+			hits.push_back(Hit{at, std::pow(rng.f(), spread) * 0.75f + 0.25f, rng.r(tau0, tau1)});
 		}
 	}
 	size_t next = 0;
@@ -324,22 +324,20 @@ struct Drops
 	float operator()(int i)
 	{
 		while (next < hits.size() && hits[next].at <= i) live.push_back(hits[next++]);
-		float noise = 0.f, tone = 0.f;
+		float noise = 0.f;
 		for (size_t k = 0; k < live.size();)
 		{
 			const Hit &h = live[k];
 			float t = (float)(i - h.at) / freq;
-			float e = std::exp(-t / h.tau), er = h.ring > 0.f ? std::exp(-t / h.ringTau) : 0.f;
-			noise += h.amp * e;
-			// the ring falls a little in pitch as it fades
-			if (h.ring > 0.f) tone += h.ring * er * std::sin(6.2832f * h.ringHz * t * (1.f - 0.15f * t / (h.ringTau * 4.f)));
-			if (e < 0.002f && er < 0.002f) { live[k] = live.back(); live.pop_back(); }
+			float e = std::exp(-t / h.tau);
+			noise += h.amp * e * (1.f - std::exp(-t / 0.0003f));
+			if (e < 0.002f) { live[k] = live.back(); live.pop_back(); }
 			else ++k;
 		}
 		float w = rng.f() * 2.f - 1.f;
 		// the ticks' noise: band-limited (a high-pass by subtracting a slow copy, then the brightness low-pass)
 		hp += (w - hp) * 0.08f;
-		return lp((w - hp) * noise) + tone;
+		return lp((w - hp) * noise);
 	}
 };
 
@@ -368,23 +366,28 @@ std::vector<float> synthRainRoom(int strength, int ear, int freq)
 	return s;
 }
 
-/// The rain on the table: drops pattering close by, crisp, with a little hiss under them.
+/// The rain on the table, like rain on earth and grass (owner, rain.2): many small soft taps, dull rather
+/// than crisp, and a rustle of wet leaves under them (noise in the upper middle, fluttering).
 std::vector<float> synthRainTable(int strength, int freq)
 {
-	static const float rate[3] = {35.f, 140.f, 420.f}, hissK[3] = {0.04f, 0.1f, 0.2f};
+	static const float rate[3] = {90.f, 350.f, 1000.f}, rustleK[3] = {0.35f, 0.6f, 0.9f};
 	const float len = 4.7f, xf = 0.4f;
 	const int n = (int)((len + xf) * freq);
 	Rng rng(0x7ab1u + (uint32_t)strength * 53u);
-	Drops drops(0x91c3u + (uint32_t)strength * 17u, rate[strength], 0.7f, n, freq);
-	LowPass hissLp(7000.f, freq);
-	float hp = 0.f;
+	Drops drops(0x91c3u + (uint32_t)strength * 17u, rate[strength], 0.15f, n, freq, 0.0015f, 0.005f, 1.5f);
+	LowPass rLp1(4500.f, freq), rLp2(4500.f, freq), flutterLp(35.f, freq), outLp(5000.f, freq);
+	float rHp = 0.f, outHp = 0.f;
 	std::vector<float> s = loopOf(len, xf, freq, [&](int i)
 	{
-		float w = hissLp(rng.f() * 2.f - 1.f);
-		hp += (w - hp) * (2500.f * 6.2832f / freq);
-		return drops(i) + (w - hp) * hissK[strength];
+		float w = rng.f() * 2.f - 1.f;
+		float r = rLp2(rLp1(w));
+		rHp += (r - rHp) * (1200.f * 6.2832f / freq);
+		float fl = flutterLp(std::fabs(rng.f() * 2.f - 1.f) * 2.f);    // leaves stirring: a quick, uneven tremble
+		float v = outLp(drops(i) + (r - rHp) * fl * rustleK[strength]);
+		outHp += (v - outHp) * (250.f * 6.2832f / freq);
+		return v - outHp;
 	});
-	toRms(s, strength == 0 ? 0.07f : 0.12f);
+	toRms(s, 0.09f);
 	return s;
 }
 
@@ -952,7 +955,8 @@ void Weather::strike()
 /// blizzard's wind, leaning towards the ear it blows from. Flurries and steady snow are silent.
 void Weather::Impl::updateSound(float dt, const WeatherView &v)
 {
-	static const float ROOM[3] = {0.3f, 0.5f, 0.75f}, TABLE[3] = {0.45f, 0.6f, 0.8f}, WIND = 0.7f;
+	// in the background, under the game's music (owner, rain.2: rain.1's were about 3x these)
+	static const float ROOM[3] = {0.1f, 0.16f, 0.24f}, TABLE[3] = {0.12f, 0.17f, 0.24f}, WIND = 0.22f;
 	const float IN_S = 2.f, OUT_S = 1.f;  // fades: when the weather starts, and when it stops or changes
 	bool rain = kind == RAIN, blizzard = kind == SNOW && strength == 2;
 	float g = strength >= 1 ? 0.8f + 0.2f * gust() : 1.f;

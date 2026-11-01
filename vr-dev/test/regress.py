@@ -119,7 +119,7 @@ TESTS = [  # script, save, check, what it covers
     ("clouds", "outside.asav", has("sky=day sun=137,50 weather=none clouds=68", "sky=dusk"),
      "cloud shadows: separate clouds with crisp, cool edges, by day and at dusk (shots/clouds_*.png)"),
     ("storms", "outside.asav", has("weather=rain clouds=30", "strength=0", "clouds=75", "strikes=1", "lightning: ", "thunder variant", "weather=snow clouds=70", "strength=2",
-                                   "strength=0 sound=room:30,table:45", "strength=2 sound=room:", "cloudspeed=12 strength=0 sound=-", "strength=2 sound=wind:"),
+                                   "strength=0 sound=room:10,table:12", "strength=2 sound=room:", "cloudspeed=12 strength=0 sound=-", "strength=2 sound=wind:"),
      "rain and snow strengths: drizzle, thunderstorm with a strike, flurries, blizzard (shots/storms_*.png); the rain's sound (room and table) by strength, silent flurries, a blizzard's wind"),
     ("rainwav", None, has("weather loop room 0 written", "weather loop table 2 written", "weather loop wind 0 written"),
      "the rain's and wind's sound loops as WAV files to listen to (shots/rain_*.wav, shots/wind.wav)"),

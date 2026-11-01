@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.20.1-rain.1)
+# OpenXcom Extended — VR Tabletop (prototype 0.20.1-rain.2)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -200,8 +200,9 @@ stand) in an X-COM command center at a holographic war table:
   stereo sound on); close thunder starts with a crack, distant thunder is a
   duller, longer roll, and there are several of each so no two in a row need
   sound the same. Rain can be heard: a muffled wash all around the room, as
-  if it fell on the command centre's roof, and drops pattering on the table
-  itself, from where the table is and quieter as you step away. Both grow
+  if it fell on the command centre's roof, and a soft patter on the table
+  itself, like rain on earth and grass, from where the table is and quieter
+  as you step away. They stay in the background, under the game's music. Both grow
   with the rain (a soft drizzle, a heavy downpour in a thunderstorm), rise
   and ease with its gusts, fade in when the battle starts and out when it
   ends. Flurries and steady snow are silent; a blizzard brings a gusting,
