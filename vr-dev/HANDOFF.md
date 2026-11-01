@@ -194,6 +194,8 @@ The New Battle flow is driven by blind clicks on the flat screen (see
     screen is ~52-67/255, while the darkness under it shows at ~4-10/255
     (the glass darkens the cover). It now mixes toward (0.0012, 0.0016,
     0.0030), the darkness as it shows.
+  Merged into vr-prototype as 0.21.0 (rain.2, owner: good for a first
+  pass).
 - Branch `vr-prototype-hidden` (from vr-prototype 0.19.0): the alien turn /
   hidden movement (owner: levels could be seen moving as hidden aliens took
   stairs, and the monitors showed the acting alien's stats). Builds
