@@ -2900,9 +2900,9 @@ void Board::Impl::drawLab(const Shader &sh, const glm::mat4 &M)
 			if (l.w > 0)
 			{
 				float k = tileSize / TILE_W;
-				glm::vec3 far = glm::vec3(glm::inverse(M) * glm::vec4((mapRect.x + mapRect.z) * 0.5f, surfaceY() + 0.06f, mapRect.y - 0.02f, 1.f));
+				glm::vec3 farEdge = glm::vec3(glm::inverse(M) * glm::vec4((mapRect.x + mapRect.z) * 0.5f, surfaceY() + 0.06f, mapRect.y - 0.02f, 1.f));
 				sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f)); // it stands beyond the map's area
-				drawCard(sh, M, far, viewerVox, l, 0.45f / (l.w * k));
+				drawCard(sh, M, farEdge, viewerVox, l, 0.45f / (l.w * k));
 				sh.set("uClip", clipRect());
 			}
 		}
