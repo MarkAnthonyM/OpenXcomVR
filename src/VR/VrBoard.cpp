@@ -22,6 +22,7 @@
 #include "VrWeather.h"
 #include "VrLab.h"
 #include "VrRelief.h"
+#include "VrDash.h"
 #include "../Engine/Game.h"
 #include "../Engine/State.h"
 #include "../Engine/Surface.h"
@@ -154,6 +155,8 @@ struct Proto
 	std::vector<uint32_t> idx;
 	bool card = false; // no voxels: drawn as crossed cards
 	uint32_t avg = 0;  // average sprite colour (minimap)
+	uint8_t stray = 0; // tile shapes: parts (bits) whose faces landing on empty art were left out
+	uint8_t grew = 0;  // tile shapes: objects (bits) that grew display voxels into their art (crowns)
 };
 
 struct Chunk
@@ -333,7 +336,12 @@ struct Board::Impl
 	void buildTile(const TileKey &k, Proto &p);
 	void addCard(const MapData *md, Proto &p);
 	void addRelief(const MapData *floor, int join, Proto &p);
-	void growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][TILE_H], int part);
+	bool growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][TILE_H], int part);
+	TileKey tileKey(Tile *t, int x, int y, int z);
+	/// The terrain lab's inspect panel for a tile: its parts as the game draws them, each on its own, and
+	/// what the table did with them.
+	bool inspectPicture(const Position &pos, std::vector<uint32_t> &px, int &W, int &H);
+	uint64_t inspectKey = ~0ull;
 	/// Per part: its sprite's average colour (minimap, fallbacks) and how high it reaches (rain).
 	struct PartInfo { uint32_t avg = 0; float top = 0.f; };
 	std::map<const MapData*, PartInfo> partInfos;
@@ -404,6 +412,9 @@ struct Board::Impl
 	bool focusInit = false;
 	TerrainLabState *lab = nullptr; // the terrain lab's screen, while it shows its map
 	unsigned labGen = 0, styleGen = 0;
+	int labLevel = 0;                // the lab's level shown (no game camera there)
+	bool pinned = false;             // the lab's inspect panel stays on pinTile (trigger)
+	Position pinTile;
 	float tileSize = 0.055f;
 	float yaw = 0.f;
 	int viewLevel = 0;
@@ -474,6 +485,7 @@ struct Board::Impl
 	int fingerFrames = 0;              // >0 while a fingertip hovers over the map
 	struct Label { std::unique_ptr<Texture> tex; int w = 0, h = 0; double used = 0.0; };
 	std::map<std::string, Label> labels;
+	Label inspectPanel;             // the terrain lab's inspect panel (drawLab)
 	const Label &label(const std::string &text, Uint8 color);
 	glm::vec4 palColor(int index, float glow) const
 	{
@@ -482,7 +494,7 @@ struct Board::Impl
 	}
 	void drawWire(const Shader &sh, const glm::mat4 &M, const glm::vec3 &at, int size, const glm::vec4 &col, float xray) const;
 	void drawLabel(const Shader &sh, const glm::mat4 &M, const glm::vec3 &at, const glm::vec3 &viewerVox, const Label &l, float pxSize) const;
-	void drawLabLabels(const Shader &sh, const glm::mat4 &M);
+	void drawLab(const Shader &sh, const glm::mat4 &M);
 	void drawHud(const Shader &sh, const glm::mat4 &M);
 
 	// grabbing
@@ -792,7 +804,7 @@ void Board::Impl::addRelief(const MapData *floor, int join, Proto &p)
 /// bush, small props): display voxels fill the drawn shape. A voxel is added where the sprite has a pixel
 /// at its spot, within the art's reach of the part's vertical axis in that sprite row (the crown taken as
 /// round about the trunk, which settles the depth a picture from one side can't show). Display only.
-void Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][TILE_H], int part)
+bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][TILE_H], int part)
 {
 	const int W = spr->getWidth(), H = spr->getHeight();
 	auto loftSolid = [&](int x, int y, int z) -> bool
@@ -827,13 +839,14 @@ void Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 	for (int y = 0; y < H; ++y)
 		for (int x = 0; x < W; ++x)
 			if (spr->getPixel(x, y)) { ++opaque; cov += covered[(size_t)y * W + x]; }
-	if (opaque < 12 || cov * 10 >= opaque * 7) return; // the collision already matches (70%+ of the art)
+	if (opaque < 12 || cov * 10 >= opaque * 7) return false; // the collision already matches (70%+ of the art)
 	if (nfoot) { ax /= nfoot; ay /= nfoot; } else { ax = ay = 8.f; }
 	// a crown round about the axis: its widest points in a sprite row are its sides, square to the view,
 	// which sit at one height (row = the axis' ground row - z); so each row gives the radius at that height
 	// (screen px across the view -> map voxels: / sqrt 2), the left and right reach averaged
 	const float axisPx = 16.f + (ax - ay), groundRow = 24.f + (ax + ay) * 0.5f + yoff;
 	std::vector<float> radius(H, -1.f);
+	bool added = false;
 	for (int y = 0; y < H; ++y)
 	{
 		int l = W, r = -1;
@@ -859,9 +872,10 @@ void Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 				bool art = false;
 				for (int q = -1; q <= 1 && !art; ++q)
 					if (px + q >= 0 && px + q < W && py >= 0 && py < H && spr->getPixel(px + q, py)) art = true;
-				if (art) own[x][y][z] = (uint8_t)(part + 1);
+				if (art) { own[x][y][z] = (uint8_t)(part + 1); added = true; }
 			}
 	}
+	return added;
 }
 
 /// One tile's parts built together as one shape (terrain round, 0.21.0-terrain):
@@ -911,7 +925,7 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 				}
 		if (count == 0) { addCard(md, p); continue; }
 		any = true;
-		if (part == O_OBJECT) growToArt(md, sc.spr, sc.yoff, own, part);
+		if (part == O_OBJECT && growToArt(md, sc.spr, sc.yoff, own, part)) p.grew |= (uint8_t)(1 << part);
 	}
 	// painted rocks, mounds and holes on a listed floor (VrRelief.h)
 	bool relief = k.m[O_FLOOR] && src[O_FLOOR].spr && VR::reliefMode() != VR::RELIEF_FLAT && VR::reliefSpec(k.m[O_FLOOR]);
@@ -959,7 +973,11 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 						if (hit(sc.spr, 16.f + (f[0] - f[1]), 24.f + (f[0] + f[1]) * 0.5f - f[2] + sc.yoff, 1, dummy)) ++hits[o - 1];
 					}
 				}
-		for (int i = 0; i < O_MAX; ++i) stray[i] = total[i] > 0 && hits[i] * 10 < total[i] * 4; // under 40% on the art
+		for (int i = 0; i < O_MAX; ++i)
+		{
+			stray[i] = total[i] > 0 && hits[i] * 10 < total[i] * 4; // under 40% on the art
+			if (stray[i]) p.stray |= (uint8_t)(1 << i);
+		}
 	}
 	// the colour of a face (voxel c, direction axis/sign), or false: not drawn
 	auto faceColor = [&](const int c[3], int axis, int sign, uint32_t &col) -> bool
@@ -1066,6 +1084,34 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 				}
 		}
 	}
+}
+
+/// The parts of a tile the table draws (an unseen wall or an open UFO door left out) and, for a listed
+/// floor, which sides its relief carries on into a neighbour's.
+Board::Impl::TileKey Board::Impl::tileKey(Tile *t, int x, int y, int z)
+{
+	TileKey key;
+	for (int part = 0; part < O_MAX; ++part)
+	{
+		TilePart tp = (TilePart)part;
+		const MapData *d = t->getMapData(tp);
+		if (!d) continue;
+		if ((tp == O_WESTWALL || tp == O_NORTHWALL) && !t->isDiscovered(tp)) continue;
+		if (t->isUfoDoorOpen(tp)) continue;
+		key.m[part] = d;
+	}
+	if (key.m[O_FLOOR] && VR::reliefMode() != VR::RELIEF_FLAT)
+		if (const VR::ReliefSpec *rs = VR::reliefSpec(key.m[O_FLOOR]))
+		{
+			const int nb[4][3] = {{x - 1, y, 1}, {x + 1, y, 2}, {x, y - 1, 4}, {x, y + 1, 8}};
+			for (auto &q : nb)
+			{
+				Tile *n = (q[0] >= 0 && q[1] >= 0 && q[0] < mx && q[1] < my) ? battle->getTile(Position(q[0], q[1], z)) : nullptr;
+				const VR::ReliefSpec *ns = n ? VR::reliefSpec(n->getMapData(O_FLOOR)) : nullptr;
+				if (ns && ns->sign == rs->sign) key.join |= q[2];
+			}
+		}
+	return key;
 }
 
 uint64_t Board::Impl::chunkHash(int cx, int cy, int z, uint64_t *terrain)
@@ -1214,27 +1260,7 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 			float b = shadeFactor(tileShade(t));
 			// alpha: the share of warm light (fires, flares) in its own light, + 2 under a roof (shader mode 3)
 			glm::vec4 tint(b, b, b, poolWarm(t) + (indoors(Position(x, y, z)) ? 2.f : 0.f));
-			TileKey key;
-			for (int part = 0; part < O_MAX; ++part)
-			{
-				TilePart tp = (TilePart)part;
-				const MapData *d = t->getMapData(tp);
-				if (!d) continue;
-				if ((tp == O_WESTWALL || tp == O_NORTHWALL) && !t->isDiscovered(tp)) continue;
-				if (t->isUfoDoorOpen(tp)) continue;
-				key.m[part] = d;
-			}
-			if (key.m[O_FLOOR] && VR::reliefMode() != VR::RELIEF_FLAT)
-				if (const VR::ReliefSpec *rs = VR::reliefSpec(key.m[O_FLOOR]))
-				{
-					const int nb[4][3] = {{x - 1, y, 1}, {x + 1, y, 2}, {x, y - 1, 4}, {x, y + 1, 8}};
-					for (auto &q : nb)
-					{
-						Tile *n = (q[0] >= 0 && q[1] >= 0 && q[0] < mx && q[1] < my) ? battle->getTile(Position(q[0], q[1], z)) : nullptr;
-						const VR::ReliefSpec *ns = n ? VR::reliefSpec(n->getMapData(O_FLOOR)) : nullptr;
-						if (ns && ns->sign == rs->sign) key.join |= q[2];
-					}
-				}
+			TileKey key = tileKey(t, x, y, z);
 			{
 				const Proto &p = tileProto(key);
 				if (p.verts.empty()) continue;
@@ -1617,7 +1643,7 @@ void Board::Impl::updateBattle(float dt)
 	}
 	else
 	{
-		viewLevel = mz - 1;
+		viewLevel = lab ? glm::clamp(labLevel, 0, mz - 1) : mz - 1;
 	}
 	if (!focusInit) { focus = focusTarget; focusInit = true; }
 	if (alienView) focus = focusTarget; // jumps with the flat camera (under the darkness), no glide
@@ -2026,7 +2052,7 @@ void Board::Impl::drawBattle(const Shader &sh)
 	drawEffects(sh, M);
 
 	if (!feedPass) drawHud(sh, M);
-	if (!feedPass && lab) drawLabLabels(sh, M);
+	if (!feedPass && !shadowPass && lab) drawLab(sh, M);
 	drawCurtain(sh);
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
@@ -2757,8 +2783,9 @@ void Board::Impl::drawHud(const Shader &sh, const glm::mat4 &M)
 	glDisable(GL_BLEND);
 }
 
-/// The terrain lab's part names, floating over their tiles (on the level shown and below).
-void Board::Impl::drawLabLabels(const Shader &sh, const glm::mat4 &M)
+/// The terrain lab over the map: part names, red flags on marked tiles, the inspect panel of the tile
+/// pointed at (or pinned).
+void Board::Impl::drawLab(const Shader &sh, const glm::mat4 &M)
 {
 	glm::vec3 viewerVox = glm::vec3(glm::inverse(M) * glm::vec4(viewer, 1.f));
 	glEnable(GL_BLEND);
@@ -2770,8 +2797,136 @@ void Board::Impl::drawLabLabels(const Shader &sh, const glm::mat4 &M)
 		const Label &l = label(a.text, (Uint8)(Palette::blockOffset(1) + 1));
 		drawLabel(sh, M, glm::vec3(a.x * TILE_W + TILE_W * 0.5f, a.z * TILE_H + TILE_H + 6.f, a.y * TILE_W + TILE_W * 0.5f), viewerVox, l, 0.32f);
 	}
+	// marks: a red box over the tile and its number and reason
+	const Uint8 redIdx = (Uint8)(Palette::blockOffset(Pathfinding::red - 1) - 1);
+	const std::string page = lab->pageKey();
+	glEnable(GL_DEPTH_TEST);
+	for (const LabMark &m : lab->marks())
+	{
+		if (m.terrain != lab->terrainName() || m.page != page || m.z > viewLevel) continue;
+		drawWire(sh, M, glm::vec3(m.x * TILE_W, m.z * TILE_H + 0.3f, m.y * TILE_W), 1, glm::vec4(2.4f, 0.25f, 0.2f, 1.f), 0.45f);
+	}
+	glDisable(GL_DEPTH_TEST);
+	for (const LabMark &m : lab->marks())
+	{
+		if (m.terrain != lab->terrainName() || m.page != page || m.z > viewLevel) continue;
+		std::string why = m.reasons.substr(0, m.reasons.find(','));
+		char num[8];
+		snprintf(num, sizeof(num), "#%03d ", m.id);
+		const Label &l = label(num + why, redIdx);
+		drawLabel(sh, M, glm::vec3(m.x * TILE_W + TILE_W * 0.5f, m.z * TILE_H + TILE_H + 13.f, m.y * TILE_W + TILE_W * 0.5f), viewerVox, l, 0.36f);
+	}
+	// the inspect panel: beside and above the tile, turned to the head, about 24 cm wide whatever the zoom
+	bool show = pinned || (hoverValid && !hoverGlobe);
+	Position t = pinned ? pinTile : hoverTile;
+	if (show && t.x >= 0 && t.y >= 0 && t.z >= 0 && t.x < mx && t.y < my && t.z < mz)
+	{
+		uint64_t key = ((((uint64_t)t.z * 4096 + t.y) * 4096 + t.x) * 1024 + (lab->generation() & 1023)) * 1024 + (VR::partStyleGeneration() & 1023);
+		key = key * 2 + (pinned ? 1 : 0);
+		if (key != inspectKey)
+		{
+			inspectKey = key;
+			std::vector<uint32_t> px;
+			int w = 0, h = 0;
+			if (inspectPicture(t, px, w, h))
+			{
+				if (pinned) for (int x = 0; x < w; ++x) { px[x] = 0xFF30C8FFu; px[(size_t)(h - 1) * w + x] = 0xFF30C8FFu; } // pinned: an amber edge
+				if (!inspectPanel.tex) inspectPanel.tex = std::make_unique<Texture>();
+				inspectPanel.tex->create(w, h, true, true);
+				inspectPanel.tex->update(px.data(), w, h);
+				inspectPanel.w = w;
+				inspectPanel.h = h;
+			}
+			else inspectPanel.w = 0;
+		}
+		if (inspectPanel.w > 0)
+		{
+			float k = tileSize / TILE_W; // metres per map voxel
+			glm::vec3 c(t.x * TILE_W + TILE_W * 0.5f, t.z * TILE_H + TILE_H, t.y * TILE_W + TILE_W * 0.5f);
+			glm::vec3 toV = viewerVox - c;
+			toV.y = 0.f;
+			glm::vec3 right = glm::length(toV) > 1e-3f ? glm::normalize(glm::cross(glm::vec3(0, 1, 0), toV)) : glm::vec3(1, 0, 0);
+			glm::vec3 at = c + right * (0.17f / k) + glm::vec3(0.f, 0.06f / k, 0.f);
+			drawLabel(sh, M, at, viewerVox, inspectPanel, 0.24f / (inspectPanel.w * k));
+		}
+	}
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
+}
+
+bool Board::Impl::inspectPicture(const Position &pos, std::vector<uint32_t> &px, int &W, int &H)
+{
+	if (!battle || !game) return false;
+	Tile *t = battle->getTile(pos);
+	if (!t) return false;
+	W = 320; H = 200;
+	Dash::Canvas cv(game, px, W, H);
+	if (!cv.ok()) return false;
+	static const char *const KIND[] = {"FLOOR", "WEST WALL", "NORTH WALL", "OBJECT"};
+	auto spriteOf = [](const MapData *md) -> const Surface*
+	{
+		if (!md || !md->getDataset() || !md->getDataset()->getSurfaceset()) return nullptr;
+		return static_cast<const SurfaceSet*>(md->getDataset()->getSurfaceset())->getFrame(md->getSprite(0));
+	};
+	auto blit = [&](const Surface *spr, int dx, int dy, float sc, int yoff)
+	{
+		if (!spr) return;
+		int w = (int)(spr->getWidth() * sc), h = (int)(spr->getHeight() * sc);
+		for (int y = 0; y < h; ++y)
+			for (int x = 0; x < w; ++x)
+			{
+				int sx = (int)(x / sc), sy = (int)(y / sc) - yoff;
+				if (sy < 0 || sy >= spr->getHeight()) continue;
+				Uint8 c = spr->getPixel(sx, sy);
+				int X = dx + x, Y = dy + y;
+				if (c && X >= 0 && Y >= 0 && X < W && Y < H) px[(size_t)Y * W + X] = rgba(pal[c]);
+			}
+	};
+	std::ostringstream title;
+	title << lab->terrainName() << "  " << lab->pageKey() << "  tile " << pos.x << "," << pos.y << "," << pos.z;
+	cv.title(title.str());
+	// as the game draws the tile: floor, walls, object, each lifted by its offset
+	cv.text(6, 24, 110, "AS THE GAME DRAWS IT", Dash::DIM);
+	cv.rect(6, 34, 98, 122, Dash::C(22, 30, 52));
+	for (int part = O_FLOOR; part < O_MAX; ++part)
+		if (const MapData *md = t->getMapData((TilePart)part)) blit(spriteOf(md), 7, 35, 3.f, -md->getYOffset());
+	// each part on its own, with what the table did with it
+	TileKey key = tileKey(t, pos.x, pos.y, pos.z);
+	const Proto &tp = tileProto(key);
+	int cell = 0;
+	for (int part = O_FLOOR; part < O_MAX; ++part)
+	{
+		const MapData *md = t->getMapData((TilePart)part);
+		if (!md) continue;
+		int cx = 120 + (cell % 2) * 100, cy = 24 + (cell / 2) * 86;
+		++cell;
+		cv.rect(cx, cy, 52, 62, Dash::C(22, 30, 52));
+		blit(spriteOf(md), cx + 2, cy + 1, 1.5f, -md->getYOffset());
+		int id = -1, set = -1;
+		t->getMapData(&id, &set, (TilePart)part);
+		std::string name = std::string(KIND[part]) + " " + (md->getDataset() ? md->getDataset()->getName() : std::string("?")) + " " + std::to_string(id);
+		cv.text(cx, cy + 63, 98, name, Dash::GOLD);
+		std::string did;
+		if (const VR::ReliefSpec *rs = part == O_FLOOR ? VR::reliefSpec(md) : nullptr)
+			did = std::string("relief ") + (rs->sign > 0 ? "up " : "down ") + std::to_string((int)rs->height) + (VR::reliefMode() == VR::RELIEF_FLAT ? " (off)" : "");
+		else if (tp.grew & (1 << part)) did = "crown added";
+		else if (tp.stray & (1 << part)) did = "art mismatch: faces dropped";
+		else if (part == O_FLOOR) did = "flat";
+		if (!did.empty()) cv.text(cx, cy + 72, 98, did, Dash::CYAN);
+	}
+	if (!cell) cv.text(120, 40, 190, "nothing on this tile", Dash::DIM);
+	// marked?
+	for (const LabMark &m : lab->marks())
+		if (m.terrain == lab->terrainName() && m.page == lab->pageKey() && m.x == pos.x && m.y == pos.y && m.z == pos.z)
+		{
+			char num[8];
+			snprintf(num, sizeof(num), "#%03d", m.id);
+			cv.text(6, 162, 108, std::string("MARKED ") + num, Dash::RED);
+			cv.text(6, 172, 108, m.reasons, Dash::RED);
+			break;
+		}
+	cv.text(6, 188, 308, pinned ? "PINNED (trigger again to release)   A: MARK / UNMARK" : "TRIGGER: PIN   A: MARK / UNMARK", Dash::DIM);
+	return true;
 }
 
 // ================================================================== geoscape globe
@@ -3119,6 +3274,13 @@ glm::vec3 Board::tileCenter(int tx, int ty, int tz) const
 	return glm::vec3(p.boardMatrix() * glm::vec4(tx * TILE_W + 8.f, tz * TILE_H - lvl, ty * TILE_W + 8.f, 1.f));
 }
 
+bool Board::inspectPicture(int x, int y, int z, std::vector<uint32_t> &px, int &w, int &h)
+{
+	Impl &p = *_p;
+	if (!p.hasBattle || !p.lab) return false;
+	return p.inspectPicture(Position(x, y, z), px, w, h);
+}
+
 bool Board::mapFootprint(glm::mat4 &worldToMap, glm::vec2 &size) const
 {
 	const Impl &p = *_p;
@@ -3239,6 +3401,9 @@ void Board::update(Game *game, float dt)
 		p.lab = lab;
 		if (fresh)
 		{
+			p.labLevel = p.mz - 1;
+			p.pinned = false;
+			p.inspectKey = ~0ull;
 			// the whole map in view, from its middle
 			float w = p.mapRect.z - p.mapRect.x, d = p.mapRect.w - p.mapRect.y;
 			float fit = std::min(w / std::max(1, p.mx), d / std::max(1, p.my)) * 0.95f;
@@ -3247,6 +3412,7 @@ void Board::update(Game *game, float dt)
 			p.focusInit = true;
 		}
 		else p.focusTarget = p.focus; // no game camera to follow: the table stays where it was slid
+		lab->updateLamps(p.hoverTile.x, p.hoverTile.y, p.hoverTile.z, p.hoverValid && !p.hoverGlobe);
 		float turn = lab->takeSunTurn();
 		if (turn != 0.f) rotateSun(turn);
 		std::string w = lab->takeWeather();
@@ -3759,6 +3925,14 @@ void Board::click(int button)
 	}
 	revalidate(p);
 	if (!p.hoverValid) return;
+	if (p.lab && p.hasBattle && !p.hoverGlobe)
+	{
+		// the terrain lab: A marks (or unmarks) the tile, the trigger pins its inspect panel (again: unpins)
+		if (button == SDL_BUTTON_RIGHT) p.lab->tileAction(p.hoverTile.x, p.hoverTile.y, p.hoverTile.z);
+		else if (p.pinned && p.pinTile == p.hoverTile) p.pinned = false;
+		else { p.pinned = true; p.pinTile = p.hoverTile; }
+		return;
+	}
 	if (p.hasBattle && !p.hoverGlobe)
 	{
 		if (p.bs) p.bs->vrTileClick(p.hoverTile, button == SDL_BUTTON_RIGHT);
@@ -3783,6 +3957,7 @@ void Board::wheel(int dir)
 	revalidate(p);
 	if (p.hasBattle)
 	{
+		if (p.lab) { p.labLevel = glm::clamp(p.labLevel + (dir > 0 ? 1 : -1), 0, std::max(0, p.mz - 1)); return; }
 		if (!p.bs) return;
 		if (dir > 0) p.bs->btnMapUpClick(nullptr); else p.bs->btnMapDownClick(nullptr);
 	}

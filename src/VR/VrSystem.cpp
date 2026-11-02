@@ -204,6 +204,10 @@ struct State
 	std::string pendingShot;
 	int frameCount = 0;
 	bool labStarted = false; // -vrTerrainLab: the lab replaced the menus once the game had loaded
+	struct Capture { std::string path; double at; };
+	std::vector<Capture> captures;   // terrain lab: views to save (after the mark window has folded away)
+	RenderTarget captureTarget;
+	Texture captureTex;
 	double time = 0.0;
 };
 
@@ -2064,6 +2068,57 @@ static void saveShot(const std::string &path, int w, int h)
 	Log(LOG_INFO) << "[VR] screenshot " << path << (err ? " FAILED" : " saved");
 }
 
+/// The terrain lab's mark screenshots: the scene drawn once more from the head into a 1600 x 1000 picture
+/// (a 70 degree view, hands included) and saved as a PNG.
+static void doCaptures(const glm::mat4 &view, const glm::vec3 &eye)
+{
+	if (S->captures.empty() || S->time < S->captures.front().at) return;
+	std::string path = S->captures.front().path;
+	S->captures.erase(S->captures.begin());
+	const int W = 1600, H = 1000;
+	if (S->captureTarget.width() != W)
+	{
+		S->captureTarget.create(W, H, 4);
+		S->captureTex.create(W, H, false, true);
+	}
+	S->captureTarget.bind();
+	drawScene(view, glm::perspective(glm::radians(70.f), (float)W / (float)H, 0.03f, 60.f), eye, true);
+	glDisable(GL_FRAMEBUFFER_SRGB);
+	S->captureTarget.resolveTo(S->captureTex.id());
+	std::vector<unsigned char> px((size_t)W * H * 4), flipped((size_t)W * H * 4);
+	glBindTexture(GL_TEXTURE_2D, S->captureTex.id());
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+	for (int y = 0; y < H; ++y) std::memcpy(&flipped[(size_t)y * W * 4], &px[(size_t)(H - 1 - y) * W * 4], (size_t)W * 4);
+	for (size_t i = 3; i < flipped.size(); i += 4) flipped[i] = 255;
+	unsigned err = lodepng::encode(path, flipped, W, H);
+	Log(LOG_INFO) << "[VR] view " << path << (err ? " FAILED" : " saved");
+}
+
+void requestViewCapture(const std::string &path)
+{
+	if (S) S->captures.push_back({path, S->time + 0.6}); // the mark window folds away first
+}
+
+bool saveInspectPicture(const std::string &path, int x, int y, int z)
+{
+	std::vector<uint32_t> px;
+	int w = 0, h = 0;
+	if (!S || !S->board.inspectPicture(x, y, z, px, w, h)) return false;
+	const int K = 3; // three screen pixels per picture pixel: the game's art stays crisp
+	std::vector<unsigned char> out((size_t)w * K * h * K * 4);
+	for (int y2 = 0; y2 < h * K; ++y2)
+		for (int x2 = 0; x2 < w * K; ++x2)
+		{
+			uint32_t c = px[(size_t)(y2 / K) * w + x2 / K];
+			unsigned char *o = &out[((size_t)y2 * w * K + x2) * 4];
+			o[0] = c & 255; o[1] = (c >> 8) & 255; o[2] = (c >> 16) & 255; o[3] = 255;
+		}
+	unsigned err = lodepng::encode(path, out, w * K, h * K);
+	Log(LOG_INFO) << "[VR] inspect picture " << path << (err ? " FAILED" : " saved");
+	return !err;
+}
+
 static void previewFrame()
 {
 	runScript();
@@ -2107,6 +2162,7 @@ static void previewFrame()
 	}
 	renderShadows();
 	renderScannerFeed();
+	doCaptures(viewFromPose(S->head), S->head.pos);
 	S->previewTarget.bind();
 	glm::mat4 proj = glm::perspective(glm::radians(62.f), (float)w / (float)h, 0.03f, 60.f);
 	drawScene(viewFromPose(S->head), proj, S->head.pos, false);
@@ -2176,6 +2232,10 @@ static void headsetFrame(float dt)
 			glDisable(GL_FRAMEBUFFER_SRGB);
 			S->eyeTarget[e].resolveTo(tex);
 			S->xr.releaseEye(e);
+		}
+		{
+			glm::mat4 m = S->rig * S->head.matrix();
+			doCaptures(glm::inverse(m), glm::vec3(m[3]));
 		}
 		glFlush();
 	}

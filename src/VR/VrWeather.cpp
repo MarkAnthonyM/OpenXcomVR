@@ -494,6 +494,7 @@ struct Weather::Impl
 	float flashAmp = 1.f;               // this strike's brightness (near 1, far dim)
 	bool lastNear = false;
 	int strength = 1;                   // rain/snow: 0 light, 1 steady, 2 heavy
+	int density = 1;                    // forced dust, sand, mist, clouds: 0 thin, 1 normal, 2 thick
 	// the rain's and wind's loops (LOOP_ROOM, LOOP_TABLE, LOOP_WIND): each fades in and out on its own channel
 	struct LoopPlay { int channel = -1, key = -1; float level = 0.f, volume = 0.f, want = 0.f; };
 	LoopPlay loops[LOOPS];
@@ -593,8 +594,8 @@ void Weather::force(const std::string &kind)
 	size_t c = k.find(':');
 	if (c != std::string::npos) { want = std::atoi(k.c_str() + c + 1) % 3; k = k.substr(0, c); }
 	bool fall = k == "rain" || k == "snow";
-	if (!fall) forcedStrength = -1;
-	else if (want >= 0) forcedStrength = want;
+	if (want >= 0) forcedStrength = want; // "dust:0" .. "clouds:2": the density of the others (terrain lab)
+	else if (!fall) forcedStrength = -1;
 	else if (forced == k && forcedStrength >= 0) forcedStrength = (forcedStrength + 1) % 3;
 	else forcedStrength = 1;
 	forced = k;
@@ -870,6 +871,11 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 		else if (forced == "mist") mist = true;
 		else if (forced == "clouds") cloud = night ? 0.75f : 0.68f;
 	}
+	// forced dust, sand, mist or clouds may come thin, normal or thick ("mist:0" .. "mist:2", the lab's
+	// STRENGTH key); rain and snow have their own strengths below
+	int density = forced != "auto" && forced != "rain" && forced != "snow" && forcedStrength >= 0 ? forcedStrength : 1;
+	if (forced == "clouds") { static const float day[3] = {0.45f, 0.68f, 0.85f}, nite[3] = {0.55f, 0.75f, 0.9f}; cloud = night ? nite[density] : day[density]; }
+	p.density = density;
 	// rain and snow come light (40%), steady (40%) or heavy (20%): drizzle / steady rain / thunderstorm,
 	// flurries / steady snow / blizzard
 	int strength = 1;
@@ -931,7 +937,7 @@ void Weather::begin(Game *game, SavedBattleGame *battle, int shadeOffset)
 	// mist takes the colour of the low sun, as bright as the morning allows
 	float light = shadeLight(shade);
 	p.mistCol = glm::mix(glm::vec3(0.86f, 0.87f, 0.90f), sunColour(shade, morning), 0.3f) * glm::clamp(light * 2.f, 0.15f, 0.8f);
-	p.mistAlpha = mist ? 0.065f : 0.f;
+	p.mistAlpha = mist ? 0.065f * (density == 0 ? 0.55f : density == 2 ? 1.7f : 1.f) : 0.f;
 	if (haze) { p.mistCol = glm::vec3(0.86f, 0.89f, 0.95f) * glm::clamp(light * 2.f, 0.15f, 0.85f); p.mistAlpha = 0.09f; }
 	I.sky = p.skyName;
 	I.sunAz = az; I.sunElev = elev;
@@ -1131,7 +1137,7 @@ void Weather::update(float dt, const WeatherView &v)
 	switch (p.kind)
 	{
 	case RAIN: case SNOW: break;
-	default: want = (size_t)std::min(450.f, tiles * 0.8f); break;
+	default: want = (size_t)((float)std::min(450.f, tiles * 0.8f) * (p.density == 0 ? 0.4f : p.density == 2 ? 1.8f : 1.f)); break;
 	}
 	bool falling = p.kind == RAIN || p.kind == SNOW;
 	while (p.drops.size() < want)

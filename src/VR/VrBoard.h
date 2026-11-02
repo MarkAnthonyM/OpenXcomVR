@@ -96,6 +96,8 @@ public:
 	std::string debugInfo() const;
 	/// The battle map's footprint on the table: world -> map voxels, and its size (x, z) in voxels.
 	bool mapFootprint(glm::mat4 &worldToMap, glm::vec2 &size) const;
+	/// The terrain lab's inspect panel of a tile (RGBA, w x h), for its mark screenshots.
+	bool inspectPicture(int x, int y, int z, std::vector<uint32_t> &px, int &w, int &h);
 	/// Continuous map tile coordinates (x, y) under a world point.
 	bool tileCoords(const glm::vec3 &world, glm::vec2 &tile) const;
 	/// Shows which way the selected soldier would turn (tile-space direction) while a finger drags.
