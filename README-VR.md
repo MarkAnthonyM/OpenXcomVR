@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.1)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.2)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -521,18 +521,30 @@ Key ideas:
   mounds, craters and crevasses are only painted get relief (`VrRelief.*`) when
   listed in `bin/common/Resources/VR/terrain-relief.txt` (part, up or down,
   height): the feature is where the painting differs from the tile's ground
-  colour, rounded from its edges, as whole-voxel steps (the default) or a
-  smooth surface (`-vrRelief flat|steps|smooth` on the command line, not saved;
-  the lab's RELIEF key switches it too).
+  colour, rounded from its edges, as whole-voxel steps (the owner's choice;
+  `-vrRelief flat|smooth` on the command line or the lab's RELIEF key show the
+  others, for comparing).
   Holes at ground level sink into a basin under the table's glass (the glass is
   left out under the map's footprint). None of this changes the game's
   collision, line of fire or movement.
 - **The terrain lab** (`VrLab.*`, a developer tool): `openxcom.exe
-  -vrTerrainLab [TERRAIN]` opens a terrain on the table instead of the menus,
-  every part with its name or one of its map blocks (craft and UFO terrains
-  too), with keys for the relief mode, light, sun and weather on the wall
-  screen. It is read from the command line only (never saved to options.cfg).
-  The table draws the lab's map with the mission code.
+  -vrTerrainLab [TERRAIN]` opens a terrain on the table instead of the menus.
+  It is read from the command line only (never saved to options.cfg), and the
+  table draws the lab's map with the mission code. Pages: every part with its
+  name; ASSEMBLED, the pieces made of several parts (parts that sit next to
+  each other the same way every time they appear in the terrain's map blocks);
+  then each map block (craft and UFO terrains too). Wall-screen keys: terrain,
+  page, relief mode, light, sun, sky and its STRENGTH, LAMPS (a soldier's light
+  on the game's unit light layer: a grid, or one where the laser points; on by
+  itself at dusk and night), PICTURES (each part's sprite on a card behind it,
+  each piece and each map block as the flat game draws it) and CLEAR MARKS.
+  Pointing at a tile shows its inspect panel (the parts as the game draws them,
+  each on its own, what the table did with them); the trigger pins it. A marks
+  the tile for fixing (reasons and a typed note in a window over the table) or
+  unmarks it: each lab run that marks something gets
+  `<user folder>/terrain-lab/<date_time>/` with `notes.txt`, `NNN-view.png`
+  (the headset view) and `NNN-art.png` (the inspect panel); open marks are kept
+  in `terrain-lab/marks.txt` and show as red boxes until removed.
 - **Standees** are drawn with the game's own `UnitSprite`, after temporarily
   rotating the unit's facing by the angle you view it from, so a soldier seen
   from behind shows its back.
