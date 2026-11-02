@@ -130,7 +130,15 @@ Script commands (one per line; numbers are optional with defaults):
 | `dbgpin on [dist]`, `dbgpage n`, `dbgpress ID` | the wrist debug panel (needs `-vrDebugPanel true`): hold it in front of the eye (the preview has no left hand to turn), show page 0 info / 1 controls, press a control (`RAIN`, `DARKER`, `TURNR`, `REAL`, `STRIKE`...) |
 | `weather kind`, `strike`, `shade n`, `sunaz deg` | the battle's weather (`rain`, `snow`, `dust`, `sand`, `mist`, `clouds`, `clear`, `auto`), a lightning strike now, the mission's darkness (global shade, relit and rebuilt), the sun's direction for the following re-rolls (`-1` normal); `weather`/`shade` re-roll the sky, so set `sunaz` first |
 | `boardinfo`, `status` | log the table view (focus, where the soldier sits, level) / the table state |
+| `reveal`, `findset NAME`, `centertile x y` | the whole map explored (looking at terrain without fog); log where a terrain set's tiles are and centre the table on them (`findset UFO1`, `findset PLANE`); centre the table on a tile |
+| `nofloor`, `floorids [part]` | log ground tiles without a floor part; which parts (0 floor .. 3 object) the ground level uses, how often, one place each |
 | `log text`, `quit` | |
+
+The terrain lab (0.21.0-terrain): `vr-dev/test/run.sh <script> -vrTerrainLab POLAR` starts in the lab
+instead of a save (the terrain name is optional; put the switch last). Its wall-screen keys are clicked
+with `click` in game-frame pixels: the window sits at 480,300 in the 1280x800 frame, so < / > TERRAIN
+are 526,366 / 602,366, < / > PAGE 678,366 / 754,366, RELIEF 526,388, LIGHT 602,388, TURN SUN 678,388,
+SKY 754,388. `-vrRelief flat|steps|smooth` sets the relief mode for a mission run.
 
 Practical notes: the first 9 s of every script are loading (`wait 9000`).
 The New Battle flow is driven by blind clicks on the flat screen (see
@@ -360,6 +368,42 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     the head (Board::setListener -> WeatherView::viewerFwd, map space) and
     is re-aimed every frame as the head turns. The flash itself is still
     undirected. Test op `thunderwav <path> <near 1/0> <variant>`.
+- Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
+  holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>`.
+  Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
+  hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
+  compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
+  hand-built model first (the other ships decided after it); bodies as short voxel lumps, small items as
+  flat pictures with a faint outline.
+  Findings: every floor in X-COM is the same 2-voxel slab; rocks, mounds, craters and crevasses are only
+  painted, inside the flat diamond (no floor sprite rises past it), so relief can't come from outlines.
+  Most objects and walls repeat the floor's full bottom slab (CULTIVAT walls all, DESERT 39/53 objects,
+  FOREST 44/77): two coplanar top faces in two colours was the flicker. POLAR 60-62 are 9-23 pixel ice
+  bits with a 4x4-voxel block of collision: drawn in the sprite's average colour they were the grey
+  "missing" squares on the water. The small scout's collision is close to a cube (the table showed a box
+  on legs). The art's light: tops brightest, south faces next, east faces darkest.
+  - terrain.1: the terrain lab (VrLab: `-vrTerrainLab [TERRAIN]`; parts page with names, map-block pages
+    read like BattlescapeGenerator::loadMAP; LIGHT/TURN SUN/SKY through Board::update; the table binds
+    the lab's own SavedBattleGame, no BattlescapeState: revalidate and raycast know about the lab).
+    Board::buildTile replaces the per-part protos: one shape per combination of a tile's parts (TileKey),
+    voxel ownership (walls, object, floor owns z 0-1), shown faces from the owner's sprite, hidden faces
+    through the solid to its shown side, parts whose shown faces mostly miss their art (under 40%) lose
+    the faces that miss (`stray`), others take the nearest colour. growToArt: objects covering under 70%
+    of their art grow crown voxels round about their axis (radius per height from the sprite row's
+    widest points), capped inside the tile. VrRelief: 64 listed floor parts in
+    `bin/common/Resources/VR/terrain-relief.txt`; feature mask from the ground's palette ramp and
+    brightness, opening/closing, specks under 14 cells dropped, chamfer distance, sqrt profile, scaled to
+    the listed height, edges brought down unless the neighbour is a listed part of the same kind
+    (TileKey::join); steps (whole voxels per column) or smooth (32 x 32 height field), default steps.
+    VrRoom: the table's slab is a basin 10 cm deep under the glass; the scene shader leaves the glass out
+    under the map's footprint (uMapCut / uMapCutInv) so ground-level holes show. Tried and dropped: a
+    "boxed" rule rebuilding objects whose collision box misses their art (it turned sand-hill ramps into
+    bowls; the forest's box trees are drawn as blocks anyway).
+  Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
+  Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
+  it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
+  build without VR.
 - Released so far: 0.12.2 (the first published release; 0.9.1 was prepared but never published). The
   tags proto-0.1.0 ... proto-0.8.0 on the fork are from before the tag-only-releases rule.
 
@@ -800,7 +844,10 @@ Room and rendering
 
 - Quest 3 and Steam Frame layouts have never been run on those headsets.
 - Items lying on the floor aren't shown on the table map; ground items taller
-  than three cells are only in the screen's inventory.
+  than three cells are only in the screen's inventory. (Planned on the terrain branch.)
+- Terrain parts' animations (8 frames) aren't shown: the table builds frame 0. (Planned on the terrain branch.)
+- Craft and UFO hulls are their collision voxels; the small scout is close to a box. A hand-built scout
+  model is planned on the terrain branch.
 - Weather and the sun have only been judged in the desktop preview (no
   headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).

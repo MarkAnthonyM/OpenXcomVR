@@ -94,6 +94,8 @@ public:
 	/// Map tile under a world point (highest visible floor at or below it). floorY = its world height.
 	bool tileUnder(const glm::vec3 &world, int &tx, int &ty, int &tz, float &floorY) const;
 	std::string debugInfo() const;
+	/// The battle map's footprint on the table: world -> map voxels, and its size (x, z) in voxels.
+	bool mapFootprint(glm::mat4 &worldToMap, glm::vec2 &size) const;
 	/// Continuous map tile coordinates (x, y) under a world point.
 	bool tileCoords(const glm::vec3 &world, glm::vec2 &tile) const;
 	/// Shows which way the selected soldier would turn (tile-space direction) while a finger drags.

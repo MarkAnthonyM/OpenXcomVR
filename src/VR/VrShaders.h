@@ -87,6 +87,8 @@ uniform vec3 uTableGlow;
 uniform int uHoleCount;      // open hatches in the table: these xz rects are cut out...
 uniform vec4 uHoles[40];
 uniform vec2 uHoleY;         // ...but only between these heights
+uniform mat4 uMapCutInv;     // world -> the battle map's voxels (X east, Y up, Z south)
+uniform vec3 uMapCut;        // the map's size in voxels (x, z); z > 0.5: the glass is left out under it
 uniform vec3 uSun;           // globe mode: world-space direction towards the sun
 uniform vec4 uClip;          // world-space xz clip rectangle (xmin, zmin, xmax, zmax); disabled when xmin > xmax
 uniform vec4 uSunKey;        // outdoor battle: xyz world direction towards the sun or moon, w 1 = on. It lights the
@@ -379,6 +381,13 @@ void sceneMain()
 		gBuildEdge = 1.0 - smoothstep(0.0, 0.006, -b);
 	}
 	if (uClip.x <= uClip.z && (vWorld.x < uClip.x || vWorld.x > uClip.z || vWorld.z < uClip.y || vWorld.z > uClip.w)) discard;
+	// the holo glass under the battle map: the map's ground covers it, and holes in that ground (craters,
+	// crevasses: VrRelief) look down into the table below
+	if (uMapCut.z > 0.5 && vMat == 3)
+	{
+		vec3 m = (uMapCutInv * vec4(vWorld, 1.0)).xyz;
+		if (m.x > 0.0 && m.x < uMapCut.x && m.z > 0.0 && m.z < uMapCut.y) discard;
+	}
 	if (uHoleCount > 0 && vWorld.y > uHoleY.x && vWorld.y < uHoleY.y)
 	{
 		for (int i = 0; i < uHoleCount; ++i)

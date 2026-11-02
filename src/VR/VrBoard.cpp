@@ -21,6 +21,7 @@
 #include "VrRoom.h"
 #include "VrWeather.h"
 #include "VrLab.h"
+#include "VrRelief.h"
 #include "../Engine/Game.h"
 #include "../Engine/State.h"
 #include "../Engine/Surface.h"
@@ -316,7 +317,27 @@ struct Board::Impl
 	BattlescapeState *bs = nullptr; // only valid while it is on the game's state stack
 	const Tile *firstTile = nullptr;
 	int mx = 0, my = 0, mz = 0, cxN = 0, cyN = 0;
-	std::map<const MapData*, Proto> protos;
+	/// A tile's parts (null where it has none, or a part not drawn: an open UFO door, an unseen wall).
+	struct TileKey
+	{
+		const MapData *m[O_MAX] = {nullptr, nullptr, nullptr, nullptr};
+		int join = 0; // floor relief carrying on into the neighbours (VR::reliefField)
+		bool operator<(const TileKey &o) const
+		{
+			if (join != o.join) return join < o.join;
+			return std::lexicographical_compare(m, m + O_MAX, o.m, o.m + O_MAX);
+		}
+	};
+	std::map<TileKey, Proto> tileProtos;   // one shape per combination of parts (VrBoard: buildTile)
+	const Proto &tileProto(const TileKey &k);
+	void buildTile(const TileKey &k, Proto &p);
+	void addCard(const MapData *md, Proto &p);
+	void addRelief(const MapData *floor, int join, Proto &p);
+	void growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][TILE_H], int part);
+	/// Per part: its sprite's average colour (minimap, fallbacks) and how high it reaches (rain).
+	struct PartInfo { uint32_t avg = 0; float top = 0.f; };
+	std::map<const MapData*, PartInfo> partInfos;
+	const PartInfo &partInfo(const MapData *md);
 	std::vector<Chunk> chunks;
 	std::vector<Chunk> fogChunks;  // fog of war volume, per chunk column (all levels)
 	int fogTop(int x, int y) const; // fogged levels in a column (0 = explored)
@@ -506,9 +527,6 @@ struct Board::Impl
 
 	void resetBattle();
 	void bindBattle(SavedBattleGame *save);
-	uint32_t sample(const Surface *spr, uint32_t fallback, float px, float py);
-	const Proto &proto(const MapData *md);
-	void buildProto(const MapData *md, Proto &p);
 	uint64_t chunkHash(int cx, int cy, int z, uint64_t *terrain = nullptr);
 	void buildChunk(int cx, int cy, int z, Chunk &ch);
 	void updateBattle(float dt);
@@ -528,7 +546,8 @@ void Board::Impl::resetBattle()
 	partTops.clear();
 	stopCache.clear();
 	openCache.clear();
-	protos.clear();
+	tileProtos.clear();
+	partInfos.clear();
 	chunks.clear();
 	fogChunks.clear();
 	cards.clear();
@@ -593,96 +612,386 @@ void Board::Impl::bindBattle(SavedBattleGame *save)
 	Log(LOG_INFO) << "[VR] battle diorama bound: map " << mx << "x" << my << "x" << mz;
 }
 
-uint32_t Board::Impl::sample(const Surface *spr, uint32_t fallback, float px, float py)
+
+const Board::Impl::PartInfo &Board::Impl::partInfo(const MapData *md)
 {
-	int x = (int)std::floor(px), y = (int)std::floor(py);
-	static const int search[][2] = {{0, 0}, {0, -1}, {0, 1}, {-1, 0}, {1, 0}, {0, -2}, {0, 2}, {-1, -1}, {1, 1}, {0, -3}, {0, 3}, {0, -4}};
-	for (auto &o : search)
+	auto it = partInfos.find(md);
+	if (it != partInfos.end()) return it->second;
+	PartInfo &pi = partInfos[md];
+	const Surface *spr = nullptr;
+	if (md->getDataset() && md->getDataset()->getSurfaceset())
+		spr = static_cast<const SurfaceSet*>(md->getDataset()->getSurfaceset())->getFrame(md->getSprite(0));
+	if (!spr) return pi;
+	uint64_t sr = 0, sg = 0, sb = 0, n = 0;
+	for (int y = 0; y < spr->getHeight(); ++y)
+		for (int x = 0; x < spr->getWidth(); ++x)
+			if (Uint8 c = spr->getPixel(x, y)) { sr += pal[c].r; sg += pal[c].g; sb += pal[c].b; ++n; }
+	if (n) pi.avg = (uint32_t)(sr / n) | ((uint32_t)(sg / n) << 8) | ((uint32_t)(sb / n) << 16) | 0xFF000000u;
+	// the highest voxel layer with anything in it; parts without voxels stand as cards up to the sprite's top
+	int top = -1;
+	for (int z = 0; z < TILE_H; ++z)
 	{
-		int sx = x + o[0], sy = y + o[1];
-		if (sx < 0 || sy < 0 || sx >= spr->getWidth() || sy >= spr->getHeight()) continue;
-		Uint8 c = spr->getPixel(sx, sy);
-		if (c) return rgba(pal[c]);
+		int loft = md->getLoftID(z / 2);
+		if (!loft || !voxels) continue;
+		for (int y = 0; y < TILE_W; ++y)
+		{
+			size_t idx = (size_t)loft * 16 + y;
+			if (idx < voxels->size() && (*voxels)[idx]) { top = z; break; }
+		}
 	}
-	return fallback;
+	pi.top = top >= 0 ? (float)(top + 1) : (n ? 32.f + md->getYOffset() : 0.f);
+	return pi;
 }
 
-void Board::Impl::buildProto(const MapData *md, Proto &p)
+const Proto &Board::Impl::tileProto(const TileKey &k)
+{
+	auto it = tileProtos.find(k);
+	if (it != tileProtos.end()) return it->second;
+	Proto &p = tileProtos[k];
+	buildTile(k, p);
+	return p;
+}
+
+/// A decorative part without collision voxels: two crossed cards showing its sprite.
+void Board::Impl::addCard(const MapData *md, Proto &p)
 {
 	const Surface *spr = nullptr;
 	if (md->getDataset() && md->getDataset()->getSurfaceset())
 		spr = static_cast<const SurfaceSet*>(md->getDataset()->getSurfaceset())->getFrame(md->getSprite(0));
 	if (!spr) return;
-	const int yoff = md->getYOffset();
-	const bool isFloor = md->getObjectType() == O_FLOOR;
-
-	// average color, for faces whose projection falls on transparent pixels
-	uint64_t sr = 0, sg = 0, sb = 0, n = 0;
-	for (int y = 0; y < spr->getHeight(); ++y)
-		for (int x = 0; x < spr->getWidth(); ++x)
-			if (Uint8 c = spr->getPixel(x, y)) { sr += pal[c].r; sg += pal[c].g; sb += pal[c].b; ++n; }
-	if (!n) return; // fully transparent sprite: nothing to show
-	uint32_t avg = (uint32_t)(sr / n) | ((uint32_t)(sg / n) << 8) | ((uint32_t)(sb / n) << 16) | 0xFF000000u;
-	p.avg = avg;
-
-	// voxel occupancy
-	static bool solid[TILE_W][TILE_W][TILE_H];
-	int count = 0;
-	for (int z = 0; z < TILE_H; ++z)
-	{
-		int loft = md->getLoftID(z / 2);
-		for (int y = 0; y < TILE_W; ++y)
+	int w = spr->getWidth(), h = spr->getHeight(), ax, ay;
+	bool any = false;
+	for (int y = 0; y < h && !any; ++y) for (int x = 0; x < w; ++x) if (spr->getPixel(x, y)) { any = true; break; }
+	if (!any || !atlas.alloc(w + 2, h + 2, ax, ay)) return;
+	for (int j = -1; j <= h; ++j)
+		for (int i = -1; i <= w; ++i)
 		{
-			size_t idx = (size_t)loft * 16 + y;
-			Uint16 row = (loft && voxels && idx < voxels->size()) ? (*voxels)[idx] : 0;
-			for (int x = 0; x < TILE_W; ++x)
-			{
-				solid[x][y][z] = (row & (1 << (15 - x))) != 0;
-				count += solid[x][y][z];
-			}
+			int sx = glm::clamp(i, 0, w - 1), sy = glm::clamp(j, 0, h - 1);
+			Uint8 c = spr->getPixel(sx, sy);
+			atlas.put(ax + 1 + i, ay + 1 + j, c ? rgba(pal[c]) : 0u);
 		}
+	float u0 = (ax + 1) / (float)ATLAS, v0 = (ay + 1) / (float)ATLAS;
+	float u1 = (ax + 1 + w) / (float)ATLAS, v1 = (ay + 1 + h) / (float)ATLAS;
+	float top = 32.f + md->getYOffset(), bottom = top - h; // sprite row 32 sits on the floor at the tile centre
+	float half = w * 0.35f;
+	glm::vec3 c(8.f, 0.f, 8.f);
+	glm::vec3 dirs[2] = {glm::normalize(glm::vec3(1, 0, -1)), glm::normalize(glm::vec3(1, 0, 1))};
+	for (auto &d : dirs)
+	{
+		uint32_t b = (uint32_t)p.verts.size();
+		glm::vec3 nrm = glm::normalize(glm::cross(d, glm::vec3(0, 1, 0)));
+		glm::vec4 white(1.f);
+		p.verts.push_back({c - d * half + glm::vec3(0, bottom, 0), nrm, {u0, v1}, white, MAT_BOARD});
+		p.verts.push_back({c + d * half + glm::vec3(0, bottom, 0), nrm, {u1, v1}, white, MAT_BOARD});
+		p.verts.push_back({c + d * half + glm::vec3(0, top, 0), nrm, {u1, v0}, white, MAT_BOARD});
+		p.verts.push_back({c - d * half + glm::vec3(0, top, 0), nrm, {u0, v0}, white, MAT_BOARD});
+		p.idx.insert(p.idx.end(), {b, b + 1, b + 2, b, b + 2, b + 3});
 	}
-	auto S = [&](int x, int y, int z) -> bool
-	{
-		if (x < 0 || y < 0 || z < 0 || x >= TILE_W || y >= TILE_W || z >= TILE_H) return false;
-		return solid[x][y][z];
-	};
+	p.card = true;
+}
 
-	if (count == 0)
+/// The relief of a listed floor part, as whole-voxel steps or a smooth surface (VR::reliefMode), over the
+/// floor's top (2 voxels up); the painting seen from above is its texture.
+void Board::Impl::addRelief(const MapData *floor, int join, Proto &p)
+{
+	const VR::ReliefSpec *spec = VR::reliefSpec(floor);
+	if (!spec) return;
+	const int N = VR::RELIEF_N;
+	static VR::ReliefField F;
+	VR::reliefField(floor, *spec, pal, join, F);
+	int ax, ay;
+	if (!atlas.alloc(N + 2, N + 2, ax, ay)) return;
+	for (int j = -1; j <= N; ++j)
+		for (int i = -1; i <= N; ++i)
+			atlas.put(ax + 1 + i, ay + 1 + j, F.tex[glm::clamp(j, 0, N - 1)][glm::clamp(i, 0, N - 1)]);
+	auto uv = [&](float i, float j) { return glm::vec2((ax + 1 + i) / (float)ATLAS, (ay + 1 + j) / (float)ATLAS); };
+	const float BASE = 2.f, CELL = (float)TILE_W / N;
+	const glm::vec4 white(1.f);
+	auto quad = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d, glm::vec3 n, glm::vec2 ta, glm::vec2 tb, glm::vec2 tc, glm::vec2 td)
 	{
-		// decorative part without collision: two crossed cards showing the sprite
-		int w = spr->getWidth(), h = spr->getHeight(), ax, ay;
-		if (!atlas.alloc(w + 2, h + 2, ax, ay)) return;
-		for (int j = -1; j <= h; ++j)
-			for (int i = -1; i <= w; ++i)
+		uint32_t i0 = (uint32_t)p.verts.size();
+		p.verts.push_back({a, n, ta, white, MAT_BOARD});
+		p.verts.push_back({b, n, tb, white, MAT_BOARD});
+		p.verts.push_back({c, n, tc, white, MAT_BOARD});
+		p.verts.push_back({d, n, td, white, MAT_BOARD});
+		p.idx.insert(p.idx.end(), {i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3});
+	};
+	if (VR::reliefMode() == VR::RELIEF_STEPS)
+	{
+		// whole voxels, like the rest of the table: each voxel column takes its 2 x 2 cells' mean height
+		const int C = N / 2;
+		int H[C][C];
+		for (int y = 0; y < C; ++y)
+			for (int x = 0; x < C; ++x)
+				H[y][x] = (int)std::lround((F.h[2 * y][2 * x] + F.h[2 * y][2 * x + 1] + F.h[2 * y + 1][2 * x] + F.h[2 * y + 1][2 * x + 1]) * 0.25f);
+		auto Hat = [&](int x, int y) -> int { return (x < 0 || y < 0 || x >= C || y >= C) ? 0 : H[y][x]; };
+		for (int y = 0; y < C; ++y)
+			for (int x = 0; x < C; ++x)
 			{
-				int sx = glm::clamp(i, 0, w - 1), sy = glm::clamp(j, 0, h - 1);
-				Uint8 c = spr->getPixel(sx, sy);
-				atlas.put(ax + 1 + i, ay + 1 + j, c ? rgba(pal[c]) : 0u);
+				float top = BASE + H[y][x];
+				float x0 = (float)x, x1 = x + 1.f, z0 = (float)y, z1 = y + 1.f;
+				quad({x0, top, z1}, {x1, top, z1}, {x1, top, z0}, {x0, top, z0}, {0, 1, 0},
+					uv(2.f * x, 2.f * y + 2), uv(2.f * x + 2, 2.f * y + 2), uv(2.f * x + 2, 2.f * y), uv(2.f * x, 2.f * y));
+				// the steps down to each lower neighbour (outside the tile: the floor's level), in this column's colour
+				const int nb[4][2] = {{x + 1, y}, {x - 1, y}, {x, y + 1}, {x, y - 1}};
+				for (int q = 0; q < 4; ++q)
+				{
+					int nh = Hat(nb[q][0], nb[q][1]);
+					bool outside = nb[q][0] < 0 || nb[q][1] < 0 || nb[q][0] >= C || nb[q][1] >= C;
+					float lo = BASE + std::min(nh, H[y][x]), hi = BASE + std::max(nh, H[y][x]);
+					if (nh >= H[y][x] && !(outside && H[y][x] < 0)) continue;
+					if (outside && H[y][x] < 0) { lo = BASE + H[y][x]; hi = BASE; } // a hole cut at the tile's edge
+					glm::vec3 n = q == 0 ? glm::vec3(1, 0, 0) : q == 1 ? glm::vec3(-1, 0, 0) : q == 2 ? glm::vec3(0, 0, 1) : glm::vec3(0, 0, -1);
+					if (outside && H[y][x] < 0) n = -n; // facing into the hole
+					// the edge's two cells of this column
+					float ex = q == 0 ? x1 : q == 1 ? x0 : -1.f, ez = q == 2 ? z1 : q == 3 ? z0 : -1.f;
+					glm::vec2 t0, t1;
+					if (q < 2) { float ti = 2.f * x + (q == 0 ? 1.5f : 0.5f); t0 = uv(ti, 2.f * y + 0.5f); t1 = uv(ti, 2.f * y + 1.5f); }
+					else { float tj = 2.f * y + (q == 2 ? 1.5f : 0.5f); t0 = uv(2.f * x + 0.5f, tj); t1 = uv(2.f * x + 1.5f, tj); }
+					if (q < 2) quad({ex, lo, z0}, {ex, lo, z1}, {ex, hi, z1}, {ex, hi, z0}, n, t0, t1, t1, t0);
+					else quad({x0, lo, ez}, {x1, lo, ez}, {x1, hi, ez}, {x0, hi, ez}, n, t0, t1, t1, t0);
+				}
 			}
-		float u0 = (ax + 1) / (float)ATLAS, v0 = (ay + 1) / (float)ATLAS;
-		float u1 = (ax + 1 + w) / (float)ATLAS, v1 = (ay + 1 + h) / (float)ATLAS;
-		// sprite row 32 sits on the floor at the tile center; 1 px ~ 1 voxel
-		float top = 32.f + yoff, bottom = top - h;
-		float half = w * 0.35f;
-		glm::vec3 c(8.f, 0.f, 8.f);
-		glm::vec3 dirs[2] = {glm::normalize(glm::vec3(1, 0, -1)), glm::normalize(glm::vec3(1, 0, 1))};
-		for (auto &d : dirs)
-		{
-			uint32_t b = (uint32_t)p.verts.size();
-			glm::vec3 nrm = glm::normalize(glm::cross(d, glm::vec3(0, 1, 0)));
-			glm::vec4 white(1.f);
-			p.verts.push_back({c - d * half + glm::vec3(0, bottom, 0), nrm, {u0, v1}, white, MAT_BOARD});
-			p.verts.push_back({c + d * half + glm::vec3(0, bottom, 0), nrm, {u1, v1}, white, MAT_BOARD});
-			p.verts.push_back({c + d * half + glm::vec3(0, top, 0), nrm, {u1, v0}, white, MAT_BOARD});
-			p.verts.push_back({c - d * half + glm::vec3(0, top, 0), nrm, {u0, v0}, white, MAT_BOARD});
-			p.idx.insert(p.idx.end(), {b, b + 1, b + 2, b, b + 2, b + 3});
-		}
-		p.card = true;
 		return;
 	}
+	// smooth: a height field over the cells' corners, lit by its own slopes
+	float Hc[N + 1][N + 1];
+	for (int j = 0; j <= N; ++j)
+		for (int i = 0; i <= N; ++i)
+		{
+			float sum = 0.f;
+			int n = 0;
+			for (int dj = -1; dj <= 0; ++dj)
+				for (int di = -1; di <= 0; ++di)
+				{
+					int ci = i + di, cj = j + dj;
+					if (ci < 0 || cj < 0 || ci >= N || cj >= N) continue;
+					sum += F.h[cj][ci]; ++n;
+				}
+			bool edge = i == 0 || j == 0 || i == N || j == N;
+			Hc[j][i] = edge ? 0.f : (n ? sum / n : 0.f);
+		}
+	uint32_t i0 = (uint32_t)p.verts.size();
+	for (int j = 0; j <= N; ++j)
+		for (int i = 0; i <= N; ++i)
+		{
+			float hx = (Hc[j][std::min(i + 1, N)] - Hc[j][std::max(i - 1, 0)]) / ((std::min(i + 1, N) - std::max(i - 1, 0)) * CELL);
+			float hz = (Hc[std::min(j + 1, N)][i] - Hc[std::max(j - 1, 0)][i]) / ((std::min(j + 1, N) - std::max(j - 1, 0)) * CELL);
+			glm::vec3 n = glm::normalize(glm::vec3(-hx, 1.f, -hz));
+			p.verts.push_back({{i * CELL, BASE + Hc[j][i], j * CELL}, n, uv((float)i, (float)j), white, MAT_BOARD});
+		}
+	for (int j = 0; j < N; ++j)
+		for (int i = 0; i < N; ++i)
+		{
+			uint32_t a = i0 + j * (N + 1) + i, b = a + 1, c = a + (N + 1) + 1, d = a + (N + 1);
+			p.idx.insert(p.idx.end(), {a, d, c, a, c, b});
+		}
+}
 
-	// ---- greedy meshing of exposed faces, per direction and slice
+/// Objects whose collision is much less than their art (a tree's trunk under a crown drawn around it, a
+/// bush, small props): display voxels fill the drawn shape. A voxel is added where the sprite has a pixel
+/// at its spot, within the art's reach of the part's vertical axis in that sprite row (the crown taken as
+/// round about the trunk, which settles the depth a picture from one side can't show). Display only.
+void Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][TILE_H], int part)
+{
+	const int W = spr->getWidth(), H = spr->getHeight();
+	auto loftSolid = [&](int x, int y, int z) -> bool
+	{
+		int loft = md->getLoftID(z / 2);
+		if (!loft || !voxels) return false;
+		size_t idx = (size_t)loft * 16 + y;
+		return idx < voxels->size() && ((*voxels)[idx] & (1 << (15 - x)));
+	};
+	auto proj = [&](float x, float y, float z, int &px, int &py)
+	{
+		px = (int)std::floor(16.f + (x - y));
+		py = (int)std::floor(24.f + (x + y) * 0.5f - z + yoff);
+	};
+	// how much of the art the collision voxels already cover; the axis is the middle of their footprint
+	std::vector<uint8_t> covered((size_t)W * H, 0);
+	float ax = 0.f, ay = 0.f;
+	int nfoot = 0;
+	for (int z = 0; z < TILE_H; ++z)
+		for (int y = 0; y < TILE_W; ++y)
+			for (int x = 0; x < TILE_W; ++x)
+			{
+				if (!loftSolid(x, y, z)) continue;
+				if (z >= 2) { ax += x + 0.5f; ay += y + 0.5f; ++nfoot; }
+				int px, py;
+				proj(x + 0.5f, y + 0.5f, z + 1.f, px, py);
+				for (int qy = py - 1; qy <= py + 2; ++qy)
+					for (int qx = px - 1; qx <= px; ++qx)
+						if (qx >= 0 && qy >= 0 && qx < W && qy < H) covered[(size_t)qy * W + qx] = 1;
+			}
+	int opaque = 0, cov = 0;
+	for (int y = 0; y < H; ++y)
+		for (int x = 0; x < W; ++x)
+			if (spr->getPixel(x, y)) { ++opaque; cov += covered[(size_t)y * W + x]; }
+	if (opaque < 12 || cov * 10 >= opaque * 7) return; // the collision already matches (70%+ of the art)
+	if (nfoot) { ax /= nfoot; ay /= nfoot; } else { ax = ay = 8.f; }
+	// a crown round about the axis: its widest points in a sprite row are its sides, square to the view,
+	// which sit at one height (row = the axis' ground row - z); so each row gives the radius at that height
+	// (screen px across the view -> map voxels: / sqrt 2), the left and right reach averaged
+	const float axisPx = 16.f + (ax - ay), groundRow = 24.f + (ax + ay) * 0.5f + yoff;
+	std::vector<float> radius(H, -1.f);
+	for (int y = 0; y < H; ++y)
+	{
+		int l = W, r = -1;
+		for (int x = 0; x < W; ++x) if (spr->getPixel(x, y)) { l = std::min(l, x); r = std::max(r, x); }
+		if (r < 0) continue;
+		float left = std::max(0.f, axisPx - l), right = std::max(0.f, r + 1.f - axisPx);
+		radius[y] = std::min(7.5f, (left + right) * 0.5f / 1.4142f); // inside the tile
+	}
+	for (int z = 2; z < TILE_H; ++z)
+	{
+		int row = (int)std::floor(groundRow - z - 0.5f);
+		if (row < 0 || row >= H || radius[row] < 0.f) continue;
+		float rr = radius[row];
+		for (int y = 0; y < TILE_W; ++y)
+			for (int x = 0; x < TILE_W; ++x)
+			{
+				if (own[x][y][z]) continue;
+				float dx = x + 0.5f - ax, dy = y + 0.5f - ay;
+				if (dx * dx + dy * dy > rr * rr) continue;
+				// and the art has something at the voxel's own spot (gaps in a crown stay open)
+				int px, py;
+				proj(x + 0.5f, y + 0.5f, z + 0.5f, px, py);
+				bool art = false;
+				for (int q = -1; q <= 1 && !art; ++q)
+					if (px + q >= 0 && px + q < W && py >= 0 && py < H && spr->getPixel(px + q, py)) art = true;
+				if (art) own[x][y][z] = (uint8_t)(part + 1);
+			}
+	}
+}
+
+/// One tile's parts built together as one shape (terrain round, 0.21.0-terrain):
+///  - every voxel has one owner, so a face exists only once (two parts' faces in the same place
+///    flickered): walls, then the object, and the floor owns the bottom slab (its 2 voxel layers),
+///    which most walls and objects repeat;
+///  - faces the flat game shows (top, east, south) take the owner's sprite where it projects; where the
+///    sprite is empty there the face isn't drawn (the art says nothing is there), except on floors;
+///  - faces it never shows (west, north) take the colour of the opposite side of the same solid, straight
+///    through it (a wall's far side looks like its near side), else the nearest colour in the sprite.
+void Board::Impl::buildTile(const TileKey &k, Proto &p)
+{
+	struct Src { const Surface *spr = nullptr; int yoff = 0; bool floor = false; uint32_t avg = 0; };
+	Src src[O_MAX];
+	static uint8_t own[TILE_W][TILE_W][TILE_H]; // 0 empty, else part + 1
+	std::memset(own, 0, sizeof(own));
+	auto loftSolid = [&](const MapData *md, int x, int y, int z) -> bool
+	{
+		int loft = md->getLoftID(z / 2);
+		if (!loft || !voxels) return false;
+		size_t idx = (size_t)loft * 16 + y;
+		return idx < voxels->size() && ((*voxels)[idx] & (1 << (15 - x)));
+	};
+	static const int ORDER[O_MAX] = {O_WESTWALL, O_NORTHWALL, O_OBJECT, O_FLOOR};
+	bool any = false;
+	for (int part : ORDER)
+	{
+		const MapData *md = k.m[part];
+		if (!md) continue;
+		Src &sc = src[part];
+		if (md->getDataset() && md->getDataset()->getSurfaceset())
+			sc.spr = static_cast<const SurfaceSet*>(md->getDataset()->getSurfaceset())->getFrame(md->getSprite(0));
+		if (!sc.spr) continue;
+		sc.yoff = md->getYOffset();
+		sc.floor = md->getObjectType() == O_FLOOR;
+		sc.avg = partInfo(md).avg;
+		if (!sc.avg) continue; // fully transparent sprite: nothing to show
+		int count = 0;
+		for (int z = 0; z < TILE_H; ++z)
+			for (int y = 0; y < TILE_W; ++y)
+				for (int x = 0; x < TILE_W; ++x)
+				{
+					if (!loftSolid(md, x, y, z)) continue;
+					++count;
+					uint8_t &o = own[x][y][z];
+					if (part == O_FLOOR ? (z < 2 || !o) : !o) o = (uint8_t)(part + 1);
+				}
+		if (count == 0) { addCard(md, p); continue; }
+		any = true;
+		if (part == O_OBJECT) growToArt(md, sc.spr, sc.yoff, own, part);
+	}
+	// painted rocks, mounds and holes on a listed floor (VrRelief.h)
+	bool relief = k.m[O_FLOOR] && src[O_FLOOR].spr && VR::reliefMode() != VR::RELIEF_FLAT && VR::reliefSpec(k.m[O_FLOOR]);
+	if (relief) addRelief(k.m[O_FLOOR], k.join, p);
+	if (!any) return;
+	auto S = [&](int x, int y, int z) -> int
+	{
+		if (x < 0 || y < 0 || z < 0 || x >= TILE_W || y >= TILE_W || z >= TILE_H) return 0;
+		return own[x][y][z];
+	};
+	// a sprite pixel at (px, py), or a near one (the projection is a little coarse at edges)
+	auto hit = [&](const Surface *spr, float px, float py, int reach, uint32_t &out) -> bool
+	{
+		int x = (int)std::floor(px), y = (int)std::floor(py);
+		for (int r = 0; r <= reach; ++r)
+			for (int dy = -r; dy <= r; ++dy)
+				for (int dx = -r; dx <= r; ++dx)
+				{
+					if (std::max(std::abs(dx), std::abs(dy)) != r) continue;
+					int sx = x + dx, sy = y + dy;
+					if (sx < 0 || sy < 0 || sx >= spr->getWidth() || sy >= spr->getHeight()) continue;
+					if (Uint8 c = spr->getPixel(sx, sy)) { out = rgba(pal[c]); return true; }
+				}
+		return false;
+	};
+	// which parts' shown faces mostly land on empty art
+	bool stray[O_MAX] = {false, false, false, false};
+	{
+		int hits[O_MAX] = {0, 0, 0, 0}, total[O_MAX] = {0, 0, 0, 0};
+		uint32_t dummy;
+		for (int z = 0; z < TILE_H; ++z)
+			for (int y = 0; y < TILE_W; ++y)
+				for (int x = 0; x < TILE_W; ++x)
+				{
+					int o = own[x][y][z];
+					if (!o || src[o - 1].floor) continue;
+					const Src &sc = src[o - 1];
+					const int nb[3][3] = {{x + 1, y, z}, {x, y + 1, z}, {x, y, z + 1}};
+					for (int a = 0; a < 3; ++a)
+					{
+						if (S(nb[a][0], nb[a][1], nb[a][2])) continue;
+						float f[3] = {x + 0.5f, y + 0.5f, z + 0.5f};
+						f[a] += 0.5f;
+						++total[o - 1];
+						if (hit(sc.spr, 16.f + (f[0] - f[1]), 24.f + (f[0] + f[1]) * 0.5f - f[2] + sc.yoff, 1, dummy)) ++hits[o - 1];
+					}
+				}
+		for (int i = 0; i < O_MAX; ++i) stray[i] = total[i] > 0 && hits[i] * 10 < total[i] * 4; // under 40% on the art
+	}
+	// the colour of a face (voxel c, direction axis/sign), or false: not drawn
+	auto faceColor = [&](const int c[3], int axis, int sign, uint32_t &col) -> bool
+	{
+		int part = own[c[0]][c[1]][c[2]] - 1;
+		const Src &sc = src[part];
+		bool shown = sign > 0; // +x (east), +y (south), up: the faces the flat game's view sees
+		int e[3] = {c[0], c[1], c[2]};
+		int epart = part;
+		if (!shown)
+		{
+			// through the solid to its far side, which the flat view does see
+			while (S(e[0] + (axis == 0), e[1] + (axis == 1), e[2]) && e[axis] + 1 < (axis == 2 ? TILE_H : TILE_W)) ++e[axis];
+			epart = own[e[0]][e[1]][e[2]] - 1;
+		}
+		const Src &es = src[epart];
+		float f[3] = {e[0] + 0.5f, e[1] + 0.5f, e[2] + 0.5f};
+		f[axis] += 0.5f; // the shown side of that voxel
+		float fz = f[2];
+		if (es.floor && (axis == 2 || e[2] < 2)) fz = 0.f; // floor sprites are drawn at height 0
+		float px = 16.f + (f[0] - f[1]);
+		float py = 24.f + (f[0] + f[1]) * 0.5f - fz + es.yoff;
+		if (hit(es.spr, px, py, 1, col)) return true;
+		if (sc.floor) { col = sc.avg; return true; }
+		// art missing here: a part whose voxels mostly miss its art (tiny props on a bigger block) loses the
+		// face; one that mostly matches (a hull, a wall) takes the nearest colour, no hole
+		if (stray[part]) return false;
+		if (hit(es.spr, px, py, 6, col)) return true;
+		col = sc.avg;
+		return true;
+	};
+
 	struct Dir { int axis, sign; };
 	const Dir dirs[5] = {{0, 1}, {0, -1}, {1, 1}, {1, -1}, {2, 1}}; // no bottom faces: never seen from above
 	const int dims[3] = {TILE_W, TILE_W, TILE_H};
@@ -690,35 +999,27 @@ void Board::Impl::buildProto(const MapData *md, Proto &p)
 	static bool mask[TILE_H][TILE_H], used[TILE_H][TILE_H];
 	for (const Dir &d : dirs)
 	{
-		// (u, v) axes spanning the face plane
 		int ua = d.axis == 0 ? 1 : 0;
 		int va = d.axis == 2 ? 1 : 2;
 		int nu = dims[ua], nv = dims[va];
-		for (int k = 0; k < dims[d.axis]; ++k)
+		for (int kk = 0; kk < dims[d.axis]; ++kk)
 		{
-			bool any = false;
+			bool anyFace = false;
 			for (int v = 0; v < nv; ++v)
 				for (int u = 0; u < nu; ++u)
 				{
 					int c[3];
-					c[d.axis] = k; c[ua] = u; c[va] = v;
+					c[d.axis] = kk; c[ua] = u; c[va] = v;
 					int nb[3] = {c[0], c[1], c[2]};
 					nb[d.axis] += d.sign;
 					bool m = S(c[0], c[1], c[2]) && !S(nb[0], nb[1], nb[2]);
-					mask[v][u] = m;
+					if (m && relief && d.axis == 2 && kk == 1 && own[c[0]][c[1]][c[2]] == O_FLOOR + 1) m = false; // the relief's top instead
 					used[v][u] = false;
-					if (!m) continue;
-					any = true;
-					// face center in voxel coords (x east, y south, z up), projected into the iso sprite
-					float f[3] = {c[0] + 0.5f, c[1] + 0.5f, c[2] + 0.5f};
-					f[d.axis] += 0.5f * d.sign;
-					float fz = f[2];
-					if (isFloor && d.axis == 2) fz = 0.f; // floor sprites are drawn at height 0
-					float px = 16.f + (f[0] - f[1]);
-					float py = 24.f + (f[0] + f[1]) * 0.5f - fz + yoff;
-					maskCol[v][u] = sample(spr, avg, px, py);
+					if (m) m = faceColor(c, d.axis, d.sign, maskCol[v][u]);
+					mask[v][u] = m;
+					anyFace |= m;
 				}
-			if (!any) continue;
+			if (!anyFace) continue;
 			for (int v = 0; v < nv; ++v)
 				for (int u = 0; u < nu; ++u)
 				{
@@ -743,7 +1044,7 @@ void Board::Impl::buildProto(const MapData *md, Proto &p)
 							int si = glm::clamp(i, 0, w - 1), sj = glm::clamp(j, 0, h - 1);
 							atlas.put(ax + 1 + i, ay + 1 + j, maskCol[v + sj][u + si]);
 						}
-					float plane = (float)k + (d.sign > 0 ? 1.f : 0.f);
+					float plane = (float)kk + (d.sign > 0 ? 1.f : 0.f);
 					auto corner = [&](float uu, float vv) -> glm::vec3
 					{
 						float cc[3];
@@ -765,15 +1066,6 @@ void Board::Impl::buildProto(const MapData *md, Proto &p)
 				}
 		}
 	}
-}
-
-const Proto &Board::Impl::proto(const MapData *md)
-{
-	auto it = protos.find(md);
-	if (it != protos.end()) return it->second;
-	Proto &p = protos[md];
-	buildProto(md, p);
-	return p;
 }
 
 uint64_t Board::Impl::chunkHash(int cx, int cy, int z, uint64_t *terrain)
@@ -902,11 +1194,15 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 					md.addQuad(off + glm::vec3(0, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, 0), off + glm::vec3(0, 0.5f, 0), glm::vec4(sb, sb, sb, 1.f), MAT_BOARD, {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0});
 				}
 				// walls already seen from outside stay standing (the flat map shows them too)
+				TileKey wk;
 				for (TilePart tp : {O_WESTWALL, O_NORTHWALL})
 				{
 					const MapData *d = t->getMapData(tp);
-					if (!d || !t->isDiscovered(tp) || t->isUfoDoorOpen(tp)) continue;
-					const Proto &p = proto(d);
+					if (d && t->isDiscovered(tp) && !t->isUfoDoorOpen(tp)) wk.m[tp] = d;
+				}
+				if (wk.m[O_WESTWALL] || wk.m[O_NORTHWALL])
+				{
+					const Proto &p = tileProto(wk);
 					uint32_t base = (uint32_t)md.verts.size();
 					float b = shadeFactor(tileShade(t));
 					for (const Vertex &v : p.verts) { Vertex w = v; w.pos += off; w.color = glm::vec4(b, b, b, 1.f); md.verts.push_back(w); }
@@ -918,6 +1214,7 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 			float b = shadeFactor(tileShade(t));
 			// alpha: the share of warm light (fires, flares) in its own light, + 2 under a roof (shader mode 3)
 			glm::vec4 tint(b, b, b, poolWarm(t) + (indoors(Position(x, y, z)) ? 2.f : 0.f));
+			TileKey key;
 			for (int part = 0; part < O_MAX; ++part)
 			{
 				TilePart tp = (TilePart)part;
@@ -925,7 +1222,21 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 				if (!d) continue;
 				if ((tp == O_WESTWALL || tp == O_NORTHWALL) && !t->isDiscovered(tp)) continue;
 				if (t->isUfoDoorOpen(tp)) continue;
-				const Proto &p = proto(d);
+				key.m[part] = d;
+			}
+			if (key.m[O_FLOOR] && VR::reliefMode() != VR::RELIEF_FLAT)
+				if (const VR::ReliefSpec *rs = VR::reliefSpec(key.m[O_FLOOR]))
+				{
+					const int nb[4][3] = {{x - 1, y, 1}, {x + 1, y, 2}, {x, y - 1, 4}, {x, y + 1, 8}};
+					for (auto &q : nb)
+					{
+						Tile *n = (q[0] >= 0 && q[1] >= 0 && q[0] < mx && q[1] < my) ? battle->getTile(Position(q[0], q[1], z)) : nullptr;
+						const VR::ReliefSpec *ns = n ? VR::reliefSpec(n->getMapData(O_FLOOR)) : nullptr;
+						if (ns && ns->sign == rs->sign) key.join |= q[2];
+					}
+				}
+			{
+				const Proto &p = tileProto(key);
 				if (p.verts.empty()) continue;
 				uint32_t base = (uint32_t)md.verts.size();
 				for (const Vertex &v : p.verts)
@@ -2808,6 +3119,15 @@ glm::vec3 Board::tileCenter(int tx, int ty, int tz) const
 	return glm::vec3(p.boardMatrix() * glm::vec4(tx * TILE_W + 8.f, tz * TILE_H - lvl, ty * TILE_W + 8.f, 1.f));
 }
 
+bool Board::mapFootprint(glm::mat4 &worldToMap, glm::vec2 &size) const
+{
+	const Impl &p = *_p;
+	if (!p.hasBattle || p.hasBase || !p.battle) return false;
+	worldToMap = glm::inverse(p.boardMatrix());
+	size = glm::vec2(p.mx * TILE_W, p.my * TILE_W);
+	return true;
+}
+
 std::string Board::debugInfo() const
 {
 	const Impl &p = *_p;
@@ -2817,15 +3137,15 @@ std::string Board::debugInfo() const
 	{
 		int empty = 0, cardsN = 0;
 		std::map<std::string, int> names;
-		for (auto &kv : p.protos)
+		for (auto &kv : p.tileProtos)
 		{
 			if (kv.second.card) ++cardsN;
 			if (!kv.second.verts.empty()) continue;
 			++empty;
-			const MapData *md = kv.first;
-			if (md && md->getDataset() && names.size() < 40) names[md->getDataset()->getName()]++;
+			for (const MapData *md : kv.first.m)
+				if (md && md->getDataset() && names.size() < 40) names[md->getDataset()->getName()]++;
 		}
-		ss << " atlas " << (p.atlas.y + p.atlas.rowH) * 100 / ATLAS << "%" << (p.atlas.full ? " FULL" : "") << " parts " << p.protos.size() << " cards " << cardsN << " empty " << empty;
+		ss << " atlas " << (p.atlas.y + p.atlas.rowH) * 100 / ATLAS << "%" << (p.atlas.full ? " FULL" : "") << " tiles " << p.tileProtos.size() << " cards " << cardsN << " empty " << empty;
 		for (auto &kv : names) ss << " " << kv.first << ":" << kv.second;
 	}
 	if (p.alienView || p.winOn) ss << " alienTurn " << p.alienView << " hidden " << p.hidden << " reveal " << p.reveal << " win " << p.win.x << "," << p.win.y << "," << p.win.z << "," << p.win.w;
@@ -2926,6 +3246,7 @@ void Board::update(Game *game, float dt)
 			p.focus = p.focusTarget = glm::vec3(p.mx * TILE_W * 0.5f, 0.f, p.my * TILE_W * 0.5f);
 			p.focusInit = true;
 		}
+		else p.focusTarget = p.focus; // no game camera to follow: the table stays where it was slid
 		float turn = lab->takeSunTurn();
 		if (turn != 0.f) rotateSun(turn);
 		std::string w = lab->takeWeather();
@@ -3005,8 +3326,7 @@ float Board::Impl::partTop(const MapData *d)
 {
 	auto it = partTops.find(d);
 	if (it != partTops.end()) return it->second;
-	float top = 0.f;
-	for (const Vertex &v : proto(d).verts) top = std::max(top, v.pos.y);
+	float top = partInfo(d).top;
 	partTops[d] = top;
 	return top;
 }
@@ -3628,7 +3948,7 @@ bool Board::renderMinimap(std::vector<uint32_t> &px, int S, bool align)
 				for (TilePart part : {O_OBJECT, O_NORTHWALL, O_WESTWALL, O_FLOOR})
 					if ((md = tl->getMapData(part))) break;
 				if (!md) continue;
-				uint32_t a = p.proto(md).avg;
+				uint32_t a = p.partInfo(md).avg;
 				if (!a) continue;
 				// lower levels a little darker, so roofs read above the ground
 				float k = 0.55f + 0.45f * (float)(z + 1) / (float)(top + 1);

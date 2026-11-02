@@ -1,0 +1,84 @@
+# OXCE VR tabletop: relief for floor parts whose rocks, mounds and holes are only painted.
+#
+# The table raises or sinks the ground of these parts following their painting (display only: the
+# game's collision, line of fire and movement are unchanged). Parts not listed stay flat.
+#
+#   SET   part  kind   height
+#   kind:   up = rocks, rubble, a mound;  down = a hole, crater, crevasse
+#   height: the peak or the depth in map voxels (24 = one level, 6 = a quarter level)
+#
+# Check them in the terrain lab: openxcom.exe -vrTerrainLab [TERRAIN]
+
+# desert
+DESERT    2  down  4    # small hole
+DESERT    8  up    2    # rubble
+DESERT   19  down  6    # crater
+DESERT   20  down  6    # crater
+DESERT   21  down  6    # crater
+
+# mountains
+MOUNT     7  up    3    # earth patch
+MOUNT     8  up    4    # rocks in snow
+MOUNT     9  up    4
+MOUNT    10  up    4
+MOUNT    11  up    4
+MOUNT    12  up    4
+MOUNT    13  up    4
+MOUNT    14  up    4
+MOUNT    17  up    5    # earth mounds (they join across tiles)
+MOUNT    18  up    5
+MOUNT    19  up    5
+MOUNT    20  up    5
+MOUNT    21  up    5
+MOUNT    22  up    5
+MOUNT    23  up    5
+MOUNT    77  down  6    # crater
+
+# polar
+POLAR     0  down  3    # water hole in the snow
+POLAR     1  down  6    # crater
+POLAR     2  up    2    # stony patches
+POLAR     3  up    2
+POLAR     4  up    2
+POLAR     5  up    2
+POLAR     6  up    2
+POLAR    33  up    4    # rocks in snow
+POLAR    34  up    4
+POLAR    35  up    4
+POLAR    36  up    4
+POLAR    37  up    4
+POLAR    38  up    4
+POLAR    39  up    4
+POLAR    41  up    3    # rubble
+POLAR    42  up    3
+POLAR    43  up    3
+POLAR    48  down  3    # cracks
+POLAR    49  down  3
+POLAR    50  down  3
+POLAR    51  down  3
+POLAR    52  down  6    # crevasse
+POLAR    53  down  3
+POLAR    54  down  3
+POLAR    55  down  6    # crevasse
+POLAR    56  down  3
+POLAR    57  down  3
+POLAR    58  down  3
+POLAR    59  down  6    # crevasse
+POLAR    73  up    3    # ice on the water
+POLAR    74  up    2
+POLAR    75  up    4
+
+# Mars
+MARS      1  down  6    # craters
+MARS      2  down  6
+MARS      3  down  6
+MARS      4  down  6
+MARS      8  up    2    # dark rubble
+MARS      9  up    2
+
+# forest, jungle, farmland
+FOREST    6  up    4    # stones in the grass
+FOREST    7  up    4
+JUNGLE   54  up    4
+JUNGLE   55  up    4
+CULTIVAT  7  up    4    # a bush painted on the dirt

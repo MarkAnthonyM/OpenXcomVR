@@ -118,7 +118,12 @@ void buildCommandCenter(MeshData &m, RoomLayout &L)
 	m.addBox({T.x - hx * 0.45f, 0.10f, T.z - hz * 0.35f}, {T.x + hx * 0.45f, T.y - 0.12f, T.z + hz * 0.35f}, kMetal * 0.8f, MAT_PLAIN);
 	m.addBox({T.x - hx * 0.46f, 0.35f, T.z + hz * 0.35f}, {T.x + hx * 0.46f, 0.38f, T.z + hz * 0.351f + 0.005f}, kCyan, MAT_LIGHT);
 	// top slab + rim
-	m.addBox({T.x - hx - rim, T.y - 0.12f, T.z - hz - rim}, {T.x + hx + rim, T.y - 0.04f, T.z + hz + rim}, kMetal, MAT_GLOSSY);
+	// (under the glass a basin 10 cm down: holes in the map's ground, craters and crevasses, sink into it)
+	m.addBox({T.x - hx - rim, T.y - 0.12f, T.z - hz - rim}, {T.x + hx + rim, T.y - 0.10f, T.z + hz + rim}, kMetal, MAT_GLOSSY);
+	m.addBox({T.x - hx - rim, T.y - 0.10f, T.z - hz - rim}, {T.x + hx + rim, T.y - 0.04f, T.z - hz}, kMetal, MAT_GLOSSY);
+	m.addBox({T.x - hx - rim, T.y - 0.10f, T.z + hz}, {T.x + hx + rim, T.y - 0.04f, T.z + hz + rim}, kMetal, MAT_GLOSSY);
+	m.addBox({T.x - hx - rim, T.y - 0.10f, T.z - hz}, {T.x - hx, T.y - 0.04f, T.z + hz}, kMetal, MAT_GLOSSY);
+	m.addBox({T.x + hx, T.y - 0.10f, T.z - hz}, {T.x + hx + rim, T.y - 0.04f, T.z + hz}, kMetal, MAT_GLOSSY);
 	m.addBox({T.x - hx - rim, T.y - 0.02f, T.z - hz - rim}, {T.x + hx + rim, T.y + 0.02f, T.z - hz}, kDark, MAT_GLOSSY);
 	m.addBox({T.x - hx - rim, T.y - 0.02f, T.z + hz}, {T.x + hx + rim, T.y + 0.02f, T.z + hz + rim}, kDark, MAT_GLOSSY);
 	m.addBox({T.x - hx - rim, T.y - 0.02f, T.z - hz}, {T.x - hx, T.y + 0.02f, T.z + hz}, kDark, MAT_GLOSSY);

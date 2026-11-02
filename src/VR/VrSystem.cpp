@@ -1032,6 +1032,13 @@ static void setCommonUniforms(const glm::mat4 &viewProj, const glm::vec3 &eye, b
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
 	sh.set("uUVRect", glm::vec4(0.f, 0.f, 1.f, 1.f));
 	sh.set("uHoleCount", 0);
+	{
+		glm::mat4 inv(1.f);
+		glm::vec2 size(0.f);
+		bool cut = S->board.mapFootprint(inv, size);
+		sh.set("uMapCutInv", inv);
+		sh.set("uMapCut", glm::vec3(size, cut ? 1.f : 0.f));
+	}
 	sh.set("uTex", 0);
 	sh.set("uLightCount", S->lightCount);
 	sh.set("uFxFirst", S->fxLightFirst);

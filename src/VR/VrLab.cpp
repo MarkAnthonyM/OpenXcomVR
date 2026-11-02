@@ -48,10 +48,31 @@ bool labRequested()
 	return on == 1;
 }
 
-static ReliefMode g_relief = RELIEF_FLAT;
+static ReliefMode g_relief = RELIEF_STEPS;
+static bool g_reliefRead = false;
 static unsigned g_styleGen = 0;
-ReliefMode reliefMode() { return g_relief; }
-void setReliefMode(ReliefMode mode) { if (mode != g_relief) { g_relief = mode; ++g_styleGen; } }
+/// voxel steps unless -vrRelief flat|steps|smooth is on the command line (not saved: a test switch for now)
+ReliefMode reliefMode()
+{
+	if (!g_reliefRead)
+	{
+		g_reliefRead = true;
+		const auto &args = CrossPlatform::getArgs();
+		for (size_t i = 0; i + 1 < args.size(); ++i)
+		{
+			std::string l = args[i];
+			std::transform(l.begin(), l.end(), l.begin(), ::tolower);
+			if (l != "-vrrelief") continue;
+			std::string v = args[i + 1];
+			std::transform(v.begin(), v.end(), v.begin(), ::tolower);
+			if (v == "flat") g_relief = RELIEF_FLAT;
+			else if (v == "smooth") g_relief = RELIEF_SMOOTH;
+			else g_relief = RELIEF_STEPS;
+		}
+	}
+	return g_relief;
+}
+void setReliefMode(ReliefMode mode) { reliefMode(); if (mode != g_relief) { g_relief = mode; ++g_styleGen; } }
 unsigned partStyleGeneration() { return g_styleGen; }
 
 }

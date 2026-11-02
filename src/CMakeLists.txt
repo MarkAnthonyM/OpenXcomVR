@@ -553,6 +553,7 @@ set ( vr_src
   VR/VrGL.cpp
   VR/VrHands.cpp
   VR/VrLab.cpp
+  VR/VrRelief.cpp
   VR/VrTable.cpp
   VR/VrFloat.cpp
   VR/VrScanner.cpp

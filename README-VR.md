@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.1)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -491,19 +491,48 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrBase.*` | The base on the table: voxel relief rebuilt from the base view's sprites, craft models, scaffolding, labels, finger taps / holds / placement. |
 | `VrWeather.*` | The sky over an outdoor battle: the sun's direction at the site and its height and colour from the mission's darkness, the weather roll, rain / snow / dust particles stopping at roofs, mist, cloud drift, lightning and procedural thunder. |
 | `VrDebug.*` | The sky debug panel on the left wrist (weather branch): info and controls pages drawn with the dashboards' canvas, pressed with the right index finger. |
+| `VrLab.*` | The terrain lab (developer tool, `-vrTerrainLab`): a terrain's parts or map blocks on the table without a mission; also the relief mode switch. |
+| `VrRelief.*` | Relief for painted floor parts listed in `Resources/VR/terrain-relief.txt`: heights worked out from the painting. |
 | `VrDash.*` | The geoscape dashboards on the back-wall monitors, drawn with the game's fonts straight from the saved game. |
 | `VrGL.*`, `VrShaders.h` | Tiny GL helper layer (incl. a shadow map target) and the single scene shader: linear lighting into an sRGB target, up to 12 point lights per frame, shadows from the key light, soft room-corner shading, the table's up-glow, the fog material. |
 
 Key ideas:
 
 - **Terrain from line-of-fire voxels.** Every terrain part already has a
-  16×16×24 voxel shape (`LOFTEMPS`, via `MapData::getLoftID`). Exposed voxel
-  faces are colored by projecting them back into the part's isometric sprite
-  (`px = 16 + x − y`, `py = 24 + (x + y)/2 − z + yOffset`), merged with greedy
-  meshing, and textured from an atlas. Parts with no voxels (grass tufts) become
-  crossed cards. Meshes are built per unique `MapData` and stitched into 8×8
-  tile chunks, which are rebuilt only when their tiles change (doors,
+  16×16×24 voxel shape (`LOFTEMPS`, via `MapData::getLoftID`). A tile's parts
+  (floor, walls, object) are built together as one shape (`buildTile`), so each
+  face exists once: the floor owns the bottom 2-voxel slab that most walls and
+  objects repeat (two parts' faces in the same place flickered). Faces the flat
+  view shows (top, east, south) are colored by projecting them back into the
+  owner's isometric sprite (`px = 16 + x − y`, `py = 24 + (x + y)/2 − z +
+  yOffset`); where that sprite is empty the face is left out if the part's
+  voxels mostly miss its art (tiny props on a bigger block), else it takes the
+  nearest colour. Faces the flat view never shows (west, north) take the colour
+  of the opposite side of the same solid. Coplanar faces are merged with greedy
+  meshing and textured from an atlas. Parts with no voxels (grass tufts) become
+  crossed cards. Shapes are built per combination of parts and stitched into
+  8×8 tile chunks, which are rebuilt only when their tiles change (doors,
   destruction, fog of war, lighting).
+- **Display-only additions to the voxels.** Objects whose collision covers
+  under 70% of their art (a trunk under a drawn crown, bushes) grow display
+  voxels into the drawn shape, taken as round about the part's axis: a sprite
+  row's widest points are the sides square to the view, at one height, so each
+  row gives the radius at that height (`growToArt`). Floor parts whose rocks,
+  mounds, craters and crevasses are only painted get relief (`VrRelief.*`) when
+  listed in `bin/common/Resources/VR/terrain-relief.txt` (part, up or down,
+  height): the feature is where the painting differs from the tile's ground
+  colour, rounded from its edges, as whole-voxel steps (the default) or a
+  smooth surface (`-vrRelief flat|steps|smooth` on the command line, not saved;
+  the lab's RELIEF key switches it too).
+  Holes at ground level sink into a basin under the table's glass (the glass is
+  left out under the map's footprint). None of this changes the game's
+  collision, line of fire or movement.
+- **The terrain lab** (`VrLab.*`, a developer tool): `openxcom.exe
+  -vrTerrainLab [TERRAIN]` opens a terrain on the table instead of the menus,
+  every part with its name or one of its map blocks (craft and UFO terrains
+  too), with keys for the relief mode, light, sun and weather on the wall
+  screen. It is read from the command line only (never saved to options.cfg).
+  The table draws the lab's map with the mission code.
 - **Standees** are drawn with the game's own `UnitSprite`, after temporarily
   rotating the unit's facing by the angle you view it from, so a soldier seen
   from behind shows its back.
