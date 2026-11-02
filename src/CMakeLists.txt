@@ -552,6 +552,7 @@ set ( vr_src
   VR/VrBoard.cpp
   VR/VrGL.cpp
   VR/VrHands.cpp
+  VR/VrLab.cpp
   VR/VrTable.cpp
   VR/VrFloat.cpp
   VR/VrScanner.cpp

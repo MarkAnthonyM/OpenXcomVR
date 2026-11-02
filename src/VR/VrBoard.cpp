@@ -20,6 +20,7 @@
 #include "VrBase.h"
 #include "VrRoom.h"
 #include "VrWeather.h"
+#include "VrLab.h"
 #include "../Engine/Game.h"
 #include "../Engine/State.h"
 #include "../Engine/Surface.h"
@@ -380,6 +381,8 @@ struct Board::Impl
 		return std::fabs(ow.x) < (mapRect.z - mapRect.x) * 0.5f * frac && std::fabs(ow.z) < (mapRect.w - mapRect.y) * 0.5f * frac;
 	}
 	bool focusInit = false;
+	TerrainLabState *lab = nullptr; // the terrain lab's screen, while it shows its map
+	unsigned labGen = 0, styleGen = 0;
 	float tileSize = 0.055f;
 	float yaw = 0.f;
 	int viewLevel = 0;
@@ -458,6 +461,7 @@ struct Board::Impl
 	}
 	void drawWire(const Shader &sh, const glm::mat4 &M, const glm::vec3 &at, int size, const glm::vec4 &col, float xray) const;
 	void drawLabel(const Shader &sh, const glm::mat4 &M, const glm::vec3 &at, const glm::vec3 &viewerVox, const Label &l, float pxSize) const;
+	void drawLabLabels(const Shader &sh, const glm::mat4 &M);
 	void drawHud(const Shader &sh, const glm::mat4 &M);
 
 	// grabbing
@@ -1711,6 +1715,7 @@ void Board::Impl::drawBattle(const Shader &sh)
 	drawEffects(sh, M);
 
 	if (!feedPass) drawHud(sh, M);
+	if (!feedPass && lab) drawLabLabels(sh, M);
 	drawCurtain(sh);
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
@@ -2441,6 +2446,23 @@ void Board::Impl::drawHud(const Shader &sh, const glm::mat4 &M)
 	glDisable(GL_BLEND);
 }
 
+/// The terrain lab's part names, floating over their tiles (on the level shown and below).
+void Board::Impl::drawLabLabels(const Shader &sh, const glm::mat4 &M)
+{
+	glm::vec3 viewerVox = glm::vec3(glm::inverse(M) * glm::vec4(viewer, 1.f));
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDisable(GL_DEPTH_TEST);
+	for (const TerrainLabState::LabelAt &a : lab->labels())
+	{
+		if (a.z > viewLevel) continue;
+		const Label &l = label(a.text, (Uint8)(Palette::blockOffset(1) + 1));
+		drawLabel(sh, M, glm::vec3(a.x * TILE_W + TILE_W * 0.5f, a.z * TILE_H + TILE_H + 6.f, a.y * TILE_W + TILE_W * 0.5f), viewerVox, l, 0.32f);
+	}
+	glEnable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+}
+
 // ================================================================== geoscape globe
 
 static glm::vec3 lonLatToUnit(double lon, double lat)
@@ -2791,6 +2813,21 @@ std::string Board::debugInfo() const
 	const Impl &p = *_p;
 	std::ostringstream ss;
 	ss << "focus " << p.focus.x << "," << p.focus.z << " target " << p.focusTarget.x << "," << p.focusTarget.z << " tileSize " << p.tileSize << " yaw " << p.yaw;
+	// atlas use and parts that came out with no shape at all (atlas full, blank sprite)
+	{
+		int empty = 0, cardsN = 0;
+		std::map<std::string, int> names;
+		for (auto &kv : p.protos)
+		{
+			if (kv.second.card) ++cardsN;
+			if (!kv.second.verts.empty()) continue;
+			++empty;
+			const MapData *md = kv.first;
+			if (md && md->getDataset() && names.size() < 40) names[md->getDataset()->getName()]++;
+		}
+		ss << " atlas " << (p.atlas.y + p.atlas.rowH) * 100 / ATLAS << "%" << (p.atlas.full ? " FULL" : "") << " parts " << p.protos.size() << " cards " << cardsN << " empty " << empty;
+		for (auto &kv : names) ss << " " << kv.first << ":" << kv.second;
+	}
 	if (p.alienView || p.winOn) ss << " alienTurn " << p.alienView << " hidden " << p.hidden << " reveal " << p.reveal << " win " << p.win.x << "," << p.win.y << "," << p.win.z << "," << p.win.w;
 	if (p.battle && p.battle->getSelectedUnit())
 	{
@@ -2861,6 +2898,47 @@ void Board::update(Game *game, float dt)
 			if (auto *b = dynamic_cast<BattlescapeState*>(s)) { live = b; break; }
 	bool battleReady = sb && live && live == sb->getBattleState() && sb->getMapSizeX() > 0;
 	p.bs = battleReady ? live : nullptr;
+	// the terrain lab (developer tool, VrLab.h): its own map, no battlescape screen behind it
+	TerrainLabState *lab = nullptr;
+	for (State *s : game->getStates())
+		if (auto *l = dynamic_cast<TerrainLabState*>(s)) { lab = l; break; }
+	if (lab && lab->battle() && lab->battle()->getMapSizeX() > 0)
+	{
+		SavedBattleGame *lb = lab->battle();
+		p.bs = nullptr;
+		bool fresh = lb != p.battle || lab->generation() != p.labGen;
+		int shade = lab->takeShade();
+		if (shade >= 0) { lb->setGlobalShade(shade); lb->getTileEngine()->calculateLighting(LL_AMBIENT); }
+		if (fresh || shade >= 0 || VR::partStyleGeneration() != p.styleGen)
+		{
+			p.bindBattle(lb);
+			p.labGen = lab->generation();
+			p.styleGen = VR::partStyleGeneration();
+		}
+		p.hasBattle = true;
+		p.lab = lab;
+		if (fresh)
+		{
+			// the whole map in view, from its middle
+			float w = p.mapRect.z - p.mapRect.x, d = p.mapRect.w - p.mapRect.y;
+			float fit = std::min(w / std::max(1, p.mx), d / std::max(1, p.my)) * 0.95f;
+			if (fit > 0.f) p.tileSize = glm::clamp(fit, 0.02f, 0.14f);
+			p.focus = p.focusTarget = glm::vec3(p.mx * TILE_W * 0.5f, 0.f, p.my * TILE_W * 0.5f);
+			p.focusInit = true;
+		}
+		float turn = lab->takeSunTurn();
+		if (turn != 0.f) rotateSun(turn);
+		std::string w = lab->takeWeather();
+		if (!w.empty()) forceWeather(w);
+		p.updateBattle(dt);
+		p.hasBase = false;
+		p.hasGlobe = false;
+		p.geo = nullptr;
+		p.globe = nullptr;
+		return;
+	}
+	p.lab = nullptr;
+	if (battleReady && VR::partStyleGeneration() != p.styleGen) { p.styleGen = VR::partStyleGeneration(); p.firstTile = nullptr; }
 	if (!battleReady)
 	{
 		if (p.battle) p.resetBattle();
@@ -3255,7 +3333,7 @@ bool Board::raycast(const glm::vec3 &o, const glm::vec3 &d, BoardHit &hit) const
 {
 	Impl &p = *_p;
 	revalidate(p);
-	if (p.hasBattle && (!p.game->getSavedGame() || p.game->getSavedGame()->getSavedBattle() != p.battle)) p.hasBattle = false;
+	if (p.hasBattle && !p.lab && (!p.game->getSavedGame() || p.game->getSavedGame()->getSavedBattle() != p.battle)) p.hasBattle = false;
 	if (p.hasBase)
 	{
 		int cx, cy;
@@ -3336,13 +3414,15 @@ void Board::hoverNone() { _p->hoverValid = false; _p->baseView.hoverNone(); }
 static void revalidate(Board::Impl &p)
 {
 	if (!p.game) { p.bs = nullptr; p.globe = nullptr; p.geo = nullptr; return; }
-	bool bsAlive = false, geoAlive = false;
+	bool bsAlive = false, geoAlive = false, labAlive = false;
 	for (State *s : p.game->getStates())
 	{
 		if (s == p.bs) bsAlive = true;
 		if (s == p.geo) geoAlive = true;
+		if (p.lab && s == (State*)p.lab) labAlive = true;
 	}
-	if (!bsAlive) { p.bs = nullptr; p.hasBattle = false; }
+	if (!labAlive) p.lab = nullptr;
+	if (!bsAlive) { p.bs = nullptr; if (!labAlive) p.hasBattle = false; }
 	if (!geoAlive) { p.geo = nullptr; p.globe = nullptr; p.hasGlobe = false; }
 }
 

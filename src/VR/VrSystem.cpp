@@ -53,6 +53,7 @@
 #include "../Interface/Text.h"
 #include "../Mod/Mod.h"
 #include "../Menu/StartState.h"
+#include "VrLab.h"
 #include "../lodepng.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -202,6 +203,7 @@ struct State
 	Uint32 scriptWaitUntil = 0;
 	std::string pendingShot;
 	int frameCount = 0;
+	bool labStarted = false; // -vrTerrainLab: the lab replaced the menus once the game had loaded
 	double time = 0.0;
 };
 
@@ -1818,6 +1820,50 @@ static void runScript()
 				for (int i = 0; i < sb->getMapSizeXYZ(); ++i)
 					for (int part = 0; part < O_MAX; ++part) sb->getTile(i)->setDiscovered(true, (TilePart)part);
 		}
+		else if (c.op == "nofloor")
+		{
+			// nofloor : log ground-level tiles without a floor part, with what they hold instead (dataset:index per part)
+			SavedBattleGame *sb = S->game->getSavedGame() ? S->game->getSavedGame()->getSavedBattle() : nullptr;
+			std::map<std::string, int> kinds;
+			int n = 0;
+			for (int y = 0; sb && y < sb->getMapSizeY(); ++y)
+				for (int x = 0; x < sb->getMapSizeX(); ++x)
+				{
+					Tile *t = sb->getTile(Position(x, y, 0));
+					if (!t || t->getMapData(O_FLOOR)) continue;
+					std::ostringstream k;
+					for (int part = 1; part < O_MAX; ++part)
+					{
+						MapData *md = t->getMapData((TilePart)part);
+						int id = -1, set = -1;
+						t->getMapData(&id, &set, (TilePart)part);
+						k << (part > 1 ? " " : "") << (md && md->getDataset() ? md->getDataset()->getName() + ":" + std::to_string(id) : "-");
+					}
+					if (kinds[k.str()]++ < 3) Log(LOG_INFO) << "[VR] nofloor " << x << "," << y << ": " << k.str();
+					++n;
+				}
+			Log(LOG_INFO) << "[VR] nofloor: " << n << " ground tiles without a floor, " << kinds.size() << " kinds";
+		}
+		else if (c.op == "floorids")
+		{
+			// floorids : which floor parts the ground level uses (dataset:id), how often, and one place each
+			SavedBattleGame *sb = S->game->getSavedGame() ? S->game->getSavedGame()->getSavedBattle() : nullptr;
+			std::map<std::string, std::pair<int, std::string>> ids;
+			for (int y = 0; sb && y < sb->getMapSizeY(); ++y)
+				for (int x = 0; x < sb->getMapSizeX(); ++x)
+				{
+					Tile *t = sb->getTile(Position(x, y, 0));
+					TilePart want = c.args.empty() ? O_FLOOR : (TilePart)std::stoi(c.args[0]);
+					MapData *md = t ? t->getMapData(want) : nullptr;
+					if (!md || !md->getDataset()) continue;
+					int id = -1, set = -1;
+					t->getMapData(&id, &set, want);
+					auto &e = ids[md->getDataset()->getName() + ":" + std::to_string(id)];
+					if (!e.first++) e.second = std::to_string(x) + "," + std::to_string(y);
+				}
+			for (auto &kv : ids) Log(LOG_INFO) << "[VR] floorids " << kv.first << " x" << kv.second.first << " at " << kv.second.second;
+		}
+		else if (c.op == "centertile") { S->board.centerOnTile(glm::vec2((float)num(0, 0) + 0.5f, (float)num(1, 0) + 0.5f)); }
 		else if (c.op == "findset")
 		{
 			// findset NAME : log the tiles that use a terrain set (e.g. UFO1, PLANE) and centre the table on them
@@ -2144,6 +2190,17 @@ void frame()
 	last = now;
 	S->time += dt;
 	S->frameCount++;
+	if (labRequested() && !S->labStarted && S->game->getMod() && !S->game->getStates().empty())
+	{
+		// the terrain lab (developer tool) instead of the intro and the main menu, once loading is done
+		bool loading = false;
+		for (OpenXcom::State *st : S->game->getStates()) if (dynamic_cast<StartState*>(st)) loading = true;
+		if (!loading)
+		{
+			S->labStarted = true;
+			S->game->setState(new TerrainLabState());
+		}
+	}
 	for (auto it = S->pendingButtons.begin(); it != S->pendingButtons.end();)
 	{
 		if (--it->frames <= 0)
