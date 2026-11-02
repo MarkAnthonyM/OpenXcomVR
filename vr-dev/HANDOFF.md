@@ -344,8 +344,8 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     Test ops `aim [snap]` (start aiming the right-hand weapon) and
     `pokehead x y z` (poke the head of whoever stands there); boardinfo
     shows the selected unit and its position.
-    Test `v2` already failed on vr-prototype 0.16.1 (the walked soldier ends
-    0.062 m off centre, the check allows 0.06): not looked into yet.
+    Test `v2` failed on vr-prototype 0.16.1 (the walked soldier ended
+    0.062 m off centre, the check allows 0.06); it passes on 0.21.0-terrain.1.
 - Branch `vr-prototype-thunder` (from vr-prototype 0.14.0): better thunder,
   builds `0.14.0-thunder.<n>`; merged into vr-prototype as 0.15.0 (thunder.1, owner
   approved). The owner asked for the three improvements
@@ -383,23 +383,15 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   bits with a 4x4-voxel block of collision: drawn in the sprite's average colour they were the grey
   "missing" squares on the water. The small scout's collision is close to a cube (the table showed a box
   on legs). The art's light: tops brightest, south faces next, east faces darkest.
-  - terrain.1: the terrain lab (VrLab: `-vrTerrainLab [TERRAIN]`; parts page with names, map-block pages
-    read like BattlescapeGenerator::loadMAP; LIGHT/TURN SUN/SKY through Board::update; the table binds
-    the lab's own SavedBattleGame, no BattlescapeState: revalidate and raycast know about the lab).
-    Board::buildTile replaces the per-part protos: one shape per combination of a tile's parts (TileKey),
-    voxel ownership (walls, object, floor owns z 0-1), shown faces from the owner's sprite, hidden faces
-    through the solid to its shown side, parts whose shown faces mostly miss their art (under 40%) lose
-    the faces that miss (`stray`), others take the nearest colour. growToArt: objects covering under 70%
-    of their art grow crown voxels round about their axis (radius per height from the sprite row's
-    widest points), capped inside the tile. VrRelief: 64 listed floor parts in
-    `bin/common/Resources/VR/terrain-relief.txt`; feature mask from the ground's palette ramp and
-    brightness, opening/closing, specks under 14 cells dropped, chamfer distance, sqrt profile, scaled to
-    the listed height, edges brought down unless the neighbour is a listed part of the same kind
-    (TileKey::join); steps (whole voxels per column) or smooth (32 x 32 height field), default steps.
-    VrRoom: the table's slab is a basin 10 cm deep under the glass; the scene shader leaves the glass out
-    under the map's footprint (uMapCut / uMapCutInv) so ground-level holes show. Tried and dropped: a
-    "boxed" rule rebuilding objects whose collision box misses their art (it turned sand-hill ramps into
-    bowls; the forest's box trees are drawn as blocks anyway).
+  - terrain.1: the terrain lab (VrLab, `-vrTerrainLab [TERRAIN]`: the table binds the lab's own
+    SavedBattleGame, no BattlescapeState; revalidate and raycast know about it). Board::buildTile: one
+    shape per combination of a tile's parts (TileKey); the floor owns z 0-1; shown faces from the owner's
+    sprite, hidden ones from the solid's far side; `stray` parts (under 40% of shown faces on their art)
+    lose the faces that miss. growToArt: objects covering under 70% of their art grow crowns round about
+    their axis. VrRelief: 64 parts in `bin/common/Resources/VR/terrain-relief.txt`, steps (default) or
+    smooth, `-vrRelief`. VrRoom: a 10 cm basin under the glass; the shader leaves the glass out under
+    the map (uMapCut / uMapCutInv). Dropped: a "boxed" rule rebuilding objects whose box misses their
+    art (sand-hill ramps became bowls). See README-VR "How it works".
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
