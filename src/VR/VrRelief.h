@@ -21,7 +21,7 @@ namespace VR
 
 struct ReliefSpec
 {
-	int sign = 0;        // +1 rocks / mound, -1 hole
+	int sign = 0;        // +1 rocks / mound, -1 hole, 0 an object's height ("tall")
 	float height = 0.f;  // peak height or depth in map voxels (24 = one level)
 };
 
@@ -36,6 +36,8 @@ struct ReliefField
 
 /// The relief listed for a floor part, or null.
 const ReliefSpec *reliefSpec(const MapData *md);
+/// The height listed for an object whose display shape comes from its art ("tall"), or 0.
+float shapeHeight(const MapData *md);
 /// Works out a listed floor's heights from its painting. join: sides that carry on into a neighbouring
 /// listed part (1 west, 2 east, 4 north, 8 south) are left as they are; the others come down to the floor.
 void reliefField(const MapData *md, const ReliefSpec &spec, const SDL_Color *pal, int join, ReliefField &out);

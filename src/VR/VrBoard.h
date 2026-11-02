@@ -138,6 +138,11 @@ public:
 	/// Drawing for the motion scanner's camera: the map and figures without the table's markers (cursor,
 	/// selection, path, waypoints, readouts).
 	void setFeedPass(bool on);
+	/// Drawing the terrain lab's saved shots: no markers, labels, cards or panels; only corner ticks on the
+	/// ground around tile x, y, z (x < 0: none).
+	void setCapturePass(bool on, int x = -1, int y = -1, int z = -1);
+	/// A tile's middle (world metres, halfway up a level) and the size of a tile on the table (metres).
+	bool tileWorld(int x, int y, int z, glm::vec3 &centre, float &tileMetres) const;
 	/// The motion scanner's soldier view: this unit's own figure isn't drawn (the camera is at its eyes).
 	void setHiddenUnit(BattleUnit *unit);
 	/// A battle map voxel position (x, y, height) on the table (world).

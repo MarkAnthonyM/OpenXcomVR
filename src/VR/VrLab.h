@@ -47,8 +47,10 @@ void setReliefMode(ReliefMode mode);
 /// Bumps whenever something changes how parts are built (the table rebuilds its shapes).
 unsigned partStyleGeneration();
 
-/// Asks VrSystem to save the current view (the headset's, or the preview's) as a PNG at the next frame.
-void requestViewCapture(const std::string &path);
+/// Asks VrSystem to save the current view (the headset's, or the preview's) as a PNG once the mark window
+/// has folded away, and a close-up of tile x, y, z from the same direction (closePath empty: none). Both
+/// are clean: no lab flags, labels, cards or panels, no hands; corner ticks show the tile.
+void requestViewCapture(const std::string &path, const std::string &closePath, int x, int y, int z);
 /// Saves the inspect panel of a tile of the lab's map as a PNG (false if there is nothing to show).
 bool saveInspectPicture(const std::string &path, int x, int y, int z);
 
@@ -119,7 +121,7 @@ private:
 
 	std::vector<Entry> _terrains;
 	int _terrain = 0, _page = 0, _light = 0, _weather = 0, _strength = 1, _lamps = 0;
-	bool _pictures = true;
+	bool _pictures = false;
 	SavedBattleGame *_battle = nullptr;
 	std::vector<SavedBattleGame*> _retired; // replaced maps, deleted once the table has moved on
 	unsigned _generation = 0;

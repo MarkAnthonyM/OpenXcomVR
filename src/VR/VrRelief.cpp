@@ -47,18 +47,37 @@ const std::map<std::string, ReliefSpec> &table()
 		float h;
 		if (!(ss >> set >> id >> kind >> h)) continue;
 		ReliefSpec s;
-		s.sign = kind == "down" ? -1 : 1;
+		s.sign = kind == "tall" ? 0 : (kind == "down" ? -1 : 1);
 		s.height = std::max(0.f, std::min(h, 23.f));
 		std::transform(set.begin(), set.end(), set.begin(), ::toupper);
 		t[set + " " + std::to_string(id)] = s;
 		++n;
 	}
-	Log(LOG_INFO) << "[VR] relief: " << n << " floor parts listed in " << LIST;
+	Log(LOG_INFO) << "[VR] relief: " << n << " parts listed in " << LIST;
 	return t;
 }
 
 float lum(const SDL_Color &c) { return (0.299f * c.r + 0.587f * c.g + 0.114f * c.b) / 255.f; }
 
+}
+
+namespace
+{
+/// the list's entry for a part, or null
+const ReliefSpec *listed(const MapData *md)
+{
+	if (!md || !md->getDataset()) return nullptr;
+	MapDataSet *ds = md->getDataset();
+	for (size_t i = 0; i < ds->getSize(); ++i)
+		if (ds->getObject(i) == md)
+		{
+			std::string name = ds->getName();
+			std::transform(name.begin(), name.end(), name.begin(), ::toupper);
+			auto f = table().find(name + " " + std::to_string(i));
+			return f != table().end() ? &f->second : nullptr;
+		}
+	return nullptr;
+}
 }
 
 const ReliefSpec *reliefSpec(const MapData *md)
@@ -67,21 +86,20 @@ const ReliefSpec *reliefSpec(const MapData *md)
 	auto it = cache.find(md);
 	if (it != cache.end()) return it->second;
 	const ReliefSpec *r = nullptr;
-	if (md && md->getObjectType() == O_FLOOR && md->getDataset())
+	if (md && md->getObjectType() == O_FLOOR)
 	{
-		MapDataSet *ds = md->getDataset();
-		for (size_t i = 0; i < ds->getSize(); ++i)
-			if (ds->getObject(i) == md)
-			{
-				std::string name = ds->getName();
-				std::transform(name.begin(), name.end(), name.begin(), ::toupper);
-				auto f = table().find(name + " " + std::to_string(i));
-				if (f != table().end()) r = &f->second;
-				break;
-			}
+		r = listed(md);
+		if (r && r->sign == 0) r = nullptr;
 	}
 	cache[md] = r;
 	return r;
+}
+
+float shapeHeight(const MapData *md)
+{
+	if (!md || md->getObjectType() != O_OBJECT) return 0.f;
+	const ReliefSpec *r = listed(md);
+	return r && r->sign == 0 ? r->height : 0.f;
 }
 
 void reliefField(const MapData *md, const ReliefSpec &spec, const SDL_Color *pal, int join, ReliefField &out)

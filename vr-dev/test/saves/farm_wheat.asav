@@ -1,0 +1,3401 @@
+name: Farm
+version: Extended 8.7.1
+engine: Extended
+build: " (v2026-09-19)"
+time: {second: 0,minute: 0,hour: 12,weekday: 6,day: 1,month: 1,year: 1999}
+mission: STR_UFO_GROUND_ASSAULT
+target: LANDING SITE-0
+craftOrBase: "CRAFT> \x01SKYRANGER-1"
+turn: 2
+mods:
+  - 'xcom1 ver: 8.7.0'
+---
+difficulty: 0
+end: 0
+monthsPassed: -1
+daysPassed: 0
+vehiclesLost: 0
+craftLostDogfight: 0
+craftLostMission: 0
+graphRegionToggles: ''
+graphCountryToggles: ''
+graphFinanceToggles: ''
+rng: 11900177724354486745
+funds:
+  - 0
+maintenance:
+  - 0
+userNotes: []
+researchScores:
+  - 0
+incomes:
+  - 0
+expenditures:
+  - 0
+warned: false
+togglePersonalLight: true
+toggleNightVision: false
+toggleBrightness: 0
+globeLon: 0
+globeLat: 0
+globeZoom: 0
+ids: {}
+bases:
+  - lon: 0
+    lat: 0
+    facilities:
+      - type: STR_ACCESS_LIFT
+        x: 2
+        y: 2
+      - type: STR_HANGAR
+        x: 2
+        y: 0
+      - type: STR_HANGAR
+        x: 0
+        y: 4
+      - type: STR_HANGAR
+        x: 4
+        y: 4
+      - type: STR_LIVING_QUARTERS
+        x: 3
+        y: 2
+      - type: STR_GENERAL_STORES
+        x: 2
+        y: 3
+      - type: STR_LABORATORY
+        x: 3
+        y: 3
+      - type: STR_WORKSHOP
+        x: 4
+        y: 3
+      - type: STR_SMALL_RADAR_SYSTEM
+        x: 1
+        y: 3
+    soldiers:
+      - type: STR_SOLDIER
+        id: 1
+        name: Furkan Erdem
+        nationality: 33
+        initialStats:
+          tu: 55
+          stamina: 52
+          health: 27
+          bravery: 60
+          reactions: 59
+          firing: 48
+          throwing: 52
+          strength: 28
+          psiStrength: 51
+          psiSkill: 0
+          melee: 32
+          mana: 0
+        currentStats:
+          tu: 59
+          stamina: 54
+          health: 31
+          bravery: 70
+          reactions: 62
+          firing: 52
+          throwing: 57
+          strength: 29
+          psiStrength: 56
+          psiSkill: 16
+          melee: 33
+          mana: 3
+        rank: 1
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 0
+        look: 1
+        lookVariant: 23
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_RIFLE,slot: STR_RIGHT_HAND,ammoItem: STR_RIFLE_CLIP,ammoItemSlots: [STR_RIFLE_CLIP]}
+          - {itemType: STR_RIFLE_CLIP,slot: STR_BELT}
+          - {itemType: STR_PROXIMITY_GRENADE,slot: STR_BELT,slotX: 1}
+          - {itemType: STR_MOTION_SCANNER,slot: STR_BELT,slotX: 2}
+          - {itemType: STR_SMOKE_GRENADE,slot: STR_BELT,slotX: 3}
+          - {itemType: STR_GRENADE,slot: STR_BELT,slotY: 1}
+          - {itemType: STR_ALIEN_GRENADE,slot: STR_BELT,slotX: 3,slotY: 1}
+      - type: STR_SOLDIER
+        id: 2
+        name: Valeriy Sergeev
+        nationality: 29
+        initialStats:
+          tu: 59
+          stamina: 46
+          health: 36
+          bravery: 30
+          reactions: 47
+          firing: 66
+          throwing: 64
+          strength: 22
+          psiStrength: 70
+          psiSkill: 0
+          melee: 29
+          mana: 0
+        currentStats:
+          tu: 63
+          stamina: 48
+          health: 39
+          bravery: 40
+          reactions: 51
+          firing: 69
+          throwing: 68
+          strength: 24
+          psiStrength: 76
+          psiSkill: 19
+          melee: 36
+          mana: 6
+        rank: 2
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 0
+        look: 1
+        lookVariant: 25
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_LASER_RIFLE,slot: STR_RIGHT_HAND}
+          - {itemType: STR_PSI_AMP,slot: STR_BACK_PACK}
+          - {itemType: STR_HIGH_EXPLOSIVE,slot: STR_BELT}
+      - type: STR_SOLDIER
+        id: 3
+        name: Jan de Groot
+        nationality: 10
+        initialStats:
+          tu: 56
+          stamina: 49
+          health: 26
+          bravery: 60
+          reactions: 57
+          firing: 69
+          throwing: 57
+          strength: 38
+          psiStrength: 2
+          psiSkill: 0
+          melee: 24
+          mana: 0
+        currentStats:
+          tu: 62
+          stamina: 57
+          health: 34
+          bravery: 70
+          reactions: 64
+          firing: 69
+          throwing: 62
+          strength: 43
+          psiStrength: 9
+          psiSkill: 18
+          melee: 30
+          mana: 5
+        rank: 2
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 0
+        look: 1
+        lookVariant: 46
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_HEAVY_CANNON,slot: STR_RIGHT_HAND,ammoItem: STR_HC_AP_AMMO,ammoItemSlots: [STR_HC_AP_AMMO]}
+          - {itemType: STR_HC_HE_AMMO,slot: STR_BELT}
+          - {itemType: STR_HC_I_AMMO,slot: STR_BELT,slotX: 2}
+          - {itemType: STR_HC_AP_AMMO,slot: STR_RIGHT_LEG}
+      - type: STR_SOLDIER
+        id: 4
+        name: Eva Heckova
+        nationality: 30
+        initialStats:
+          tu: 58
+          stamina: 55
+          health: 28
+          bravery: 30
+          reactions: 42
+          firing: 66
+          throwing: 75
+          strength: 26
+          psiStrength: 41
+          psiSkill: 0
+          melee: 25
+          mana: 0
+        currentStats:
+          tu: 65
+          stamina: 58
+          health: 30
+          bravery: 40
+          reactions: 47
+          firing: 73
+          throwing: 82
+          strength: 29
+          psiStrength: 45
+          psiSkill: 15
+          melee: 30
+          mana: 3
+        rank: 2
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 1
+        look: 1
+        lookVariant: 16
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_ROCKET_LAUNCHER,slot: STR_RIGHT_HAND,ammoItem: STR_SMALL_ROCKET,ammoItemSlots: [STR_SMALL_ROCKET]}
+          - {itemType: STR_LARGE_ROCKET,slot: STR_BACK_PACK}
+          - {itemType: STR_MEDI_KIT,slot: STR_BELT}
+      - type: STR_SOLDIER
+        id: 5
+        name: Petra Peskova
+        nationality: 30
+        initialStats:
+          tu: 50
+          stamina: 46
+          health: 37
+          bravery: 30
+          reactions: 44
+          firing: 52
+          throwing: 62
+          strength: 35
+          psiStrength: 92
+          psiSkill: 0
+          melee: 40
+          mana: 0
+        currentStats:
+          tu: 50
+          stamina: 49
+          health: 41
+          bravery: 40
+          reactions: 47
+          firing: 57
+          throwing: 65
+          strength: 35
+          psiStrength: 97
+          psiSkill: 5
+          melee: 42
+          mana: 1
+        rank: 1
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 1
+        look: 0
+        lookVariant: 52
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_HEAVY_LASER,slot: STR_RIGHT_HAND}
+          - {itemType: STR_MIND_PROBE,slot: STR_BACK_PACK}
+      - type: STR_SOLDIER
+        id: 6
+        name: David Rivera
+        nationality: 2
+        initialStats:
+          tu: 55
+          stamina: 64
+          health: 26
+          bravery: 50
+          reactions: 43
+          firing: 68
+          throwing: 59
+          strength: 24
+          psiStrength: 21
+          psiSkill: 0
+          melee: 24
+          mana: 0
+        currentStats:
+          tu: 58
+          stamina: 73
+          health: 31
+          bravery: 60
+          reactions: 48
+          firing: 69
+          throwing: 65
+          strength: 26
+          psiStrength: 31
+          psiSkill: 13
+          melee: 32
+          mana: 3
+        rank: 2
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 0
+        look: 1
+        lookVariant: 18
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_STUN_ROD,slot: STR_RIGHT_HAND}
+      - type: STR_SOLDIER
+        id: 7
+        name: Vladimir Cernuska
+        nationality: 30
+        initialStats:
+          tu: 60
+          stamina: 70
+          health: 32
+          bravery: 30
+          reactions: 59
+          firing: 66
+          throwing: 65
+          strength: 29
+          psiStrength: 56
+          psiSkill: 0
+          melee: 21
+          mana: 0
+        currentStats:
+          tu: 63
+          stamina: 74
+          health: 32
+          bravery: 30
+          reactions: 61
+          firing: 70
+          throwing: 70
+          strength: 33
+          psiStrength: 59
+          psiSkill: 17
+          melee: 26
+          mana: 1
+        rank: 1
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 0
+        look: 0
+        lookVariant: 31
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_HEAVY_PLASMA,slot: STR_RIGHT_HAND,ammoItem: STR_HEAVY_PLASMA_CLIP,ammoItemSlots: [STR_HEAVY_PLASMA_CLIP]}
+          - {itemType: STR_HEAVY_PLASMA_CLIP,slot: STR_BELT}
+      - type: STR_SOLDIER
+        id: 8
+        name: Constantin Nastase
+        nationality: 28
+        initialStats:
+          tu: 57
+          stamina: 53
+          health: 32
+          bravery: 40
+          reactions: 46
+          firing: 49
+          throwing: 61
+          strength: 22
+          psiStrength: 93
+          psiSkill: 0
+          melee: 35
+          mana: 0
+        currentStats:
+          tu: 57
+          stamina: 53
+          health: 32
+          bravery: 40
+          reactions: 46
+          firing: 49
+          throwing: 61
+          strength: 22
+          psiStrength: 93
+          psiSkill: 0
+          melee: 35
+          mana: 0
+        rank: 0
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 0
+        look: 0
+        lookVariant: 2
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_PLASMA_RIFLE,slot: STR_RIGHT_HAND,ammoItem: STR_PLASMA_RIFLE_CLIP,ammoItemSlots: [STR_PLASMA_RIFLE_CLIP]}
+          - {itemType: STR_PLASMA_RIFLE_CLIP,slot: STR_BELT}
+      - type: STR_SOLDIER
+        id: 9
+        name: Miroslava Volkova
+        nationality: 5
+        initialStats:
+          tu: 50
+          stamina: 53
+          health: 26
+          bravery: 40
+          reactions: 38
+          firing: 42
+          throwing: 56
+          strength: 35
+          psiStrength: 79
+          psiSkill: 0
+          melee: 35
+          mana: 0
+        currentStats:
+          tu: 54
+          stamina: 57
+          health: 27
+          bravery: 40
+          reactions: 42
+          firing: 43
+          throwing: 61
+          strength: 36
+          psiStrength: 81
+          psiSkill: 7
+          melee: 40
+          mana: 4
+        rank: 1
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 1
+        look: 1
+        lookVariant: 56
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_BLASTER_LAUNCHER,slot: STR_RIGHT_HAND,ammoItem: STR_BLASTER_BOMB,ammoItemSlots: [STR_BLASTER_BOMB]}
+          - {itemType: STR_BLASTER_BOMB,slot: STR_BELT}
+      - type: STR_SOLDIER
+        id: 10
+        name: Kristine Iversen
+        nationality: 24
+        initialStats:
+          tu: 51
+          stamina: 50
+          health: 39
+          bravery: 60
+          reactions: 32
+          firing: 51
+          throwing: 69
+          strength: 33
+          psiStrength: 87
+          psiSkill: 0
+          melee: 37
+          mana: 0
+        currentStats:
+          tu: 51
+          stamina: 51
+          health: 44
+          bravery: 60
+          reactions: 34
+          firing: 52
+          throwing: 72
+          strength: 37
+          psiStrength: 88
+          psiSkill: 1
+          melee: 40
+          mana: 0
+        rank: 1
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 1
+        look: 1
+        lookVariant: 41
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_AUTO_CANNON,slot: STR_RIGHT_HAND,ammoItem: STR_AC_AP_AMMO,ammoItemSlots: [STR_AC_AP_AMMO]}
+          - {itemType: STR_AC_AP_AMMO,slot: STR_BELT}
+          - {itemType: STR_AC_HE_AMMO,slot: STR_BELT,slotX: 2}
+      - type: STR_SOLDIER
+        id: 11
+        name: Jozef Gregor
+        nationality: 30
+        initialStats:
+          tu: 60
+          stamina: 44
+          health: 26
+          bravery: 30
+          reactions: 47
+          firing: 56
+          throwing: 52
+          strength: 22
+          psiStrength: 40
+          psiSkill: 0
+          melee: 24
+          mana: 0
+        currentStats:
+          tu: 67
+          stamina: 52
+          health: 31
+          bravery: 40
+          reactions: 52
+          firing: 57
+          throwing: 57
+          strength: 27
+          psiStrength: 46
+          psiSkill: 17
+          melee: 31
+          mana: 6
+        rank: 2
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 0
+        look: 1
+        lookVariant: 31
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_SMALL_LAUNCHER,slot: STR_RIGHT_HAND,ammoItem: STR_STUN_BOMB,ammoItemSlots: [STR_STUN_BOMB]}
+          - {itemType: STR_STUN_BOMB,slot: STR_BELT}
+      - type: STR_SOLDIER
+        id: 12
+        name: Kakama Huriwaka
+        nationality: 26
+        initialStats:
+          tu: 55
+          stamina: 58
+          health: 32
+          bravery: 30
+          reactions: 32
+          firing: 52
+          throwing: 62
+          strength: 33
+          psiStrength: 98
+          psiSkill: 0
+          melee: 34
+          mana: 0
+        currentStats:
+          tu: 65
+          stamina: 66
+          health: 36
+          bravery: 40
+          reactions: 37
+          firing: 58
+          throwing: 65
+          strength: 40
+          psiStrength: 104
+          psiSkill: 4
+          melee: 37
+          mana: 5
+        rank: 2
+        craft:
+          lon: 0
+          lat: 0
+          type: STR_SKYRANGER
+          id: 1
+        gender: 1
+        look: 2
+        lookVariant: 47
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+        equipmentLayout:
+          - {itemType: STR_PISTOL,slot: STR_RIGHT_HAND,ammoItem: STR_PISTOL_CLIP,ammoItemSlots: [STR_PISTOL_CLIP]}
+          - {itemType: STR_PISTOL_CLIP,slot: STR_BELT}
+      - type: STR_SOLDIER
+        id: 13
+        name: Yosif Radomirov
+        nationality: 5
+        initialStats:
+          tu: 58
+          stamina: 59
+          health: 29
+          bravery: 50
+          reactions: 42
+          firing: 48
+          throwing: 71
+          strength: 29
+          psiStrength: 74
+          psiSkill: 0
+          melee: 22
+          mana: 0
+        currentStats:
+          tu: 63
+          stamina: 61
+          health: 34
+          bravery: 60
+          reactions: 46
+          firing: 53
+          throwing: 75
+          strength: 34
+          psiStrength: 78
+          psiSkill: 12
+          melee: 27
+          mana: 5
+        rank: 2
+        gender: 0
+        look: 0
+        lookVariant: 4
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 14
+        name: Madison Stein
+        nationality: 0
+        initialStats:
+          tu: 54
+          stamina: 68
+          health: 38
+          bravery: 40
+          reactions: 49
+          firing: 57
+          throwing: 60
+          strength: 35
+          psiStrength: 99
+          psiSkill: 0
+          melee: 25
+          mana: 0
+        currentStats:
+          tu: 61
+          stamina: 77
+          health: 40
+          bravery: 50
+          reactions: 49
+          firing: 61
+          throwing: 65
+          strength: 40
+          psiStrength: 104
+          psiSkill: 10
+          melee: 28
+          mana: 2
+        rank: 2
+        gender: 1
+        look: 0
+        lookVariant: 6
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 15
+        name: Olivia Laranjeiro
+        nationality: 27
+        initialStats:
+          tu: 51
+          stamina: 66
+          health: 37
+          bravery: 60
+          reactions: 47
+          firing: 45
+          throwing: 77
+          strength: 30
+          psiStrength: 28
+          psiSkill: 0
+          melee: 39
+          mana: 0
+        currentStats:
+          tu: 51
+          stamina: 66
+          health: 37
+          bravery: 60
+          reactions: 47
+          firing: 45
+          throwing: 77
+          strength: 30
+          psiStrength: 28
+          psiSkill: 0
+          melee: 39
+          mana: 0
+        rank: 0
+        gender: 1
+        look: 3
+        lookVariant: 21
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 16
+        name: Marcin Nowicki
+        nationality: 25
+        initialStats:
+          tu: 51
+          stamina: 59
+          health: 25
+          bravery: 10
+          reactions: 46
+          firing: 54
+          throwing: 55
+          strength: 33
+          psiStrength: 18
+          psiSkill: 0
+          melee: 20
+          mana: 0
+        currentStats:
+          tu: 54
+          stamina: 60
+          health: 27
+          bravery: 20
+          reactions: 47
+          firing: 58
+          throwing: 55
+          strength: 38
+          psiStrength: 22
+          psiSkill: 19
+          melee: 23
+          mana: 2
+        rank: 1
+        gender: 0
+        look: 0
+        lookVariant: 35
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 17
+        name: Acacia Kanaris
+        nationality: 15
+        initialStats:
+          tu: 53
+          stamina: 47
+          health: 39
+          bravery: 50
+          reactions: 55
+          firing: 58
+          throwing: 63
+          strength: 21
+          psiStrength: 61
+          psiSkill: 0
+          melee: 25
+          mana: 0
+        currentStats:
+          tu: 57
+          stamina: 55
+          health: 46
+          bravery: 60
+          reactions: 60
+          firing: 68
+          throwing: 68
+          strength: 24
+          psiStrength: 62
+          psiSkill: 10
+          melee: 28
+          mana: 5
+        rank: 2
+        gender: 1
+        look: 0
+        lookVariant: 50
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 18
+        name: Lidiya Tihomirova
+        nationality: 5
+        initialStats:
+          tu: 53
+          stamina: 57
+          health: 35
+          bravery: 40
+          reactions: 35
+          firing: 50
+          throwing: 56
+          strength: 40
+          psiStrength: 27
+          psiSkill: 0
+          melee: 33
+          mana: 0
+        currentStats:
+          tu: 58
+          stamina: 59
+          health: 42
+          bravery: 50
+          reactions: 36
+          firing: 55
+          throwing: 66
+          strength: 46
+          psiStrength: 35
+          psiSkill: 21
+          melee: 37
+          mana: 5
+        rank: 2
+        gender: 1
+        look: 0
+        lookVariant: 5
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 19
+        name: Bernardo Gomes
+        nationality: 27
+        initialStats:
+          tu: 52
+          stamina: 52
+          health: 29
+          bravery: 50
+          reactions: 57
+          firing: 61
+          throwing: 75
+          strength: 37
+          psiStrength: 96
+          psiSkill: 0
+          melee: 22
+          mana: 0
+        currentStats:
+          tu: 59
+          stamina: 61
+          health: 36
+          bravery: 60
+          reactions: 60
+          firing: 66
+          throwing: 81
+          strength: 43
+          psiStrength: 99
+          psiSkill: 21
+          melee: 28
+          mana: 2
+        rank: 2
+        gender: 0
+        look: 1
+        lookVariant: 17
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 20
+        name: Rene Dupre
+        nationality: 13
+        initialStats:
+          tu: 53
+          stamina: 45
+          health: 37
+          bravery: 60
+          reactions: 42
+          firing: 70
+          throwing: 59
+          strength: 39
+          psiStrength: 45
+          psiSkill: 0
+          melee: 35
+          mana: 0
+        currentStats:
+          tu: 69
+          stamina: 60
+          health: 51
+          bravery: 80
+          reactions: 48
+          firing: 79
+          throwing: 71
+          strength: 50
+          psiStrength: 54
+          psiSkill: 46
+          melee: 43
+          mana: 15
+        rank: 4
+        gender: 0
+        look: 1
+        lookVariant: 29
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 21
+        name: Grete Ytterhus
+        nationality: 24
+        initialStats:
+          tu: 52
+          stamina: 68
+          health: 40
+          bravery: 50
+          reactions: 55
+          firing: 64
+          throwing: 67
+          strength: 33
+          psiStrength: 48
+          psiSkill: 0
+          melee: 40
+          mana: 0
+        currentStats:
+          tu: 59
+          stamina: 73
+          health: 41
+          bravery: 60
+          reactions: 57
+          firing: 70
+          throwing: 72
+          strength: 39
+          psiStrength: 53
+          psiSkill: 14
+          melee: 41
+          mana: 3
+        rank: 2
+        gender: 1
+        look: 1
+        lookVariant: 36
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 22
+        name: Federico Santoro
+        nationality: 19
+        initialStats:
+          tu: 50
+          stamina: 68
+          health: 31
+          bravery: 10
+          reactions: 54
+          firing: 45
+          throwing: 72
+          strength: 34
+          psiStrength: 52
+          psiSkill: 0
+          melee: 26
+          mana: 0
+        currentStats:
+          tu: 56
+          stamina: 72
+          health: 36
+          bravery: 20
+          reactions: 57
+          firing: 49
+          throwing: 75
+          strength: 42
+          psiStrength: 58
+          psiSkill: 7
+          melee: 29
+          mana: 1
+        rank: 2
+        gender: 0
+        look: 2
+        lookVariant: 53
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 23
+        name: Aoife Moore
+        nationality: 18
+        initialStats:
+          tu: 50
+          stamina: 45
+          health: 39
+          bravery: 50
+          reactions: 57
+          firing: 50
+          throwing: 73
+          strength: 29
+          psiStrength: 6
+          psiSkill: 0
+          melee: 26
+          mana: 0
+        currentStats:
+          tu: 50
+          stamina: 49
+          health: 41
+          bravery: 60
+          reactions: 61
+          firing: 51
+          throwing: 77
+          strength: 30
+          psiStrength: 8
+          psiSkill: 20
+          melee: 30
+          mana: 1
+        rank: 1
+        gender: 1
+        look: 1
+        lookVariant: 47
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 24
+        name: Blanka Maskova
+        nationality: 8
+        initialStats:
+          tu: 52
+          stamina: 57
+          health: 30
+          bravery: 60
+          reactions: 43
+          firing: 56
+          throwing: 66
+          strength: 27
+          psiStrength: 1
+          psiSkill: 0
+          melee: 27
+          mana: 0
+        currentStats:
+          tu: 56
+          stamina: 62
+          health: 31
+          bravery: 70
+          reactions: 44
+          firing: 57
+          throwing: 70
+          strength: 30
+          psiStrength: 5
+          psiSkill: 1
+          melee: 30
+          mana: 3
+        rank: 1
+        gender: 1
+        look: 0
+        lookVariant: 37
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 25
+        name: Jose Maia
+        nationality: 27
+        initialStats:
+          tu: 59
+          stamina: 70
+          health: 38
+          bravery: 20
+          reactions: 52
+          firing: 41
+          throwing: 74
+          strength: 33
+          psiStrength: 0
+          psiSkill: 0
+          melee: 37
+          mana: 0
+        currentStats:
+          tu: 65
+          stamina: 77
+          health: 44
+          bravery: 30
+          reactions: 56
+          firing: 48
+          throwing: 78
+          strength: 35
+          psiStrength: 3
+          psiSkill: 34
+          melee: 46
+          mana: 2
+        rank: 2
+        gender: 0
+        look: 3
+        lookVariant: 37
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 26
+        name: Adebomi Ochigbo
+        nationality: 23
+        initialStats:
+          tu: 56
+          stamina: 63
+          health: 28
+          bravery: 20
+          reactions: 48
+          firing: 50
+          throwing: 67
+          strength: 34
+          psiStrength: 4
+          psiSkill: 0
+          melee: 27
+          mana: 0
+        currentStats:
+          tu: 63
+          stamina: 66
+          health: 38
+          bravery: 30
+          reactions: 55
+          firing: 52
+          throwing: 71
+          strength: 41
+          psiStrength: 9
+          psiSkill: 25
+          melee: 32
+          mana: 7
+        rank: 2
+        gender: 1
+        look: 0
+        lookVariant: 51
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 27
+        name: Cho Tao
+        nationality: 6
+        initialStats:
+          tu: 52
+          stamina: 51
+          health: 31
+          bravery: 30
+          reactions: 53
+          firing: 40
+          throwing: 71
+          strength: 22
+          psiStrength: 16
+          psiSkill: 0
+          melee: 34
+          mana: 0
+        currentStats:
+          tu: 52
+          stamina: 51
+          health: 31
+          bravery: 30
+          reactions: 53
+          firing: 40
+          throwing: 71
+          strength: 22
+          psiStrength: 16
+          psiSkill: 0
+          melee: 34
+          mana: 0
+        rank: 0
+        gender: 0
+        look: 2
+        lookVariant: 29
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 28
+        name: Kale Kirikiri
+        nationality: 26
+        initialStats:
+          tu: 55
+          stamina: 61
+          health: 34
+          bravery: 60
+          reactions: 31
+          firing: 60
+          throwing: 66
+          strength: 34
+          psiStrength: 73
+          psiSkill: 0
+          melee: 23
+          mana: 0
+        currentStats:
+          tu: 62
+          stamina: 66
+          health: 43
+          bravery: 70
+          reactions: 33
+          firing: 65
+          throwing: 72
+          strength: 43
+          psiStrength: 75
+          psiSkill: 20
+          melee: 31
+          mana: 5
+        rank: 2
+        gender: 0
+        look: 2
+        lookVariant: 52
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 29
+        name: Berta Gere Mariam
+        nationality: 11
+        initialStats:
+          tu: 60
+          stamina: 57
+          health: 37
+          bravery: 30
+          reactions: 35
+          firing: 50
+          throwing: 72
+          strength: 24
+          psiStrength: 17
+          psiSkill: 0
+          melee: 35
+          mana: 0
+        currentStats:
+          tu: 64
+          stamina: 61
+          health: 38
+          bravery: 40
+          reactions: 37
+          firing: 51
+          throwing: 72
+          strength: 26
+          psiStrength: 18
+          psiSkill: 8
+          melee: 40
+          mana: 5
+        rank: 1
+        gender: 1
+        look: 3
+        lookVariant: 40
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+      - type: STR_SOLDIER
+        id: 30
+        name: Ji-hoon Gang
+        nationality: 22
+        initialStats:
+          tu: 57
+          stamina: 62
+          health: 33
+          bravery: 10
+          reactions: 35
+          firing: 60
+          throwing: 66
+          strength: 40
+          psiStrength: 14
+          psiSkill: 0
+          melee: 20
+          mana: 0
+        currentStats:
+          tu: 62
+          stamina: 69
+          health: 35
+          bravery: 20
+          reactions: 42
+          firing: 64
+          throwing: 68
+          strength: 48
+          psiStrength: 24
+          psiSkill: 21
+          melee: 25
+          mana: 0
+        rank: 2
+        gender: 0
+        look: 2
+        lookVariant: 6
+        missions: 0
+        kills: 0
+        stuns: 0
+        armor: STR_NONE_UC
+        improvement: 0
+        psiStrImprovement: 0
+    crafts:
+      - lon: 0
+        lat: 0
+        id: 1
+        dest:
+          lon: 0
+          lat: 0
+          type: STR_UFO
+          id: 1
+          uniqueId: 1
+        speedLon: 0
+        speedLat: 0
+        speedRadian: 0
+        speed: 0
+        type: STR_SKYRANGER
+        fuel: 0
+        damage: 0
+        shield: 0
+        items:
+          STR_AC_AP_AMMO: 2
+          STR_AC_HE_AMMO: 2
+          STR_AC_I_AMMO: 2
+          STR_ALIEN_GRENADE: 1
+          STR_AUTO_CANNON: 1
+          STR_BLASTER_BOMB: 2
+          STR_BLASTER_LAUNCHER: 1
+          STR_ELECTRO_FLARE: 1
+          STR_GRENADE: 1
+          STR_HC_AP_AMMO: 2
+          STR_HC_HE_AMMO: 2
+          STR_HC_I_AMMO: 2
+          STR_HEAVY_CANNON: 1
+          STR_HEAVY_LASER: 1
+          STR_HEAVY_PLASMA: 1
+          STR_HEAVY_PLASMA_CLIP: 2
+          STR_HIGH_EXPLOSIVE: 1
+          STR_INCENDIARY_ROCKET: 2
+          STR_LARGE_ROCKET: 2
+          STR_LASER_PISTOL: 1
+          STR_LASER_RIFLE: 1
+          STR_MEDI_KIT: 1
+          STR_MIND_PROBE: 1
+          STR_MOTION_SCANNER: 1
+          STR_PISTOL: 1
+          STR_PISTOL_CLIP: 2
+          STR_PLASMA_PISTOL: 1
+          STR_PLASMA_PISTOL_CLIP: 2
+          STR_PLASMA_RIFLE: 1
+          STR_PLASMA_RIFLE_CLIP: 2
+          STR_PROXIMITY_GRENADE: 1
+          STR_PSI_AMP: 1
+          STR_RIFLE: 1
+          STR_RIFLE_CLIP: 2
+          STR_ROCKET_LAUNCHER: 1
+          STR_SMALL_LAUNCHER: 1
+          STR_SMALL_ROCKET: 2
+          STR_SMOKE_GRENADE: 1
+          STR_STUN_BOMB: 2
+          STR_STUN_ROD: 1
+        status: STR_READY
+        inBattlescape: true
+        takeoff: 60
+        lonAuto: 0
+        latAuto: 0
+    items:
+      STR_AC_AP_AMMO: 1
+      STR_AC_HE_AMMO: 1
+      STR_AC_I_AMMO: 1
+      STR_ALIEN_ALLOYS: 1
+      STR_ALIEN_ENTERTAINMENT: 1
+      STR_ALIEN_FOOD: 1
+      STR_ALIEN_GRENADE: 1
+      STR_ALIEN_HABITAT: 1
+      STR_ALIEN_REPRODUCTION: 1
+      STR_ALIEN_SURGERY: 1
+      STR_AUTO_CANNON: 1
+      STR_AVALANCHE_LAUNCHER: 1
+      STR_AVALANCHE_MISSILES: 1
+      STR_BLASTER_BOMB: 1
+      STR_BLASTER_LAUNCHER: 1
+      STR_CANNON: 1
+      STR_CANNON_ROUNDS_X50: 1
+      STR_CELATID_TERRORIST: 1
+      STR_CHRYSSALID_TERRORIST: 1
+      STR_CYBERDISC_TERRORIST: 1
+      STR_ELECTRO_FLARE: 1
+      STR_ELERIUM_115: 1
+      STR_ETHEREAL_COMMANDER: 1
+      STR_ETHEREAL_LEADER: 1
+      STR_ETHEREAL_SOLDIER: 1
+      STR_EXAMINATION_ROOM: 1
+      STR_FLOATER_COMMANDER: 1
+      STR_FLOATER_ENGINEER: 1
+      STR_FLOATER_LEADER: 1
+      STR_FLOATER_MEDIC: 1
+      STR_FLOATER_NAVIGATOR: 1
+      STR_FLOATER_SOLDIER: 1
+      STR_FLYING_SUIT: 1
+      STR_FUSION_BALL: 1
+      STR_FUSION_BALL_LAUNCHER: 1
+      STR_GRENADE: 1
+      STR_HC_AP_AMMO: 1
+      STR_HC_HE_AMMO: 1
+      STR_HC_I_AMMO: 1
+      STR_HEAVY_CANNON: 1
+      STR_HEAVY_LASER: 1
+      STR_HEAVY_PLASMA: 1
+      STR_HEAVY_PLASMA_CLIP: 1
+      STR_HIGH_EXPLOSIVE: 1
+      STR_HOVERTANK_LAUNCHER: 1
+      STR_HOVERTANK_PLASMA: 1
+      STR_HWP_CANNON_SHELLS: 1
+      STR_HWP_FUSION_BOMB: 1
+      STR_HWP_ROCKETS: 1
+      STR_INCENDIARY_ROCKET: 1
+      STR_LARGE_ROCKET: 1
+      STR_LASER_CANNON: 1
+      STR_LASER_PISTOL: 1
+      STR_LASER_RIFLE: 1
+      STR_MEDI_KIT: 1
+      STR_MIND_PROBE: 1
+      STR_MOTION_SCANNER: 1
+      STR_MUTON_ENGINEER: 1
+      STR_MUTON_NAVIGATOR: 1
+      STR_MUTON_SOLDIER: 1
+      STR_PERSONAL_ARMOR: 1
+      STR_PISTOL: 1
+      STR_PISTOL_CLIP: 1
+      STR_PLASMA_BEAM: 1
+      STR_PLASMA_PISTOL: 1
+      STR_PLASMA_PISTOL_CLIP: 1
+      STR_PLASMA_RIFLE: 1
+      STR_PLASMA_RIFLE_CLIP: 1
+      STR_POWER_SUIT: 1
+      STR_PROXIMITY_GRENADE: 1
+      STR_PSI_AMP: 1
+      STR_REAPER_TERRORIST: 1
+      STR_RIFLE: 1
+      STR_RIFLE_CLIP: 1
+      STR_ROCKET_LAUNCHER: 1
+      STR_SECTOID_COMMANDER: 1
+      STR_SECTOID_ENGINEER: 1
+      STR_SECTOID_LEADER: 1
+      STR_SECTOID_MEDIC: 1
+      STR_SECTOID_NAVIGATOR: 1
+      STR_SECTOID_SOLDIER: 1
+      STR_SECTOPOD_TERRORIST: 1
+      STR_SILACOID_TERRORIST: 1
+      STR_SMALL_LAUNCHER: 1
+      STR_SMALL_ROCKET: 1
+      STR_SMOKE_GRENADE: 1
+      STR_SNAKEMAN_COMMANDER: 1
+      STR_SNAKEMAN_ENGINEER: 1
+      STR_SNAKEMAN_LEADER: 1
+      STR_SNAKEMAN_NAVIGATOR: 1
+      STR_SNAKEMAN_SOLDIER: 1
+      STR_STINGRAY_LAUNCHER: 1
+      STR_STINGRAY_MISSILES: 1
+      STR_STUN_BOMB: 1
+      STR_STUN_ROD: 1
+      STR_TANK_CANNON: 1
+      STR_TANK_LASER_CANNON: 1
+      STR_TANK_ROCKET_LAUNCHER: 1
+      STR_UFO_CONSTRUCTION: 1
+      STR_UFO_NAVIGATION: 1
+      STR_UFO_POWER_SOURCE: 1
+    scientists: 10
+    engineers: 10
+ufos:
+  - lon: 0
+    lat: 0
+    id: 1
+    dest:
+      lon: 0
+      lat: 0
+      type: STR_WAY_POINT
+      id: 0
+    speedLon: 0
+    speedLat: 0
+    speedRadian: 0
+    speed: 0
+    type: STR_SMALL_SCOUT
+    uniqueId: 1
+    missionWaveNumber: -1
+    damage: 0
+    shield: -1
+    shieldRechargeHandle: 0
+    altitude: STR_HIGH_UC
+    direction: STR_NONE_UC
+    status: 1
+    inBattlescape: true
+    huntMode: 0
+    huntBehavior: 0
+    fireCountdown: 0
+    escapeCountdown: 0
+discovered:
+  - STR_ABDUCTOR
+  - STR_ALIEN_ABDUCTION
+  - STR_ALIEN_ALLOYS
+  - STR_ALIEN_BASE
+  - STR_ALIEN_ENTERTAINMENT
+  - STR_ALIEN_FOOD
+  - STR_ALIEN_GRENADE
+  - STR_ALIEN_HARVEST
+  - STR_ALIEN_INFILTRATION
+  - STR_ALIEN_ORIGINS
+  - STR_ALIEN_REPRODUCTION
+  - STR_ALIEN_RESEARCH
+  - STR_ALIEN_RETALIATION
+  - STR_ALIEN_SUPPLY
+  - STR_ALIEN_SURGERY
+  - STR_ALIEN_TERROR
+  - STR_BATTLESHIP
+  - STR_BLASTER_BOMB
+  - STR_BLASTER_LAUNCHER
+  - STR_CELATID
+  - STR_CELATID_AUTOPSY
+  - STR_CELATID_CORPSE
+  - STR_CELATID_TERRORIST
+  - STR_CHRYSSALID
+  - STR_CHRYSSALID_AUTOPSY
+  - STR_CHRYSSALID_CORPSE
+  - STR_CHRYSSALID_TERRORIST
+  - STR_COMMANDER_PLUS
+  - STR_CYBERDISC
+  - STR_CYBERDISC_AUTOPSY
+  - STR_CYBERDISC_CORPSE
+  - STR_CYBERDISC_TERRORIST
+  - STR_CYDONIA_OR_BUST
+  - STR_ELERIUM_115
+  - STR_ETHEREAL
+  - STR_ETHEREAL_AUTOPSY
+  - STR_ETHEREAL_COMMANDER
+  - STR_ETHEREAL_CORPSE
+  - STR_ETHEREAL_ENGINEER
+  - STR_ETHEREAL_LEADER
+  - STR_ETHEREAL_MEDIC
+  - STR_ETHEREAL_NAVIGATOR
+  - STR_ETHEREAL_SOLDIER
+  - STR_EXAMINATION_ROOM
+  - STR_FLOATER
+  - STR_FLOATER_AUTOPSY
+  - STR_FLOATER_COMMANDER
+  - STR_FLOATER_CORPSE
+  - STR_FLOATER_ENGINEER
+  - STR_FLOATER_LEADER
+  - STR_FLOATER_MEDIC
+  - STR_FLOATER_NAVIGATOR
+  - STR_FLOATER_SOLDIER
+  - STR_FLYING_SUIT
+  - STR_FUSION_DEFENSE
+  - STR_FUSION_MISSILE
+  - STR_GRAV_SHIELD
+  - STR_HARVESTER
+  - STR_HEAVY_LASER
+  - STR_HEAVY_PLASMA
+  - STR_HEAVY_PLASMA_CLIP
+  - STR_HYPER_WAVE_DECODER
+  - STR_LARGE_SCOUT
+  - STR_LASER_CANNON
+  - STR_LASER_DEFENSE
+  - STR_LASER_PISTOL
+  - STR_LASER_RIFLE
+  - STR_LASER_WEAPONS
+  - STR_LEADER_PLUS
+  - STR_MEDIUM_SCOUT
+  - STR_MEDI_KIT
+  - STR_MIND_PROBE
+  - STR_MIND_SHIELD
+  - STR_MOTION_SCANNER
+  - STR_MUTON
+  - STR_MUTON_AUTOPSY
+  - STR_MUTON_COMMANDER
+  - STR_MUTON_CORPSE
+  - STR_MUTON_ENGINEER
+  - STR_MUTON_LEADER
+  - STR_MUTON_MEDIC
+  - STR_MUTON_NAVIGATOR
+  - STR_MUTON_SOLDIER
+  - STR_NEW_FIGHTER_CRAFT
+  - STR_NEW_FIGHTER_TRANSPORTER
+  - STR_PERSONAL_ARMOR
+  - STR_PLASMA_CANNON
+  - STR_PLASMA_CANNON_DEP1
+  - STR_PLASMA_CANNON_DEP2
+  - STR_PLASMA_DEFENSE
+  - STR_PLASMA_PISTOL
+  - STR_PLASMA_PISTOL_CLIP
+  - STR_PLASMA_RIFLE
+  - STR_PLASMA_RIFLE_CLIP
+  - STR_POWER_SUIT
+  - STR_PSI_AMP
+  - STR_PSI_LAB
+  - STR_REAPER
+  - STR_REAPER_AUTOPSY
+  - STR_REAPER_CORPSE
+  - STR_REAPER_TERRORIST
+  - STR_SECTOID
+  - STR_SECTOID_AUTOPSY
+  - STR_SECTOID_COMMANDER
+  - STR_SECTOID_CORPSE
+  - STR_SECTOID_ENGINEER
+  - STR_SECTOID_LEADER
+  - STR_SECTOID_MEDIC
+  - STR_SECTOID_NAVIGATOR
+  - STR_SECTOID_SOLDIER
+  - STR_SECTOPOD
+  - STR_SECTOPOD_AUTOPSY
+  - STR_SECTOPOD_CORPSE
+  - STR_SECTOPOD_TERRORIST
+  - STR_SILACOID
+  - STR_SILACOID_AUTOPSY
+  - STR_SILACOID_CORPSE
+  - STR_SILACOID_TERRORIST
+  - STR_SMALL_LAUNCHER
+  - STR_SMALL_SCOUT
+  - STR_SNAKEMAN
+  - STR_SNAKEMAN_AUTOPSY
+  - STR_SNAKEMAN_COMMANDER
+  - STR_SNAKEMAN_CORPSE
+  - STR_SNAKEMAN_ENGINEER
+  - STR_SNAKEMAN_LEADER
+  - STR_SNAKEMAN_MEDIC
+  - STR_SNAKEMAN_NAVIGATOR
+  - STR_SNAKEMAN_SOLDIER
+  - STR_STUN_BOMB
+  - STR_SUPPLY_SHIP
+  - STR_TERROR_SHIP
+  - STR_THE_MARTIAN_SOLUTION
+  - STR_UFO_CONSTRUCTION
+  - STR_UFO_NAVIGATION
+  - STR_UFO_POWER_SOURCE
+  - STR_ULTIMATE_CRAFT
+generatedEvents: {}
+ufopediaRuleStatus: {}
+manufactureRuleStatus: {}
+researchRuleStatus: {}
+monthlyPurchaseLimitLog: {}
+hiddenPurchaseItems: {}
+customRuleCraftDeployments: {}
+alienStrategy:
+  regions: ~
+  missionLocations: {}
+  missionsRun: {}
+options:
+  displayWidth: 640
+  displayHeight: 400
+  fullscreen: false
+  asyncBlit: true
+  keyboardMode: 1
+  maxFrameSkip: 0
+  traceAI: false
+  verboseLogging: false
+  StereoSound: true
+  geoscapeScale: 0
+  battlescapeScale: 0
+  useScaleFilter: false
+  useHQXFilter: false
+  useXBRZFilter: false
+  useOpenGL: true
+  checkOpenGLErrors: false
+  useOpenGLShader: Shaders/Raw.OpenGL.shader
+  useOpenGLSmoothing: true
+  debug: false
+  debugUi: false
+  soundVolume: 84
+  musicVolume: 84
+  uiVolume: 42
+  language: en-US
+  battleScrollSpeed: 4
+  battleEdgeScroll: 0
+  battleDragScrollButton: 0
+  dragScrollTimeTolerance: 300
+  dragScrollPixelTolerance: 10
+  battleFireSpeed: 6
+  battleXcomSpeed: 31
+  battleAlienSpeed: 30
+  battleNewPreviewPath: 7
+  fpsCounter: false
+  globeDetail: true
+  globeRadarLines: true
+  globeFlightPaths: true
+  globeAllRadarsOnBaseBuild: true
+  audioSampleRate: 22050
+  audioBitDepth: 16
+  audioChunkSize: 1024
+  pauseMode: 0
+  battleNotifyDeath: false
+  showFundsOnGeoscape: false
+  allowResize: false
+  windowedModePositionX: 0
+  windowedModePositionY: 0
+  borderless: false
+  captureMouse: false
+  battleTooltips: true
+  keepAspectRatio: true
+  nonSquarePixelRatio: false
+  cursorInBlackBandsInFullscreen: false
+  cursorInBlackBandsInWindow: true
+  cursorInBlackBandsInBorderlessWindow: false
+  saveOrder: 3
+  geoClockSpeed: 80
+  dogfightSpeed: 30
+  geoScrollSpeed: 20
+  geoDragScrollButton: 2
+  preferredMusic: 0
+  preferredSound: 0
+  preferredVideo: 0
+  wordwrap: 0
+  musicAlwaysLoop: false
+  touchEnabled: false
+  rootWindowedMode: false
+  backgroundMute: false
+  soldierDiaries: true
+  playIntro: true
+  autosave: true
+  autosaveFrequency: 5
+  newSeedOnLoad: false
+  lazyLoadResources: true
+  mousewheelSpeed: 3
+  changeValueByMouseWheel: 0
+  maximizeInfoScreens: false
+  FPS: 60
+  FPSInactive: 30
+  vSyncForOpenGL: false
+  geoDragScrollInvert: false
+  aggressiveRetaliation: false
+  customInitialBase: false
+  allowBuildingQueue: false
+  craftLaunchAlways: false
+  storageLimitsEnforced: false
+  canSellLiveAliens: false
+  anytimePsiTraining: false
+  globeSeasons: false
+  globeSurfaceCache: true
+  psiStrengthEval: false
+  canTransferCraftsWhileAirborne: false
+  retainCorpses: false
+  fieldPromotions: false
+  battleDragScrollInvert: false
+  sneakyAI: false
+  battleUFOExtenderAccuracy: false
+  showMoreStatsInInventoryView: false
+  battleHairBleach: true
+  battleInstantGrenade: false
+  includePrimeStateInSavedLayout: false
+  battleExplosionHeight: 0
+  battleAutoEnd: false
+  battleSmoothCamera: true
+  disableAutoEquip: false
+  battleConfirmFireMode: false
+  weaponSelfDestruction: false
+  allowPsionicCapture: false
+  allowPsiStrengthImprovement: false
+  strafe: false
+  forceFire: true
+  skipNextTurnScreen: false
+  noAlienPanicMessages: false
+  alienBleeding: false
+  keyOk: 13
+  keyCancel: 27
+  keyScreenshot: 293
+  keyFps: 288
+  keyQuickSave: 286
+  keyQuickLoad: 290
+  keyGeoLeft: 276
+  keyGeoRight: 275
+  keyGeoUp: 273
+  keyGeoDown: 274
+  keyGeoZoomIn: 43
+  keyGeoZoomOut: 45
+  keyGeoSpeed1: 49
+  keyGeoSpeed2: 50
+  keyGeoSpeed3: 51
+  keyGeoSpeed4: 52
+  keyGeoSpeed5: 53
+  keyGeoSpeed6: 54
+  keyGeoIntercept: 105
+  keyGeoBases: 98
+  keyGeoGraphs: 103
+  keyGeoUfopedia: 117
+  keyGeoOptions: 27
+  keyGeoFunding: 102
+  keyGeoToggleDetail: 9
+  keyGeoToggleRadar: 114
+  keyBaseSelect1: 49
+  keyBaseSelect2: 50
+  keyBaseSelect3: 51
+  keyBaseSelect4: 52
+  keyBaseSelect5: 53
+  keyBaseSelect6: 54
+  keyBaseSelect7: 55
+  keyBaseSelect8: 56
+  keyBattleLeft: 276
+  keyBattleRight: 275
+  keyBattleUp: 273
+  keyBattleDown: 274
+  keyBattleLevelUp: 280
+  keyBattleLevelDown: 281
+  keyBattleCenterUnit: 278
+  keyBattlePrevUnit: 0
+  keyBattleNextUnit: 9
+  keyBattleDeselectUnit: 92
+  keyBattleUseLeftHand: 113
+  keyBattleUseRightHand: 101
+  keyBattleInventory: 105
+  keyBattleMap: 109
+  keyBattleOptions: 27
+  keyBattleEndTurn: 8
+  keyBattleAbort: 97
+  keyBattleStats: 115
+  keyBattleKneel: 107
+  keyBattleReload: 114
+  keyBattlePersonalLighting: 108
+  keyBattleReserveNone: 282
+  keyBattleReserveSnap: 283
+  keyBattleReserveAimed: 284
+  keyBattleReserveAuto: 285
+  keyBattleReserveKneel: 106
+  keyBattleZeroTUs: 127
+  keyBattleCenterEnemy1: 49
+  keyBattleCenterEnemy2: 50
+  keyBattleCenterEnemy3: 51
+  keyBattleCenterEnemy4: 52
+  keyBattleCenterEnemy5: 53
+  keyBattleCenterEnemy6: 54
+  keyBattleCenterEnemy7: 55
+  keyBattleCenterEnemy8: 56
+  keyBattleCenterEnemy9: 57
+  keyBattleCenterEnemy10: 48
+  keyBattleVoxelView: 291
+  keyInvCreateTemplate: 99
+  keyInvApplyTemplate: 118
+  keyInvClear: 120
+  keyInvAutoEquip: 122
+  oxceModValidationLevel: 2
+  oxceRawScreenShots: false
+  oxceFirstPersonViewFisheyeProjection: false
+  oxceThumbButtons: true
+  oxceThrottleMouseMoveEvent: 0
+  vrMode: 1
+  vrTableScale: 100
+  vrSeatOffset: 0
+  vrShadows: true
+  vrWeather: true
+  vrDebugPanel: false
+  vrVanillaSky: false
+  oxceDisableThinkingProgressBar: false
+  oxceEmbeddedOnly: false
+  oxceListVFSContents: false
+  oxceEnablePaletteFlickerFix: false
+  oxceRecommendedOptionsWereSet: false
+  password: secret
+  oxceStartUpTextMode: 0
+  oxceMaximizeCutsceneScreens: true
+  oxceGeoscapeDebugLogMaxEntries: 1000
+  oxceGeoSlowdownFactor: 1
+  oxceGeoShowScoreInsteadOfFunds: false
+  oxceGeoEnableTrainingIndicator: false
+  oxceGeoSuppressRedundantHKAlert: true
+  oxceGeoSuppressLandingWithoutEquipment: false
+  oxceGeoGoToNearestBase: false
+  oxceGeoSortCraftByDistanceToTarget: false
+  oxceBaseInfoDefenseScaleMultiplier: 100
+  oxceBaseSoldierInfoColumnDefault: 0
+  oxceBaseSoldierTransformationShowOnlyEligible: false
+  oxceBaseFilterResearchable: false
+  oxceBaseResearchReorder: false
+  oxceBaseManufactureFallbackButton: false
+  oxceBaseManufactureInfinityButton: false
+  oxceBaseTouchButtons: false
+  oxceDisableAlienInventory: false
+  oxceDisableHitLog: false
+  oxceDisableInventoryTuCost: false
+  oxceDisableProductionDependencyTree: false
+  oxceDisableStatsForNerds: false
+  oxceDisableTechTreeViewer: false
+  oxceTogglePersonalLightType: 1
+  oxceToggleNightVisionType: 1
+  oxceToggleBrightnessType: 0
+  oxceShowBurningAsWounded: false
+  oxceDisableInfoOnThrowCursor: false
+  oxceSwapDontReselectActions: false
+  oxceEnableUnitResponseSounds: true
+  oxceResetUnitResponseSoundsOnAvatarChange: true
+  oxceHiddenMovementBackgroundChangeFrequency: 1
+  oxceInventoryShowUnitSlot: false
+  oxceReplaceNotesLink: false
+  oxceInventorySplitScrollButton: false
+  oxceInventoryDropItemOverPaperdoll: false
+  oxceInventoryUnloadFixedWeapons: false
+  oxceMaxEquipmentLayoutTemplates: 20
+  oxceUpdateCheck: false
+  autosaveSlots: 1
+  oxceGeoAutosaveFrequency: 0
+  oxceGeoAutosaveSlots: 1
+  oxceLinks: false
+  oxceLinksDisableTextEdit: false
+  oxceFatFingerLinks: false
+  oxceBattleTouchButtonsEnabled: false
+  oxceQuickSearchButton: false
+  oxceHighlightNewTopics: true
+  oxcePediaShowClipSize: false
+  oxcePediaSortResistances: 0
+  oxceInterceptTableSize: 8
+  oxceEnableSlackingIndicator: true
+  oxceInterceptGuiMaintenanceTime: 2
+  oxceShowETAMode: 0
+  oxceUfoLandingAlert: false
+  oxceRememberDisabledCraftWeapons: false
+  oxceGeoscapeEventsInstantDelivery: true
+  oxceShowBaseNameInPopups: false
+  oxceAlternateCraftEquipmentManagement: false
+  oxceBaseInfoScaleEnabled: false
+  oxceResearchScrollSpeed: 1
+  oxceResearchScrollSpeedWithCtrl: 10
+  oxceManufactureFilterSuppliesOK: false
+  oxceManufactureScrollSpeed: 1
+  oxceManufactureScrollSpeedWithCtrl: 10
+  oxcePersonalLayoutIncludingArmor: true
+  oxceManualPromotions: false
+  oxceWoundedDefendBaseIf: 100
+  oxcePlayBriefingMusicDuringEquipment: false
+  oxceNightVisionColor: 5
+  oxceAutoNightVisionThreshold: 15
+  oxceShowAccuracyOnCrosshair: 1
+  oxceReactionFireThreshold: 0
+  oxceAutoSell: false
+  oxceAutomaticPromotions: true
+  oxceEnableOffCentreShooting: false
+  oxceUniformShootingSpread: false
+  oxceCrashedOrLanded: 0
+  keyToggleQuickSearch: 113
+  keyInstaSave: 287
+  keyGeoUfoTracker: 116
+  keyGeoTechTreeViewer: 113
+  keyGeoGlobalProduction: 112
+  keyGeoGlobalResearch: 99
+  keyGeoGlobalAlienContainment: 106
+  keyGeoDailyPilotExperience: 101
+  keyGraphsZoomIn: 270
+  keyGraphsZoomOut: 269
+  keyBasescapeBuildNewBase: 110
+  keyBasescapeBaseInformation: 105
+  keyBasescapeSoldiers: 115
+  keyBasescapeEquipCraft: 101
+  keyBasescapeBuildFacilities: 102
+  keyBasescapeResearch: 114
+  keyBasescapeManufacture: 109
+  keyBasescapeTransfer: 116
+  keyBasescapePurchase: 112
+  keyBasescapeSell: 108
+  keyRemoveSoldiersFromTraining: 120
+  keyAddSoldiersToTraining: 122
+  keyCraftLoadoutSave: 286
+  keyCraftLoadoutLoad: 290
+  keyRemoveSoldiersFromAllCrafts: 120
+  keyRemoveSoldiersFromCraft: 122
+  keyRemoveEquipmentFromCraft: 120
+  keyRemoveArmorFromAllCrafts: 120
+  keyRemoveArmorFromCraft: 122
+  keyInventorySave: 286
+  keyInventoryLoad: 290
+  keyInvSavePersonalEquipment: 115
+  keyInvLoadPersonalEquipment: 108
+  keyInvShowPersonalEquipment: 112
+  keyInventoryArmor: 97
+  keyInventoryAvatar: 109
+  keyInventoryDiaryLight: 100
+  keySellAll: 120
+  keySellAllButOne: 122
+  keyTransferAll: 120
+  keyMarkAllAsSeen: 120
+  keyBattleUnitUp: 0
+  keyBattleUnitDown: 0
+  keyBattleShowLayers: 0
+  keyBattleUseSpecial: 119
+  keyBattleActionItem1: 49
+  keyBattleActionItem2: 50
+  keyBattleActionItem3: 51
+  keyBattleActionItem4: 52
+  keyBattleActionItem5: 53
+  keyNightVisionToggle: 302
+  keyNightVisionHold: 32
+  keySelectMusicTrack: 279
+battleGame:
+  width: 40
+  length: 40
+  height: 4
+  missionType: STR_UFO_GROUND_ASSAULT
+  strTarget: LANDING SITE-0
+  strCraftOrBase: "CRAFT> \x01SKYRANGER-1"
+  nameDisplay: false
+  ecEnabledFriendly: false
+  ecEnabledHostile: false
+  ecEnabledNeutral: false
+  alienCustomDeploy: ''
+  alienCustomMission: ''
+  alienItemLevel: 0
+  lastUsedMapScript: FARM
+  reinforcementsDeployment: STR_SMALL_SCOUT
+  reinforcementsRace: STR_SECTOID
+  reinforcementsItemLevel: 0
+  reinforcementsMemory: {}
+  reinforcementsBlocks:
+    - - 0
+      - 0
+      - 0
+      - 0
+    - - 0
+      - 0
+      - 0
+      - 0
+    - - 0
+      - 0
+      - 0
+      - 0
+    - - 0
+      - 0
+      - 0
+      - 0
+  flattenedMapTerrainNames:
+    - - STR_SMALL_SCOUT
+      - CULTA
+      - CULTA
+      - CULTA
+    - - CULTA
+      - CULTA
+      - CULTA
+      - CULTA
+    - - CULTA
+      - CULTA
+      - STR_SKYRANGER
+      - STR_SKYRANGER
+    - - CULTA
+      - CULTA
+      - CULTA
+      - CULTA
+  flattenedMapBlockNames:
+    - - UFO1A
+      - CULTA08
+      - CULTA11
+      - CULTA10
+    - - CULTA10
+      - CULTA17
+      - CULTA09
+      - CULTA14
+    - - CULTA12
+      - CULTA14
+      - PLANE
+      - PLANE
+    - - CULTA16
+      - CULTA06
+      - CULTA05
+      - CULTA11
+  globalshade: 0
+  turn: 2
+  bughuntMinTurn: 999
+  animFrame: 3857
+  bughuntMode: false
+  selectedUnit: 3
+  undoUnit: -1
+  mapdatasets:
+    - BLANKS
+    - CULTIVAT
+    - BARN
+    - BLANKS
+    - UFO1
+    - BLANKS
+    - PLANE
+  tileIndexSize: "\x04"
+  tileTotalBytesPer: 23
+  tileFireSize: "\x01"
+  tileSmokeSize: "\x01"
+  tileIDSize: "\x02"
+  tileSetIDSize: "\x02"
+  tileBoolFieldsSize: "\x01"
+  totalTiles: 1908
+  binTiles: AAAAAAAA/////wUAAQD/////AQAAAAABAAAAAAD/////BQABAP////8BAAAAAAIAAAAAAP////8FAAEA/////wEAAAAAAwAAAAAA/////wUAAQD/////AQAAAAAEAAAAAAD/////BQABAP////8BAAAAAAUAAAAAAP////8FAAEA/////wEAAAAABgAAAAAA/////wUAAQD/////AQAAAAAHAAAAAAD/////BQABAP////8BAAAAAAgAAAAAAP////8FAAEA/////wEAAAAACQAAAAAA/////wUAAQD/////AQAAAAAKAAAAAgAYABsACAABAAEAAQABAAAAAAsAAAACAP//HAAIAAEA//8BAAEAAAAADAAAAAIA//8bAAgAAQD//wEAAQAAAAANAAAAAgD//xwACAABAP//AQABAAAAAA4AAAACAP//GwAIAAEA//8BAAEAAAAADwAAAAIA//8cAAgAAQD//wEAAQAAAAAQAAAAAgD/////CAABAP////8BAAAABxEAAAACAP////8IAAEA/////wEAAAAHEgAAAAIA//8bAAgAAQD//wEAAQAAAAcTAAAAAgD//xwACAABAP//AQABAAAABxQAAAACAA4ADwD//wEAAQABAP//AAAHFQAAAAIA//8PAP//AQD//wEA//8AAAcWAAAAAgD//w8A//8BAP//AQD//wAAARcAAAACAP//DwD//wEA//8BAP//AAAAGAAAAAIA////////AQD///////8AAAAZAAAAAgD///////8BAP///////wAAABoAAAACAP//DwD//wEA//8BAP//AAAAGwAAAAIA//8PAP//AQD//wEA//8AAAAcAAAAAgD//w8A//8BAP//AQD//wAAAB0AAAACAP//DwD//wEA//8BAP//AAAAHgAAAAAACwAKAP//AgACAAIA//8AAAAfAAAAAAD//woA//8CAP//AgD//wAAACAAAAABAP//DAD//wIA//8CAP//AAAAIQAAAAAA//8KAP//AgD//wIA//8AAAAiAAAAAAD//woA//8CAP//AgD//wAAACMAAAAAAP//DAD//wIA//8CAP//AAAAJAAAAAAA//8KAP//AgD//wIA//8AAAAlAAAAAAD//woA//8CAP//AgD//wAAACYAAAAAAAsA/////wEAAgD/////AAAAJwAAAAAA////////AQD///////8AAAAoAAAAAAD/////BQABAP////8BAAAAACkAAAAAAP///////wEA////////AAAAKgAAAAAA/////wUAAQD/////AQAAAAArAAAAAAD/////BQABAP////8BAAAAACwAAAAAAP////8FAAEA/////wEAAAAALQAAAAAA/////wUAAQD/////AQAAAAAuAAAAAAD///////8BAP///////wAAAC8AAAAAAP////8FAAEA/////wEAAAAAMAAAAAAA/////wUAAQD/////AQAAAAAxAAAAAAD/////BQABAP////8BAAAAADIAAAACABcA//8IAAEAAQD//wEAAAAAMwAAAAIA/////wgAAQD/////AQAAAAA0AAAAAgD/////CAABAP////8BAAAAADUAAAACAP////8IAAEA/////wEAAAAANgAAAAIA/////wgAAQD/////AQAAAAc3AAAAAgD/////CAABAP////8BAAAAATgAAAACAP////8IAAEA/////wEAAAAHOQAAAAIA/////wgAAQD/////AQAAAAc6AAAAAgD/////CAABAP////8BAAAABzsAAAACAP////8IAAEA/////wEAAAAHPAAAAAIADgD/////AQABAP////8AAAc9AAAAAgD///////8BAP///////wAAAz4AAAAKAP///////wEA////////AAAAPwAAAAIA////////AQD///////8AAABAAAAAAgD///////8BAP///////wAAAEEAAAACAP///////wEA////////AAAAQgAAAAIA////////AQD///////8AAABDAAAAAgD///////8BAP///////wAAAEQAAAACAP///////wEA////////AAAARQAAAAIA////////AQD///////8AAABGAAAAAAALAP//EAACAAIA//8CAAAAAEcAAAAAAP///////wIA////////AAAASAAAAAAA/////wMAAgD/////AgAAAABJAAAAAAD///////8CAP///////wAAAEoAAAABAP///////wIA////////AAAASwAAAAAA////////AgD///////8AAABMAAAAAQD///////8CAP///////wAAAE0AAAAAAP///////wIA////////AAAATgAAAAAACwD/////AQACAP////8AAABPAAAAAAD///////8BAP///////wAAAFAAAAAAAP////8FAAEA/////wEAAAAAUQAAAAAA/////wUAAQD/////AQAAAABSAAAAAAD///////8BAP///////wAAAFMAAAAAAP///////wEA////////AAAAVAAAAAAA/////wUAAQD/////AQAAAABVAAAAAAD/////BQABAP////8BAAAAAFYAAAAAAP///////wEA////////AAAAVwAAAAAA/////wUAAQD/////AQAAAABYAAAAAAD///////8BAP///////wAAAFkAAAAAAP////8FAAEA/////wEAAAAAWgAAAAIA/////wgAAQD/////AQAAAABbAAAAAgD/////CAABAP////8BAAAAAFwAAAACAP////8IAAEA/////wEAAAAAXQAAAAIA/////wgAAQD/////AQAAAABeAAAAAgD/////CAABAP////8BAAAAB18AAAACAP////8IAAEA/////wEAAAAHYAAAAAIA/////wgAAQD/////AQAAAAdhAAAAAgD/////CAABAP////8BAAAAB2IAAAACAP////8IAAEA/////wEAAAAHYwAAAAIA/////wgAAQD/////AQAAAAdkAAAAAgAOAP////8BAAEA/////wAAB2UAAAACAP///////wEA////////AAABZgAAAAIA////////AQD///////8AAABnAAAAAgD///////8BAP///////wAAAGgAAAACAP///////wEA////////AAAAaQAAAAIA////////AQD///////8AAABqAAAAAgD///////8BAP///////wAAAGsAAAACAP///////wEA////////AAAAbAAAAAIA////////AQD///////8AAABtAAAAAgD///////8BAP///////wAAAG4AAAAAAAsA//8PAAIAAgD//wIAAAAAbwAAAAEA////////AgD///////8AAABwAAAAAAD///////8CAP///////wAAAHEAAAABAP///////wIA////////AAAAcgAAAAAA/////wQAAgD/////AgAAAABzAAAAAAD/////BAACAP////8CAAAAAHQAAAABAP///////wIA////////AAAAdQAAAAAA////////AgD///////8AAAB2AAAAAAALAP////8BAAIA/////wAAAHcAAAAAAP///////wEA////////AAAAeAAAAAAA/////wUAAQD/////AQAAAAB5AAAAAAD/////BQABAP////8BAAAAAHoAAAAAAP///////wEA////////AAAAewAAAAAA/////xIAAQD/////BAAAAAB8AAAAAAD/////BQABAP////8BAAAAAH0AAAAAAP////8RAAEA/////wQAAAAAfgAAAAAA/////wUAAQD/////AQAAAAB/AAAAAAD/////BQABAP////8BAAAAAIAAAAAAAP////8FAAEA/////wEAAAAAgQAAAAAA/////wUAAQD/////AQAAAACCAAAAAgD/////CAABAP////8BAAAAAIMAAAACAP////8IAAEA/////wEAAAAAhAAAAAIA/////wgAAQD/////AQAAAACFAAAAAgD/////CAABAP////8BAAAAB4YAAAACAP////8IAAEA/////wEAAAAHhwAAAAIA/////wgAAQD/////AQAAAAeIAAAAAgD/////CAABAP////8BAAAAB4kAAAACAP////8IAAEA/////wEAAAAHigAAAAIA/////wgAAQD/////AQAAAAeLAAAAAgD/////CAABAP////8BAAAAB4wAAAACAA4A/////wEAAQD/////AAADjQAAAAIA////////AQD///////8AAACOAAAAAgD///////8BAP///////wAAAI8AAAACAP///////wEA////////AAAAkAAAAAIA////////AQD///////8AAACRAAAAAgD///////8BAP///////wAAB5IAAAACAP///////wEA////////AAABkwAAAAIA////////AQD///////8AAACUAAAAAgD///////8BAP///////wAAAJUAAAACAP///////wEA////////AAAAlgAAAAAACwD/////AgACAP////8AAACXAAAAAAD///////8CAP///////wAAAJgAAAABAP///////wIA////////AAAAmQAAAAAA////////AgD///////8AAACaAAAAAAD///////8CAP///////wAAAJsAAAAAAP////8EAAIA/////wIAAAAAnAAAAAAA/////wQAAgD/////AgAAAACdAAAAAAD///////8CAP///////wAAAJ4AAAAAAP///////wEA////////AAAAnwAAAAAA////////AQD///////8AAACgAAAAAAD/////BQABAP////8BAAAAAKEAAAAAAP///////wEA////////AAAAogAAAAAA/////wUAAQD/////AQAAAACjAAAAAAD///////8BAP///////wAAAKQAAAAJAP///////wQA////////AAAApQAAAAAA////////AQD///////8AAACmAAAAAAD/////BQABAP////8BAAAAAKcAAAAAAP///////wEA////////AAAAqAAAAAAA/////wUAAQD/////AQAAAACpAAAAAAD/////BQABAP////8BAAAAAKoAAAACABgA//8IAAEAAQD//wEAAAAAqwAAAAIA/////wgAAQD/////AQAAAACsAAAAAgD/////CAABAP////8BAAAAAK0AAAACAP////8IAAEA/////wEAAAAHrgAAAAIA/////wgAAQD/////AQAAAAevAAAAAgD/////CAABAP////8BAAAAB7AAAAACAP////8IAAEA/////wEAAAAHsQAAAAIA/////wgAAQD/////AQAAAAeyAAAAAgD/////CAABAP////8BAAAAB7MAAAACAP////8IAAEA/////wEAAAAHtAAAAAIADgD/////AQABAP////8AAAG1AAAAAgD///////8BAP///////wAAALYAAAACAP///////wEA////////AAAAtwAAAAIA////////AQD///////8AAAe4AAAAAgD///////8BAP///////wAAB7kAAAACAP///////wEA////////AAAHugAAAAIA////////AQD///////8AAAe7AAAAAgD///////8BAP///////wAAB7wAAAACAP///////wEA////////AAABvQAAAAIA////////AQD///////8AAAC+AAAAAAALAP////8CAAIA/////wAAAL8AAAABAP///////wIA////////AAAAwAAAAAAA////////AgD///////8AAADBAAAAAQD///////8CAP///////wAAAMIAAAAAAP///////wIA////////AAAAwwAAAAEA////////AgD///////8AAADEAAAAAAD///////8CAP///////wAAAMUAAAABAP///////wIA////////AAAAxgAAAAAA////////AQD///////8AAADHAAAAAAD///////8BAP///////wAAAMgAAAAAAP////8FAAEA/////wEAAAAAyQAAAAAA/////wUAAQD/////AQAAAADKAAAAAAD/////BQABAP////8BAAAAAMsAAAAAAP////8QAAEA/////wQAAAAAzAAAAAAA/////wUAAQD/////AQAAAADNAAAAAAD/////EwABAP////8EAAAAAM4AAAAAAP////8FAAEA/////wEAAAAAzwAAAAAA/////wUAAQD/////AQAAAADQAAAAAAD/////BQABAP////8BAAAAANEAAAAAAP////8FAAEA/////wEAAAAA0gAAAAIAFwD//wgAAQABAP//AQAAAADTAAAAAgD/////CAABAP////8BAAAAANQAAAACAP////8IAAEA/////wEAAAAA1QAAAAIA/////wgAAQD/////AQAAAAfWAAAAAgD/////CAABAP////8BAAAAB9cAAAACAP////8IAAEA/////wEAAAAH2AAAAAIA/////wgAAQD/////AQAAAAfZAAAAAgD/////CAABAP////8BAAAAB9oAAAACAP////8IAAEA/////wEAAAAH2wAAAAIA/////wgAAQD/////AQAAAAPcAAAAAgAOAP////8BAAEA/////wAAAN0AAAACAP///////wEA////////AAAA3gAAAAIA////////AQD///////8AAAffAAAAAgD///////8BAP///////wAAB+AAAAACAP///////wEA////////AAAH4QAAAAIA////////AQD///////8AAAfiAAAAAgD///////8BAP///////wAAB+MAAAACAP///////wEA////////AAAD5AAAAAIA////////AQD///////8AAADlAAAAAgD///////8BAP///////wAAAOYAAAAAAA0A/////wIAAgD/////AAAA5wAAAAAA////////AgD///////8AAADoAAAAAAD/////AwACAP////8CAAAAAOkAAAAAAP////8DAAIA/////wIAAAAA6gAAAAEA////////AgD///////8AAADrAAAAAAD///////8CAP///////wAAAOwAAAABAP///////wIA////////AAAA7QAAAAAA////////AgD///////8AAADuAAAAAAALAP////8BAAIA/////wAAAO8AAAAAAP///////wEA////////AAAA8AAAAAAA////////AQD///////8AAADxAAAAAAD/////BQABAP////8BAAAAAPIAAAAAAP///////wEA////////AAAA8wAAAAAA/////wUAAQD/////AQAAAAD0AAAAAAD///////8BAP///////wAAAPUAAAAAAP///////wEA////////AAAA9gAAAAAA/////wUAAQD/////AQAAAAD3AAAAAAD/////BQABAP////8BAAAAAPgAAAAAAP////8FAAEA/////wEAAAAA+QAAAAAA////////AQD///////8AAAD6AAAAAgAYAP//CAABAAEA//8BAAAAAPsAAAACAP////8IAAEA/////wEAAAAA/AAAAAIA/////wgAAQD/////AQAAAAD9AAAAAgD/////CAABAP////8BAAAAB/4AAAACAP////8IAAEA/////wEAAAAH/wAAAAIA/////wgAAQD/////AQAAAAcAAQAAAgD/////CAABAP////8BAAAABwEBAAACAP////8IAAEA/////wEAAAAHAgEAAAIA/////wgAAQD/////AQAAAAcDAQAAAgD/////CAABAP////8BAAAAAQQBAAACAA4A/////wEAAQD/////AAAABQEAAAIA////////AQD///////8AAAAGAQAAAgD///////8BAP///////wAABwcBAAACAP///////wEA////////AAAHCAEAAAIA////////AQD///////8AAAcJAQAAAgD///////8BAP///////wAABwoBAAACAP///////wEA////////AAAHCwEAAAoA////////AQD///////8AAAcMAQAAAgD///////8BAP///////wAAAQ0BAAACAP///////wEA////////AAAADgEAAAAACwD/////AgACAP////8AAAAPAQAAAQD///////8CAP///////wAAABABAAAAAP///////wIA////////AAAAEQEAAAAA////////AgD///////8AAAASAQAAAQD///////8CAP///////wAAABMBAAAAAP///////wIA////////AAAAFAEAAAAA////////AgD///////8AAAAVAQAAAAD///////8CAP///////wAAABYBAAAAAAsA/////wEAAgD/////AAAAFwEAAAAA////////AQD///////8AAAAYAQAAAAD/////BQABAP////8BAAAAABkBAAAAAP////8FAAEA/////wEAAAAAGgEAAAAA/////wUAAQD/////AQAAAAAbAQAAAAD/////BQABAP////8BAAAAABwBAAAAAP////8FAAEA/////wEAAAAAHQEAAAAA/////wUAAQD/////AQAAAAAeAQAAAAD/////BQABAP////8BAAAAAB8BAAAAAP///////wEA////////AAAAIAEAAAAA/////wUAAQD/////AQAAAAAhAQAAAAD/////BQABAP////8BAAAAACIBAAACABcA//8IAAEAAQD//wEAAAAAIwEAAAIA/////wgAAQD/////AQAAAAAkAQAAAgD/////CAABAP////8BAAAAACUBAAACAP////8IAAEA/////wEAAAAHJgEAAAIA/////wgAAQD/////AQAAAAcnAQAAAgD/////CAABAP////8BAAAABygBAAACAP////8IAAEA/////wEAAAAHKQEAAAIA/////wgAAQD/////AQAAAAcqAQAAAgD/////CAABAP////8BAAAAAysBAAACAP////8IAAEA/////wEAAAAALAEAAAIADgD/////AQABAP////8AAActAQAAAgD///////8BAP///////wAABy4BAAACAP///////wEA////////AAAHLwEAAAIA////////AQD///////8AAAcwAQAAAgD///////8BAP///////wAABzEBAAACAP///////wEA////////AAAHMgEAAAIA////////AQD///////8AAAczAQAAAgD///////8BAP///////wAAAzQBAAACAP///////wEA////////AAAANQEAAAIA////////AQD///////8AAAA2AQAAAAALAP////8CAAIA/////wAAADcBAAAAAP///////wIA////////AAAAOAEAAAEA////////AgD///////8AAAA5AQAAAAD///////8CAP///////wAAADoBAAAAAP///////wIA////////AAAAOwEAAAAA////////AgD///////8AAAA8AQAAAQD///////8CAP///////wAAAD0BAAAAAP///////wIA////////AAAAPgEAAAAACwD/////AQACAP////8AAAA/AQAAAAD///////8BAP///////wAAAEABAAAAAP///////wEA////////AAAAQQEAAAAA/////wUAAQD/////AQAAAABCAQAAAAD/////BQABAP////8BAAAAAEMBAAAAAP///////wEA////////AAAARAEAAAAA/////wUAAQD/////AQAAAABFAQAAAAD/////BQABAP////8BAAAAAEYBAAAAAP////8FAAEA/////wEAAAAARwEAAAAA/////wUAAQD/////AQAAAABIAQAAAAD/////BQABAP////8BAAAAAEkBAAAAAP////8FAAEA/////wEAAAAASgEAAAIAGAD//wgAAQABAP//AQAAAABLAQAAAgD/////CAABAP////8BAAAAAEwBAAACAP////8IAAEA/////wEAAAAATQEAAAIA/////wgAAQD/////AQAAAAdOAQAAAgD/////CAABAP////8BAAAAB08BAAACAP////8IAAEA/////wEAAAAHUAEAAAIA/////wgAAQD/////AQAAAAdRAQAAAgD/////CAABAP////8BAAAAB1IBAAACAP////8IAAEA/////wEAAAABUwEAAAIA/////wgAAQD/////AQAAAABUAQAAAgAOAP////8BAAEA/////wAAB1UBAAACAP///////wEA////////AAAHVgEAAAIA////////AQD///////8AAAdXAQAAAgD///////8BAP///////wAAB1gBAAACAP///////wEA////////AAAHWQEAAAIA////////AQD///////8AAAdaAQAAAgD///////8BAP///////wAAB1sBAAACAP///////wEA////////AAAHXAEAAAIA////////AQD///////8AAAddAQAAAgD///////8BAP///////wAAB14BAAAAAP//CgD//wEA//8CAP//AAAHXwEAAAAA//8KAP//AQD//wIA//8AAAdgAQAAAAD//wwA//8BAP//AgD//wAAB2EBAAAAAP//CgD//wEA//8CAP//AAAHYgEAAAAA//8KAP//AQD//wIA//8AAAdjAQAAAAD//wwA//8BAP//AgD//wAAB2QBAAAAAP//CgD//wEA//8CAP//AAAHZQEAAAAA//8KAP//AQD//wIA//8AAAdmAQAAAAAOAP////8BAAIA/////wAAAWcBAAAAAP///////wEA////////AAAAaAEAAAAA/////wUAAQD/////AQAAAAdpAQAAAAD/////BQABAP////8BAAAAAWoBAAAAAP////8FAAEA/////wEAAAAAawEAAAAA/////wUAAQD/////AQAAAABsAQAAAAD/////BQABAP////8BAAAAAG0BAAAAAP////8FAAEA/////wEAAAAAbgEAAAAA////////AQD///////8AAABvAQAAAAD/////BQABAP////8BAAAAAHABAAAAAP////8FAAEA/////wEAAAAAcQEAAAAA/////wUAAQD/////AQAAAAByAQAAAgAXAP//CAABAAEA//8BAAAAAHMBAAACAP////8IAAEA/////wEAAAAAdAEAAAIA/////wgAAQD/////AQAAAAB1AQAAAgD/////CAABAP////8BAAAAB3YBAAACAP////8IAAEA/////wEAAAAHdwEAAAIA/////wgAAQD/////AQAAAAd4AQAAAgD/////CAABAP////8BAAAAB3kBAAACAP////8IAAEA/////wEAAAADegEAAAIA/////wgAAQD/////AQAAAAB7AQAAAgD/////CAABAP////8BAAAAAHwBAAACAA4A/////wEAAQD/////AAAHfQEAAAIA////////AQD///////8AAAd+AQAAAgD///////8BAP///////wAAB38BAAACAP///////wEA////////AAAHgAEAAAIA////////AQD///////8AAAeBAQAAAgD///////8BAP///////wAAB4IBAAACAP///////wEA////////AAAHgwEAAAIA////////AQD///////8AAAeEAQAAAgD///////8BAP///////wAAB4UBAAACAP///////wEA////////AAAHhgEAAAAA////////AQD///////8AAAeHAQAAAAD///////8BAP///////wAAB4gBAAAAAP///////wEA////////AAAHiQEAAAAA////////AQD///////8AAAeKAQAAAAD///////8BAP///////wAAB4sBAAAAAP///////wEA////////AAAHjAEAAAAA////////AQD///////8AAAeNAQAAAAD///////8BAP///////wAAB44BAAAAAP///////wEA////////AAAHjwEAAAAA////////AQD///////8AAAeQAQAABgAYABsA//8BAAEAAQD//wAAB5EBAAAGAP//HAD//wEA//8BAP//AAAHkgEAAAYA//8bAP//AQD//wEA//8AAAGTAQAABgD//xwA//8BAP//AQD//wAAAJQBAAACAP///////wEA////////AAAAlQEAAAYA////////AQD///////8AAACWAQAABgD//xsA//8BAP//AQD//wAAAJcBAAAGAP//HAD//wEA//8BAP//AAAAmAEAAAYA//8bAP//AQD//wEA//8AAACZAQAABgD//xwA//8BAP//AQD//wAAAJoBAAACAAsACgD//wEAAgACAP//AAAAmwEAAAIA//8KAP//AQD//wIA//8AAAecAQAAAgD//woA//8BAP//AgD//wAAB50BAAACAP//CgD//wEA//8CAP//AAAHngEAAAIABgD/////AQACAP////8AAAefAQAAAgD///////8BAP///////wAAB6ABAAATAAYACgD//wIAAgACAP//AAAHoQEAABMA//8KAP//AgD//wIA//8AAAeiAQAAEwD//woA//8CAP//AgD//wAAB6MBAAACAAYACgD//wEAAgACAP//AAAHpAEAAAAA////////AQD///////8AAAelAQAAAAD///////8BAP///////wAAB6YBAAAAAP///////wEA////////AAAHpwEAAAAA////////AQD///////8AAAeoAQAAAAD///////8BAP///////wAAB6kBAAAAAP///////wEA////////AAAHqgEAAAAA////////AQD///////8AAAerAQAAAAD///////8BAP///////wAAB6wBAAAAAP///////wEA////////AAAHrQEAAAAA////////AQD///////8AAAeuAQAAAwD/////BAABAP////8BAAAAB68BAAADAP////8EAAEA/////wEAAAAHsAEAAAMA/////wQAAQD/////AQAAAAexAQAAAwD/////BAABAP////8BAAAAB7IBAAADAP////8EAAEA/////wEAAAAHswEAAAMA/////wQAAQD/////AQAAAAe0AQAAAwD/////BAABAP////8BAAAAB7UBAAADAP////8EAAEA/////wEAAAAHtgEAAAMA/////wQAAQD/////AQAAAAe3AQAAAwD/////BAABAP////8BAAAAB7gBAAAGABcA/////wEAAQD/////AAAHuQEAAAYA////////AQD///////8AAAe6AQAABgD///////8BAP///////wAAB7sBAAAGAP///////wEA////////AAAHvAEAAAYA////////AQD///////8AAAG9AQAAAgD///////8BAP///////wAAAL4BAAAGAP///////wEA////////AAAAvwEAAAYA////////AQD///////8AAADAAQAABgD///////8BAP///////wAAAMEBAAACAP///////wEA////////AAAAwgEAAAIACwD/////AQACAP////8AAADDAQAAAgD///////8BAP///////wAAB8QBAAACAP///////wEA////////AAAHxQEAAAIA////////AQD///////8AAAfGAQAAAgAGAP////8BAAIA/////wAAB8cBAAACAP///////wEA////////AAAHyAEAABMABgD/////AgACAP////8AAAfJAQAAEwD///////8CAP///////wAAB8oBAAATAP///////wIA////////AAAHywEAAAIABgD/////AQACAP////8AAAfMAQAAAAD///////8BAP///////wAAB80BAAAAAP///////wEA////////AAAHzgEAAAAA////////AQD///////8AAAfPAQAAAAD///////8BAP///////wAAB9ABAAAAAP////8MAAEA/////wEAAAAH0QEAAAAA////////AQD///////8AAAfSAQAAAAD/////BQABAP////8BAAAAB9MBAAAAAP///////wEA////////AAAH1AEAAAAA////////AQD///////8AAAfVAQAAAAD///////8BAP///////wAAB9YBAAADAP////8EAAEA/////wEAAAAH1wEAAAMA/////wQAAQD/////AQAAAAfYAQAAAwD/////BAABAP////8BAAAAB9kBAAADAP////8EAAEA/////wEAAAAH2gEAAAMA/////wQAAQD/////AQAAAAfbAQAAAwD/////BAABAP////8BAAAAB9wBAAADAP////8EAAEA/////wEAAAAH3QEAAAMA/////wQAAQD/////AQAAAAfeAQAAAwD/////BAABAP////8BAAAAB98BAAADAP////8EAAEA/////wEAAAAH4AEAAAYAGAD/////AQABAP////8AAAfhAQAABgD///////8BAP///////wAAB+IBAAAGAP///////wEA////////AAAH4wEAAAYA////////AQD///////8AAAfkAQAABgD///////8BAP///////wAAB+UBAAAGAP///////wEA////////AAAB5gEAAAYA////////AQD///////8AAADnAQAABgD///////8BAP///////wAAAOgBAAAGAP///////wEA////////AAAA6QEAAAYA////////AQD///////8AAADqAQAAAgALAAUA//8BAAIAAgD//wAAAOsBAAACAP//BQD//wEA//8CAP//AAAH7AEAAAIA////////AQD///////8AAAftAQAAAgD///////8BAP///////wAAB+4BAAACAP///////wEA////////AAAH7wEAAAIA////////AQD///////8AAAfwAQAAEwAIAP////8CAAIA/////wAAB/EBAAATAP///////wIA////////AAAH8gEAABMA////////AgD///////8AAAfzAQAAAgAIAP////8BAAIA/////wAAB/QBAAAAAP///////wEA////////AAAH9QEAAAAA////////AQD///////8AAAf2AQAAAAD/////BQABAP////8BAAAAB/cBAAAAAP///////wEA////////AAAH+AEAAAAA////////AQD///////8AAAf5AQAAAAD/////BQABAP////8BAAAAB/oBAAAAAP////8FAAEA/////wEAAAAH+wEAAAAA/////wUAAQD/////AQAAAAf8AQAAAAD/////DAABAP////8BAAAAB/0BAAAAAP///////wEA////////AAAH/gEAAAMA/////wQAAQD/////AQAAAAf/AQAAAwD/////BAABAP////8BAAAABwACAAADAP////8EAAEA/////wEAAAAHAQIAAAMA/////wQAAQD/////AQAAAAcCAgAAAwD/////BAABAP////8BAAAABwMCAAADAP////8EAAEA/////wEAAAAHBAIAAAMA/////wQAAQD/////AQAAAAcFAgAAAwD/////BAABAP////8BAAAABwYCAAADAP////8EAAEA/////wEAAAAHBwIAAAMA/////wQAAQD/////AQAAAAcIAgAABgAXAP////8BAAEA/////wAABwkCAAAGAP///////wEA////////AAAHCgIAAAYA////////AQD///////8AAAcLAgAABgD///////8BAP///////wAABwwCAAAGAP///////wEA////////AAAHDQIAAAYA////////AQD///////8AAAcOAgAABgD///////8BAP///////wAABw8CAAAGAP///////wEA////////AAABEAIAAAYA////////AQD///////8AAAARAgAABgD///////8BAP///////wAAABICAAACAAsA/////wEAAgD/////AAAAEwIAAAIA////////AQD///////8AAAcUAgAAAgD///////8BAP///////wAABxUCAAACAP///////wEA////////AAAHFgIAAAIA////////AQD///////8AAAcXAgAAAgD///////8BAP///////wAABxgCAAATAAYA/////wIAAgD/////AAAHGQIAABMA////////AgD///////8AAAcaAgAAEwD///////8CAP///////wAABxsCAAACABEA/////wEAAgD/////AAAHHAIAAAAA////////AQD///////8AAAcdAgAAAAD///////8BAP///////wAABx4CAAAAAP///////wEA////////AAAHHwIAAAAA////////AQD///////8AAAcgAgAAAAD/////DAABAP////8BAAAAByECAAAAAP///////wEA////////AAAHIgIAAAAA/////wUAAQD/////AQAAAAcjAgAAAAD///////8BAP///////wAAByQCAAAAAP///////wEA////////AAAHJQIAAAAA////////AQD///////8AAAcmAgAAAwD/////BAABAP////8BAAAABycCAAADAP////8EAAEA/////wEAAAAHKAIAAAMA/////wQAAQD/////AQAAAAcpAgAAAwD/////BAABAP////8BAAAAByoCAAADAP////8EAAEA/////wEAAAAHKwIAAAMA/////wQAAQD/////AQAAAAcsAgAAAwD/////BAABAP////8BAAAABy0CAAADAP////8EAAEA/////wEAAAAHLgIAAAMA/////wQAAQD/////AQAAAAcvAgAAAwD/////BAABAP////8BAAAABzACAAACAP///////wEA////////AAAHMQIAAAIA////////AQD///////8AAAcyAgAABgD///////8BAP///////wAABzMCAAAGAP///////wEA////////AAAHNAIAAAYA////////AQD///////8AAAc1AgAABgD///////8BAP///////wAABzYCAAAGAP///////wEA////////AAAHNwIAAAYA////////AQD///////8AAAc4AgAABgD///////8BAP///////wAAATkCAAAGAP///////wEA////////AAAAOgIAAAIACwAFAP//AQACAAIA//8AAAc7AgAAAgD//wUA//8BAP//AgD//wAABzwCAAACAP///////wEA////////AAAHPQIAAAIA////////AQD///////8AAAc+AgAAAgAGAP////8BAAIA/////wAABz8CAAACAP///////wEA////////AAAHQAIAABMABgD/////AgACAP////8AAAdBAgAAEwD///////8CAP///////wAAB0ICAAATAP///////wIA////////AAAHQwIAAAIABgD/////AQACAP////8AAAdEAgAAAAD///////8BAP///////wAAB0UCAAAAAP////8MAAEA/////wEAAAAHRgIAAAAA/////wUAAQD/////AQAAAAdHAgAAAAD/////BQABAP////8BAAAAB0gCAAAAAP////8FAAEA/////wEAAAAHSQIAAAAA////////AQD///////8AAAdKAgAAAAD///////8BAP///////wAAB0sCAAAAAP///////wEA////////AAAHTAIAAAAA////////AQD///////8AAAdNAgAAAAD///////8BAP///////wAAB04CAAADAP////8EAAEA/////wEAAAAHTwIAAAMA/////wQAAQD/////AQAAAAdQAgAAAwD/////BAABAP////8BAAAAB1ECAAADAP////8EAAEA/////wEAAAAHUgIAAAMA/////wQAAQD/////AQAAAAdTAgAAAwD/////BAABAP////8BAAAAB1QCAAADAP////8EAAEA/////wEAAAAHVQIAAAMA/////wQAAQD/////AQAAAAdWAgAAAwD/////BAABAP////8BAAAAB1cCAAADAP////8EAAEA/////wEAAAAHWAIAAAYA////////AQD///////8AAAdZAgAABgD///////8BAP///////wAAB1oCAAAGAP///////wEA////////AAAHWwIAAAYA////////AQD///////8AAAdcAgAABgD///////8BAP///////wAAB10CAAAGAP///////wEA////////AAAHXgIAAAYA////////AQD///////8AAAdfAgAABgD///////8BAP///////wAAB2ACAAAGAP///////wEA////////AAAHYQIAAAYA////////AQD///////8AAAFiAgAAAgALAP////8BAAIA/////wAAAmMCAAACAP///////wEA////////AAAHZAIAAAIA////////AQD///////8AAAdlAgAAAgD///////8BAP///////wAAB2YCAAACAAYA/////wEAAgD/////AAAHZwIAAAIA////////AQD///////8AAAdoAgAAAgD//wUA//8BAP//AgD//wAAB2kCAAACAP//BwD//wEA//8CAP//AAAHagIAAAIA//8FAP//AQD//wIA//8AAAdrAgAAAgD///////8BAP///////wAAB2wCAAAAAP///////wEA////////AAAHbQIAAAAA////////AQD///////8AAAduAgAAAAD///////8BAP///////wAAB28CAAAAAP////8FAAEA/////wEAAAAHcAIAAAAA/////wUAAQD/////AQAAAAdxAgAAAAD/////BQABAP////8BAAAAB3ICAAAAAP///////wEA////////AAAHcwIAAAAA////////AQD///////8AAAd0AgAAAAD/////BQABAP////8BAAAAB3UCAAAAAP////8FAAEA/////wEAAAAHdgIAAAMA/////wQAAQD/////AQAAAAd3AgAAAwD/////BAABAP////8BAAAAB3gCAAADAP////8EAAEA/////wEAAAAHeQIAAAMA/////wQAAQD/////AQAAAAd6AgAAAwD/////BAABAP////8BAAAAB3sCAAADAP////8EAAEA/////wEAAAAHfAIAAAMA/////wQAAQD/////AQAAAAd9AgAAAwD/////BAABAP////8BAAAAB34CAAADAP////8EAAEA/////wEAAAAHfwIAAAMA/////wQAAQD/////AQAAAAeAAgAABgAYAP////8BAAEA/////wAAB4ECAAAGAP///////wEA////////AAAHggIAAAYA////////AQD///////8AAAeDAgAABgD///////8BAP///////wAAB4QCAAAGAP///////wEA////////AAAHhQIAAAYA////////AQD///////8AAAeGAgAABgD///////8BAP///////wAAB4cCAAAGAP///////wEA////////AAAHiAIAAAYA////////AQD///////8AAAeJAgAAAgD///////8BAP///////wAAB4oCAAACAAsABQD//wEAAgACAP//AAAHiwIAAAIA//8FAP//AQD//wIA//8AAAeMAgAAAgD///////8BAP///////wAAB40CAAACAP///////wEA////////AAAHjgIAAAIACAD/////AQACAP////8AAAePAgAAAgD///////8BAP///////wAAB5ACAAACAP///////wEA////////AAAHkQIAAAIA////////AQD///////8AAAeSAgAAAgD///////8BAP///////wAAB5MCAAACAP///////wEA////////AAAHlAIAAAAA////////AQD///////8AAAeVAgAAAAD///////8BAP///////wAAB5YCAAAAAP///////wEA////////AAAHlwIAAAAA////////AQD///////8AAAeYAgAAAAD/////BQABAP////8BAAAAB5kCAAAAAP///////wEA////////AAAHmgIAAAAA////////AQD///////8AAAebAgAAAAD///////8BAP///////wAAB5wCAAAAAP////8FAAEA/////wEAAAAHnQIAAAAA////////AQD///////8AAAeeAgAAAwD/////BAABAP////8BAAAAB58CAAADAP////8EAAEA/////wEAAAAHoAIAAAMA/////wQAAQD/////AQAAAAehAgAAAwD/////BAABAP////8BAAAAB6ICAAADAP////8EAAEA/////wEAAAAHowIAAAMA/////wQAAQD/////AQAAAAekAgAAAwD/////BAABAP////8BAAAAB6UCAAADAP////8EAAEA/////wEAAAAHpgIAAAMA/////wQAAQD/////AQAAAAenAgAAAwD/////BAABAP////8BAAAAB6gCAAAGABcA/////wEAAQD/////AAAHqQIAAAYA////////AQD///////8AAAeqAgAABgD///////8BAP///////wAAB6sCAAAGAP///////wEA////////AAAHrAIAAAYA////////AQD///////8AAAetAgAABgD///////8BAP///////wAAB64CAAAGAP///////wEA////////AAAHrwIAAAYA////////AQD///////8AAAewAgAABgD///////8BAP///////wAAB7ECAAAGAP///////wEA////////AAAHsgIAAAIACwD/////AQACAP////8AAAezAgAAAgD///////8BAP///////wAAB7QCAAACAP///////wEA////////AAAHtQIAAAIA////////AQD///////8AAAe2AgAAAgAGAP////8BAAIA/////wAAB7cCAAACAP///////wEA////////AAAHuAIAAAIA////////AQD///////8AAAe5AgAAAgD///////8BAP///////wAAB7oCAAACAP///////wEA////////AAAHuwIAAAIA////////AQD///////8AAAe8AgAAAAD///////8BAP///////wAAB70CAAAAAP///////wEA////////AAAHvgIAAAAA////////AQD///////8AAAe/AgAAAAD/////DAABAP////8BAAAAB8ACAAAAAP///////wEA////////AAAHwQIAAAAA////////AQD///////8AAAfCAgAAAAD/////DAABAP////8BAAAAB8MCAAAAAP///////wEA////////AAAHxAIAAAAA////////AQD///////8AAAfFAgAAAAD///////8BAP///////wAAB8YCAAADAP////8EAAEA/////wEAAAAHxwIAAAMA/////wQAAQD/////AQAAAAfIAgAAAwD/////BAABAP////8BAAAAB8kCAAADAP////8EAAEA/////wEAAAAHygIAAAMA/////wQAAQD/////AQAAAAfLAgAAAwD/////BAABAP////8BAAAAB8wCAAADAP////8EAAEA/////wEAAAAHzQIAAAMA/////wQAAQD/////AQAAAAfOAgAAAwD/////BAABAP////8BAAAAB88CAAADAP////8EAAEA/////wEAAAAH0AIAAAYAGAD/////AQABAP////8AAAfRAgAABgD///////8BAP///////wAAB9ICAAAGAP///////wEA////////AAAH0wIAAAYA////////AQD///////8AAAfUAgAABgD///////8BAP///////wAAB9UCAAAGAP///////wEA////////AAAH1gIAAAYA////////AQD///////8AAAfXAgAABgD///////8BAP///////wAAB9gCAAAGAP///////wEA////////AAAH2QIAAAYA////////AQD///////8AAAfaAgAAAgD//wUA//8BAP//AgD//wAAB9sCAAACAP//BwD//wEA//8CAP//AAAH3AIAAAIAEQD/////AQACAP////8AAAfdAgAAAgD//wUA//8BAP//AgD//wAAB94CAAACAP///////wEA////////AAAH3wIAAAIA////////AQD///////8AAAfgAgAAAgD///////8BAP///////wAAB+ECAAACAP///////wEA////////AAAH4gIAAAIA////////AQD///////8AAAfjAgAAAgD///////8BAP///////wAAB+QCAAAAAP///////wEA////////AAAH5QIAAAAA/////wUAAQD/////AQAAAAfmAgAAAAD///////8BAP///////wAAB+cCAAAAAP///////wEA////////AAAH6AIAAAAA////////AQD///////8AAAfpAgAAAAD///////8BAP///////wAAB+oCAAAAAP///////wEA////////AAAH6wIAAAAA////////AQD///////8AAAfsAgAAAAD///////8BAP///////wAAB+0CAAAAAP///////wEA////////AAAH7gIAAAMA/////wQAAQD/////AQAAAAfvAgAAAwD/////BAABAP////8BAAAAB/ACAAADAP////8EAAEA/////wEAAAAH8QIAAAMA/////wQAAQD/////AQAAAAfyAgAAAwD/////BAABAP////8BAAAAB/MCAAADAP////8EAAEA/////wEAAAAH9AIAAAMA/////wQAAQD/////AQAAAAf1AgAAAwD/////BAABAP////8BAAAAB/YCAAADAP////8EAAEA/////wEAAAAH9wIAAAMA/////wQAAQD/////AQAAAAf4AgAABgAXAP////8BAAEA/////wAAB/kCAAAGAP///////wEA////////AAAH+gIAAAIA////////AQD///////8AAAf7AgAABgD///////8BAP///////wAAB/wCAAAGAP///////wEA////////AAAH/QIAAAIA////////AQD///////8AAAf+AgAABgD///////8BAP///////wAAB/8CAAAGAP///////wEA////////AAAHAAMAAAYA////////AQD///////8AAAcBAwAABgD///////8BAP///////wAABwIDAAACAP///////wEA////////AAAHAwMAAAIA////////AQD///////8AAAcEAwAAAgD///////8BAP///////wAABwUDAAACAP///////wEA////////AAAHBgMAAAIA////////AQD///////8AAAcHAwAAAgD///////8BAP///////wAABwgDAAACAP///////wEA////////AAAHCQMAAAIA////////AQD///////8AAAcKAwAAAgD///////8BAP///////wAABwsDAAACAP///////wEA////////AAAHDAMAAAAA////////AQD///////8AAAcNAwAAAAD///////8BAP///////wAABw4DAAAAAP///////wEA////////AAAHDwMAAAAA////////AQD///////8AAAcQAwAAAAD/////BQABAP////8BAAAABxEDAAAAAP////8FAAEA/////wEAAAAHEgMAAAAA////////AQD///////8AAAcTAwAAAAD///////8BAP///////wAABxQDAAAAAP///////wEA////////AAAHFQMAAAAA////////AQD///////8AAAcWAwAAAwD/////BAABAP////8BAAAABxcDAAADAP////8EAAEA/////wEAAAAHGAMAAAMA/////wQAAQD/////AQAAAAcZAwAAAwD/////BAABAP////8BAAAABxoDAAADAP////8EAAEA/////wEAAAAHGwMAAAMA/////wQAAQD/////AQAAAAccAwAAAwD/////BAABAP////8BAAAABx0DAAADAP////8EAAEA/////wEAAAAHHgMAAAMA/////wQAAQD/////AQAAAAcfAwAAAwD/////BAABAP////8BAAAAByADAAACAP///////wEA////////AAAHIQMAAAIA////////AQD///////8AAAciAwAAAgD///////8BAP///////wAAByMDAAACAP///////wEA////////AAAHJAMAAAIA////////AQD///////8AAAclAwAAAgD///////8BAP///////wAAByYDAAACAP///////wEA////////AAAHJwMAAAIA////////AQD///////8AAAcoAwAAAgD///////8BAP///////wAABykDAAACAP///////wEA////////AAAHKgMAAAIADgAPAP//AQABAAEA//8AAAcrAwAAAgD//w8A//8BAP//AQD//wAABywDAAACAP///////wEA////////AAAHLQMAAAIA////////AQD///////8AAAcuAwAAAgD//w8A//8BAP//AQD//wAABy8DAAACAP//DwD//wEA//8BAP//AAAHMAMAAAIA//8PAP//AQD//wEA//8AAAcxAwAAAgD//w8A//8BAP//AQD//wAABzIDAAACAP//DwD//wEA//8BAP//AAAHMwMAAAIA//8PAP//AQD//wEA//8AAAc0AwAAAAD///////8BAP///////wAABzUDAAAAAP///////wEA////////AAAHNgMAAAAA////////AQD///////8AAAc3AwAAAAD///////8BAP///////wAABzgDAAAAAP///////wEA////////AAAHOQMAAAAA////////AQD///////8AAAc6AwAAAAD///////8BAP///////wAABzsDAAAAAP///////wEA////////AAAHPAMAAAAA////////AQD///////8AAAc9AwAAAAD///////8BAP///////wAABz4DAAADABgAGwAEAAEAAQABAAEAAAAHPwMAAAMA//8cAAQAAQD//wEAAQAAAAdAAwAAAwD//xsABAABAP//AQABAAAAB0EDAAADAP//HAAEAAEA//8BAAEAAAAHQgMAAAMA//8bAAQAAQD//wEAAQAAAAdDAwAAAwD//xwABAABAP//AQABAAAAB0QDAAADAP//GwAEAAEA//8BAAEAAAAHRQMAAAMA//8cAAQAAQD//wEAAQAAAAdGAwAAAwD//xsABAABAP//AQABAAAAB0cDAAADAP//HAAEAAEA//8BAAEAAAAHSAMAAAIA////////AQD///////8AAAdJAwAAAgD///////8BAP///////wAAB0oDAAACAP///////wEA////////AAAHSwMAAAIA////////AQD///////8AAAdMAwAAAgD///////8BAP///////wAAB00DAAACAP///////wEA////////AAAHTgMAAAIA////////AQD///////8AAAdPAwAAAgD///////8BAP///////wAAB1ADAAACAP///////wEA////////AAAHUQMAAAIA////////AQD///////8AAAdSAwAAAgAOAP////8BAAEA/////wAAB1MDAAAHAP///////wEA////////AAAHVAMAAAIA////////AQD///////8AAAdVAwAABwD///////8BAP///////wAAB1YDAAAHAP///////wEA////////AAAHVwMAAAcA////////AQD///////8AAAdYAwAACgD///////8BAP///////wAAB1kDAAAHAP///////wEA////////AAAHWgMAAAcA////////AQD///////8AAAdbAwAAAgD///////8BAP///////wAAB1wDAAAAAP///////wEA////////AAAHXQMAAAAA////////AQD///////8AAAdeAwAAAAD///////8BAP///////wAAB18DAAAAAP///////wEA////////AAAHYAMAAAAA////////AQD///////8AAAdhAwAAAAD///////8BAP///////wAAB2IDAAAAAP///////wEA////////AAAHYwMAAAAA////////AQD///////8AAAdkAwAAAAD///////8BAP///////wAAB2UDAAAAAP///////wEA////////AAAHZgMAAAMAFwD//wQAAQABAP//AQAAAAdnAwAAAwD/////BAABAP////8BAAAAB2gDAAADAP////8EAAEA/////wEAAAAHaQMAAAMA/////wQAAQD/////AQAAAAdqAwAAAwD/////BAABAP////8BAAAAB2sDAAADAP////8EAAEA/////wEAAAAHbAMAAAMA/////wQAAQD/////AQAAAAdtAwAAAwD/////BAABAP////8BAAAAB24DAAADAP////8EAAEA/////wEAAAAHbwMAAAMA/////wQAAQD/////AQAAAAdwAwAAAgD///////8BAP///////wAAB3EDAAACAP///////wEA////////AAAHcgMAAAIA////////AQD///////8AAAdzAwAAAgD///////8BAP///////wAAB3QDAAACAP///////wEA////////AAAHdQMAAAIA////////AQD///////8AAAd2AwAAAgD///////8BAP///////wAAB3cDAAACAP///////wEA////////AAAHeAMAAAIA////////AQD///////8AAAd5AwAAAgD///////8BAP///////wAAB3oDAAACAA4A/////wEAAQD/////AAAHewMAAAcA////////AQD///////8AAAd8AwAABwD///////8BAP///////wAAB30DAAAHAP///////wEA////////AAAHfgMAAAcA////////AQD///////8AAAd/AwAABwD///////8BAP///////wAAB4ADAAAHAP///////wEA////////AAAHgQMAAAcA////////AQD///////8AAAeCAwAABwD///////8BAP///////wAAB4MDAAAHAP///////wEA////////AAAHhAMAAAAA////////AQD///////8AAAeFAwAAAAD///////8BAP///////wAAB4YDAAAAAP///////wEA////////AAAHhwMAAAAA////////AQD///////8AAAeIAwAAAAD///////8BAP///////wAAB4kDAAAAAP///////wEA////////AAAHigMAAAAA////////AQD///////8AAAeLAwAAAAD///////8BAP///////wAAB4wDAAAAAP///////wEA////////AAAHjQMAAAAA////////AQD///////8AAAeOAwAAAwAYAP//BAABAAEA//8BAAAAB48DAAADAP////8EAAEA/////wEAAAAHkAMAAAMA/////wQAAQD/////AQAAAAeRAwAAAwD/////BAABAP////8BAAAAB5IDAAADAP////8EAAEA/////wEAAAAHkwMAAAMA/////wQAAQD/////AQAAAAeUAwAAAwD/////BAABAP////8BAAAAB5UDAAADAP////8EAAEA/////wEAAAAHlgMAAAMA/////wQAAQD/////AQAAAAeXAwAAAwD/////BAABAP////8BAAAAB5gDAAACAP///////wEA////////AAAHmQMAAAIA////////AQD///////8AAAeaAwAAAgD///////8BAP///////wAAB5sDAAACAP///////wEA////////AAAHnAMAAAIA////////AQD///////8AAAedAwAAAgD///////8BAP///////wAAB54DAAACAP///////wEA////////AAAHnwMAAAIA////////AQD///////8AAAegAwAAAgD///////8BAP///////wAAB6EDAAACAP///////wEA////////AAAHogMAAAIADgD/////AQABAP////8AAAejAwAABwD///////8BAP///////wAAB6QDAAAHAP///////wEA////////AAAHpQMAAAcA////////AQD///////8AAAemAwAABwD///////8BAP///////wAAB6cDAAAHAP///////wEA////////AAAHqAMAAAcA////////AQD///////8AAAepAwAABwD///////8BAP///////wAAB6oDAAAHAP///////wEA////////AAAHqwMAAAcA////////AQD///////8AAAesAwAAAAD///////8BAP///////wAAB60DAAAAAP///////wEA////////AAAHrgMAAAAA////////AQD///////8AAAevAwAAAAD///////8BAP///////wAAB7ADAAAAAP///////wEA////////AAAHsQMAAAAA////////AQD///////8AAAeyAwAAAAD///////8BAP///////wAAB7MDAAAAAP///////wEA////////AAAHtAMAAAAA////////AQD///////8AAAe1AwAAAAD///////8BAP///////wAAB7YDAAADABcA//8EAAEAAQD//wEAAAAHtwMAAAMA/////wQAAQD/////AQAAAAe4AwAAAwD/////BAABAP////8BAAAAB7kDAAADAP////8EAAEA/////wEAAAAHugMAAAMA/////wQAAQD/////AQAAAAe7AwAAAwD/////BAABAP////8BAAAAB7wDAAADAP////8EAAEA/////wEAAAAHvQMAAAMA/////wQAAQD/////AQAAAAe+AwAAAwD/////BAABAP////8BAAAAB78DAAADAP////8EAAEA/////wEAAAAHwAMAAAIA////////AQD///////8AAAfBAwAAAgD///////8BAP///////wAAB8IDAAACAP///////wEA////////AAAHwwMAAAIA////////AQD///////8AAAfEAwAAAgD///////8BAP///////wAAB8UDAAACAP///////wEA////////AAAHxgMAAAIA////////AQD///////8AAAfHAwAAAgD///////8BAP///////wAAB8gDAAACAP///////wEA////////AAAHyQMAAAIA////////AQD///////8AAAfKAwAAAgAOAP////8BAAEA/////wAAB8sDAAACAP///////wEA////////AAAHzAMAAAcA////////AQD///////8AAAfNAwAABwD///////8BAP///////wAAB84DAAAHAP///////wEA////////AAAHzwMAAAcA////////AQD///////8AAAfQAwAABwD///////8BAP///////wAAB9EDAAAHAP///////wEA////////AAAH0gMAAAcA////////AQD///////8AAAfTAwAABwD///////8BAP///////wAAB9QDAAAAAP///////wEA////////AAAH1QMAAAAA////////AQD///////8AAAfWAwAAAAD///////8BAP///////wAAB9cDAAAAAP///////wEA////////AAAH2AMAAAAA////////AQD///////8AAAfZAwAAAAD///////8BAP///////wAAB9oDAAAAAP///////wEA////////AAAH2wMAAAAA////////AQD///////8AAAfcAwAAAAD///////8BAP///////wAAB90DAAAAAP///////wEA////////AAAH3gMAAAMAGAD//wQAAQABAP//AQAAAAffAwAAAwD/////BAABAP////8BAAAAB+ADAAADAP////8EAAEA/////wEAAAAH4QMAAAMA/////wQAAQD/////AQAAAAfiAwAAAwD/////BAABAP////8BAAAAB+MDAAADAP////8EAAEA/////wEAAAAH5AMAAAMA/////wQAAQD/////AQAAAAflAwAAAwD/////BAABAP////8BAAAAB+YDAAADAP////8EAAEA/////wEAAAAH5wMAAAMA/////wQAAQD/////AQAAAAfoAwAAAgD///////8BAP///////wAAB+kDAAACAP///////wEA////////AAAH6gMAAAIA////////AQD///////8AAAfrAwAAAgD///////8BAP///////wAAB+wDAAACAP///////wEA////////AAAH7QMAAAIA////////AQD///////8AAAfuAwAAAgD///////8BAP///////wAAB+8DAAACAP///////wEA////////AAAH8AMAAAIA////////AQD///////8AAAfxAwAAAgD///////8BAP///////wAAB/IDAAACAA4A/////wEAAQD/////AAAH8wMAAAcA////////AQD///////8AAAf0AwAABwD///////8BAP///////wAAB/UDAAAHAP///////wEA////////AAAH9gMAAAcA////////AQD///////8AAAf3AwAABwD///////8BAP///////wAAB/gDAAAHAP///////wEA////////AAAH+QMAAAcA////////AQD///////8AAAf6AwAABwD///////8BAP///////wAAB/sDAAAHAP///////wEA////////AAAH/AMAAAAA////////AQD///////8AAAf9AwAAAAD///////8BAP///////wAAB/4DAAAAAP///////wEA////////AAAH/wMAAAAA////////AQD///////8AAAcABAAAAAD///////8BAP///////wAABwEEAAAAAP///////wEA////////AAAHAgQAAAAA////////AQD///////8AAAcDBAAAAAD///////8BAP///////wAABwQEAAAAAP///////wEA////////AAAHBQQAAAAA////////AQD///////8AAAcGBAAAAwAXAP//BAABAAEA//8BAAAABwcEAAADAP////8EAAEA/////wEAAAAHCAQAAAMA/////wQAAQD/////AQAAAAcJBAAAAwD/////BAABAP////8BAAAABwoEAAADAP////8EAAEA/////wEAAAAHCwQAAAMA/////wQAAQD/////AQAAAAcMBAAAAwD/////BAABAP////8BAAAABw0EAAADAP////8EAAEA/////wEAAAAHDgQAAAMA/////wQAAQD/////AQAAAAcPBAAAAwD/////BAABAP////8BAAAABxAEAAACAP///////wEA////////AAAHEQQAAAIA////////AQD///////8AAAcSBAAAAgD///////8BAP///////wAABxMEAAACAP///////wEA////////AAAHFAQAAAIA////////AQD///////8AAAcVBAAAAgD///////8BAP///////wAABxYEAAACAP///////wEA////////AAAHFwQAAAIA////////AQD///////8AAAcYBAAAAgD///////8BAP///////wAABxkEAAACAP///////wEA////////AAAHGgQAAAIADgD/////AQABAP////8AAAcbBAAABwD///////8BAP///////wAABxwEAAAHAP///////wEA////////AAAHHQQAAAcA////////AQD///////8AAAceBAAACgD///////8BAP///////wAABx8EAAAHAP///////wEA////////AAAHIAQAAAcA////////AQD///////8AAAchBAAABwD///////8BAP///////wAAByIEAAAHAP///////wEA////////AAAHIwQAAAcA////////AQD///////8AAAckBAAAAAD///////8BAP///////wAAByUEAAAAAP///////wEA////////AAAHJgQAAAAA////////AQD///////8AAAcnBAAAAAD///////8BAP///////wAABygEAAAAAP////9AAAEA/////wYAAAAHKQQAAAAA/////0AAAQD/////BgAAAAcqBAAAAAD///////8BAP///////wAABysEAAAAAP///////wEA////////AAAHLAQAAAAA////////AQD///////8AAActBAAAAAD///////8BAP///////wAABy4EAAADABgA//8EAAEAAQD//wEAAAAHLwQAAAMA/////wQAAQD/////AQAAAAcwBAAAAwD/////BAABAP////8BAAAABzEEAAADAP////8EAAEA/////wEAAAAHMgQAAAMA/////wQAAQD/////AQAAAAczBAAAAwD/////BAABAP////8BAAAABzQEAAADAP////8EAAEA/////wEAAAAHNQQAAAMA/////wQAAQD/////AQAAAAc2BAAAAwD/////BAABAP////8BAAAABzcEAAADAP////8EAAEA/////wEAAAAHOAQAAAIA////////AQD///////8AAAc5BAAAAgD///////8BAP///////wAABzoEAAACAP///////wEA////////AAAHOwQAAAIA////////AQD///////8AAAc8BAAAAgD///////8BAP///////wAABz0EAAACAP///////wEA////////AAAHPgQAAAIA////////AQD///////8AAAc/BAAAAgD///////8BAP///////wAAB0AEAAACAP///////wEA////////AAAHQQQAAAIA////////AQD///////8AAAdCBAAAAgD///////8BAP///////wAAB0MEAAAHAP///////wEA////////AAAHRAQAAAcA////////AQD///////8AAAdFBAAABwD///////8BAP///////wAAB0YEAAAHAP///////wEA////////AAAHRwQAAAcA////////AQD///////8AAAdIBAAABwD///////8BAP///////wAAB0kEAAAHAP///////wEA////////AAAHSgQAAAcA////////AQD///////8AAAdLBAAABwD///////8BAP///////wAAB0wEAAAAAP///////wEA////////AAAHTQQAAAAA////////AQD///////8AAAdOBAAAAAD///////8BAP///////wAAB08EAAAAAP///////wEA////////AAAHUAQAAAAA/////z8AAQD/////BgAAAAdRBAAAAAD/////PwABAP////8GAAAAB1IEAAAAAP///////wEA////////AAAHUwQAAAAA////////AQD///////8AAAdUBAAAAAD///////8BAP///////wAAB1UEAAAAAP///////wEA////////AAAHVgQAAAMAFwD//wQAAQABAP//AQAAAAdXBAAAAwD/////BAABAP////8BAAAAB1gEAAADAP////8EAAEA/////wEAAAAHWQQAAAMA/////wQAAQD/////AQAAAAdaBAAAAwD/////BAABAP////8BAAAAB1sEAAADAP////8EAAEA/////wEAAAAHXAQAAAMA/////wQAAQD/////AQAAAAddBAAAAwD/////BAABAP////8BAAAAB14EAAADAP////8EAAEA/////wEAAAAHXwQAAAMA/////wQAAQD/////AQAAAAdgBAAAAgD///////8BAP///////wAAB2EEAAACAP///////wEA////////AAAHYgQAAAIA////////AQD///////8AAAdjBAAAAgD///////8BAP///////wAAB2QEAAACAP///////wEA////////AAAHZQQAAAIA////////AQD///////8AAAdmBAAAAgD///////8BAP///////wAAB2cEAAACAP///////wEA////////AAAHaAQAAAIA////////AQD///////8AAAdpBAAAAgD///////8BAP///////wAAB2oEAAACAP///////wEA////////AAAHawQAAAIA////////AQD///////8AAAdsBAAABwD///////8BAP///////wAAB20EAAAHAP///////wEA////////AAAHbgQAAAcA////////AQD///////8AAAdvBAAABwD///////8BAP///////wAAB3AEAAAHAP///////wEA////////AAAHcQQAAAcA////////AQD///////8AAAdyBAAABwD///////8BAP///////wAAB3MEAAAHAP///////wEA////////AAAHdAQAAAAA////////AQD///////8AAAd1BAAAAAD///////8BAP///////wAAB3YEAAAAAP///////wEA////////AAAHdwQAAAAA////////AQD///////8AAAd4BAAAAAD/////PgABAP////8GAAAAB3kEAAAAAP////8+AAEA/////wYAAAAHegQAAAAA////////AQD///////8AAAd7BAAAAAD///////8BAP///////wAAB3wEAAAAAP///////wEA////////AAAHfQQAAAAA////////AQD///////8AAAd+BAAAAwAYAP//BAABAAEA//8BAAAAB38EAAADAP////8EAAEA/////wEAAAAHgAQAAAMA/////wQAAQD/////AQAAAAeBBAAAAwD/////BAABAP////8BAAAAB4IEAAADAP////8EAAEA/////wEAAAAHgwQAAAMA/////wQAAQD/////AQAAAAeEBAAAAwD/////BAABAP////8BAAAAB4UEAAADAP////8EAAEA/////wEAAAAHhgQAAAMA/////wQAAQD/////AQAAAAeHBAAAAwD/////BAABAP////8BAAAAB4gEAAACAP///////wEA////////AAAHiQQAAAIA////////AQD///////8AAAeKBAAAAgD///////8BAP///////wAAB4sEAAACAP///////wEA////////AAAHjAQAAAIA////////AQD///////8AAAeNBAAAAgD///////8BAP///////wAAB44EAAACAP///////wEA////////AAAHjwQAAAIA////////AQD///////8AAAeQBAAAAgD///////8BAP///////wAAB5EEAAACAP///////wEA////////AAAHkgQAAAIADgD/////AQABAP////8AAAeTBAAABwD///////8BAP///////wAAB5QEAAAHAP///////wEA////////AAAHlQQAAAcA////////AQD///////8AAAeWBAAABwD///////8BAP///////wAAB5cEAAAHAP///////wEA////////AAAHmAQAAAcA////////AQD///////8AAAeZBAAAAgD///////8BAP///////wAAB5oEAAAHAP///////wEA////////AAAHmwQAAAcA////////AQD///////8AAAecBAAAAAD///////8BAP///////wAAB50EAAAAAP///////wEA////////AAAHngQAAAAA////////AQD///////8AAAefBAAAAAD/////AAABAP////8GAAAAB6AEAAAAAP///////wEA////////AAAHoQQAAAAA////////AQD///////8AAAeiBAAAAAD/////AAABAP////8GAAAAB6MEAAAAAP///////wEA////////AAAHpAQAAAAA////////AQD///////8AAAelBAAAAAD///////8BAP///////wAAB6YEAAADABcA//8EAAEAAQD//wEAAAAHpwQAAAMA/////wQAAQD/////AQAAAAeoBAAAAwD/////BAABAP////8BAAAAB6kEAAADAP////8EAAEA/////wEAAAAHqgQAAAMA/////wQAAQD/////AQAAAAerBAAAAwD/////BAABAP////8BAAAAB6wEAAADAP////8EAAEA/////wEAAAAHrQQAAAMA/////wQAAQD/////AQAAAAeuBAAAAwD/////BAABAP////8BAAAAB68EAAADAP////8EAAEA/////wEAAAAHsAQAAAIAGAAbAAgAAQABAAEAAQAAAAexBAAAAgD//xwACAABAP//AQABAAAAB7IEAAACAP//GwAIAAEA//8BAAEAAAAHswQAAAIA//8cAAgAAQD//wEAAQAAAAe0BAAAAgD//xsACAABAP//AQABAAAAB7UEAAACAP//HAAIAAEA//8BAAEAAAAHtgQAAAIA/////wgAAQD/////AQAAAAe3BAAAAgD/////CAABAP////8BAAAAB7gEAAACAP//GwAIAAEA//8BAAEAAAAHuQQAAAIA//8cAAgAAQD//wEAAQAAAAe6BAAAAAD///////8BAP///////wAAB7sEAAAAAP///////wEA////////AAAHvAQAAAAA////////AQD///////8AAAe9BAAAAAD///////8BAP///////wAAB74EAAAAAP///////wEA////////AAAHvwQAAAAA////////AQD///////8AAAfABAAAAAD///////8BAP///////wAAB8EEAAAAAP///////wEA////////AAAHwgQAAAAA////////AQD///////8AAAfDBAAAAAD///////8BAP///////wAAB8QEAAAAAP///////wEA////////AAAHxQQAAAAA////////AQD///////8AAAfGBAAAAAD///////8BAP///////wAAB8cEAAAAAP///////wEA////////AAAHyAQAAAAA////////AQD///////8AAAfJBAAAAAD///////8BAP///////wAAB8oEAAAAAP///////wEA////////AAAHywQAAAAA////////AQD///////8AAAfMBAAAAAD///////8BAP///////wAAB80EAAAAAP///////wEA////////AAAHzgQAAAIA////////AQD///////8AAAfPBAAAAgD///////8BAP///////wAAB9AEAAACAP///////wEA////////AAAH0QQAAAIA////////AQD///////8AAAfSBAAAAgD///////8BAP///////wAAB9MEAAACAP///////wEA////////AAAH1AQAAAIA////////AQD///////8AAAfVBAAAAgD///////8BAP///////wAAB9YEAAACAP///////wEA////////AAAH1wQAAAIA////////AQD///////8AAAfYBAAAAgAXAP//CAABAAEA//8BAAAAB9kEAAACAP////8IAAEA/////wEAAAAH2gQAAAIA/////wgAAQD/////AQAAAAfbBAAAAgD/////CAABAP////8BAAAAB9wEAAACAP////8IAAEA/////wEAAAAH3QQAAAIA/////wgAAQD/////AQAAAAfeBAAAAgD/////CAABAP////8BAAAAB98EAAACAP////8IAAEA/////wEAAAAH4AQAAAIA/////wgAAQD/////AQAAAAfhBAAAAgD/////CAABAP////8BAAAAB+IEAAAAAP///////wEA////////AAAH4wQAAAAA////////AQD///////8AAAfkBAAAAAD///////8BAP///////wAAB+UEAAAAAP///////wEA////////AAAH5gQAAAAA/////wwAAQD/////AQAAAAfnBAAAAAD///////8BAP///////wAAB+gEAAAAAP////8FAAEA/////wEAAAAH6QQAAAAA////////AQD///////8AAAfqBAAAAAD///////8BAP///////wAAB+sEAAAAAP///////wEA////////AAAH7AQAAAAA////////AQD///////8AAAftBAAAAAD///////8BAP///////wAAB+4EAAAAAP///////wEA////////AAAH7wQAAAAA////////AQD///////8AAAfwBAAAAAD///////8BAP///////wAAB/EEAAAAAP///////wEA////////AAAH8gQAAAAA////////AQD///////8AAAfzBAAAAAD///////8BAP///////wAAB/QEAAAAAP///////wEA////////AAAH9QQAAAAA////////AQD///////8AAAf2BAAAAgD///////8BAP///////wAAB/cEAAACAP///////wEA////////AAAH+AQAAAIA////////AQD///////8AAAf5BAAAAgD///////8BAP///////wAAB/oEAAACAP///////wEA////////AAAH+wQAAAIA////////AQD///////8AAAf8BAAAAgD///////8BAP///////wAAB/0EAAACAP///////wEA////////AAAH/gQAAAIA////////AQD///////8AAAf/BAAAAgD///////8BAP///////wAABwAFAAACAP////8IAAEA/////wEAAAACAQUAAAIA/////wgAAQD/////AQAAAAcCBQAAAgD/////CAABAP////8BAAAABwMFAAACAP////8IAAEA/////wEAAAAHBAUAAAIA/////wgAAQD/////AQAAAAcFBQAAAgD/////CAABAP////8BAAAABwYFAAACAP////8IAAEA/////wEAAAAHBwUAAAIA/////wgAAQD/////AQAAAAcIBQAAAgD/////CAABAP////8BAAAABwkFAAACAP////8IAAEA/////wEAAAAHCgUAAAAA////////AQD///////8AAAcLBQAAAAD///////8BAP///////wAABwwFAAAAAP////8FAAEA/////wEAAAAHDQUAAAAA////////AQD///////8AAAcOBQAAAAD///////8BAP///////wAABw8FAAAAAP////8FAAEA/////wEAAAAHEAUAAAAA/////wUAAQD/////AQAAAAcRBQAAAAD/////BQABAP////8BAAAABxIFAAAAAP////8MAAEA/////wEAAAAHEwUAAAAA////////AQD///////8AAAcUBQAAAAD///////8BAP///////wAABxUFAAAAAP///////wEA////////AAAHFgUAAAAA////////AQD///////8AAAcXBQAAAAD///////8BAP///////wAABxgFAAAAAP///////wEA////////AAAHGQUAAAAA////////AQD///////8AAAcaBQAAAAD///////8BAP///////wAABxsFAAAAAP///////wEA////////AAAHHAUAAAAA////////AQD///////8AAAcdBQAAAAD///////8BAP///////wAABx4FAAACAP///////wEA////////AAAHHwUAAAIA////////AQD///////8AAAcgBQAAAgD///////8BAP///////wAAByEFAAACAP///////wEA////////AAAHIgUAAAIA////////AQD///////8AAAcjBQAAAgD///////8BAP///////wAAByQFAAACAP///////wEA////////AAAHJQUAAAIA////////AQD///////8AAAcmBQAAAgD///////8BAP///////wAABycFAAACAP///////wEA////////AAAHKAUAAAIA/////wgAAQD/////AQAAAAApBQAAAgD/////CAABAP////8BAAAAByoFAAACAP////8IAAEA/////wEAAAAHKwUAAAIA/////wgAAQD/////AQAAAAcsBQAAAgD/////CAABAP////8BAAAABy0FAAACAP////8IAAEA/////wEAAAAHLgUAAAIA/////wgAAQD/////AQAAAAcvBQAAAgD/////CAABAP////8BAAAABzAFAAACAP////8IAAEA/////wEAAAAHMQUAAAIA/////wgAAQD/////AQAAAAcyBQAAAAD///////8BAP///////wAABzMFAAAAAP///////wEA////////AAAHNAUAAAAA////////AQD///////8AAAc1BQAAAAD///////8BAP///////wAABzYFAAAAAP////8MAAEA/////wEAAAAHNwUAAAAA////////AQD///////8AAAc4BQAAAAD/////BQABAP////8BAAAABzkFAAAAAP///////wEA////////AAAHOgUAAAAA////////AQD///////8AAAc7BQAAAAD///////8BAP///////wAABzwFAAAAAP///////wEA////////AAAHPQUAAAAA////////AQD///////8AAAc+BQAAAAD///////8BAP///////wAABz8FAAAAAP///////wEA////////AAAHQAUAAAAA////////AQD///////8AAAdBBQAAAAD///////8BAP///////wAAB0IFAAAAAP///////wEA////////AAAHQwUAAAAA////////AQD///////8AAAdEBQAAAAD///////8BAP///////wAAB0UFAAAAAP///////wEA////////AAAHRgUAAAIA////////AQD///////8AAAdHBQAAAgD///////8BAP///////wAAB0gFAAACAP///////wEA////////AAAHSQUAAAIA////////AQD///////8AAAdKBQAAAgD///////8BAP///////wAAB0sFAAACAP///////wEA////////AAAHTAUAAAIA////////AQD///////8AAAdNBQAAAgD///////8BAP///////wAAB04FAAACAP///////wEA////////AAAHTwUAAAIA////////AQD///////8AAAdQBQAAAgAYAP//CAABAAEA//8BAAAAAFEFAAACAP////8IAAEA/////wEAAAACUgUAAAIA/////wgAAQD/////AQAAAAJTBQAAAgD/////CAABAP////8BAAAAAlQFAAACAP////8IAAEA/////wEAAAACVQUAAAIA/////wgAAQD/////AQAAAAdWBQAAAgD/////CAABAP////8BAAAAB1cFAAACAP////8IAAEA/////wEAAAAHWAUAAAIA/////wgAAQD/////AQAAAAdZBQAAAgD/////CAABAP////8BAAAAB1oFAAAAAP///////wEA////////AAAHWwUAAAAA/////wwAAQD/////AQAAAAdcBQAAAAD/////BQABAP////8BAAAAB10FAAAAAP////8FAAEA/////wEAAAAHXgUAAAAA/////wUAAQD/////AQAAAAdfBQAAAAD///////8BAP///////wAAB2AFAAAAAP///////wEA////////AAAHYQUAAAAA////////AQD///////8AAAdiBQAAAAD///////8BAP///////wAAB2MFAAAAAP///////wEA////////AAAHZAUAAAAA////////AQD///////8AAAdlBQAAAAD///////8BAP///////wAAB2YFAAAAAP///////wEA////////AAAHZwUAAAAA////////AQD///////8AAAdoBQAAAAD///////8BAP///////wAAB2kFAAAAAP///////wEA////////AAAHagUAAAAA////////AQD///////8AAAdrBQAAAAD///////8BAP///////wAAB2wFAAAAAP///////wEA////////AAAHbQUAAAAA////////AQD///////8AAAduBQAAAgD///////8BAP///////wAAB28FAAACAP///////wEA////////AAAHcAUAAAIA////////AQD///////8AAAdxBQAAAgD///////8BAP///////wAAB3IFAAACAP///////wEA////////AAAHcwUAAAIA////////AQD///////8AAAd0BQAAAgD///////8BAP///////wAAB3UFAAACAP///////wEA////////AAAHdgUAAAIA////////AQD///////8AAAd3BQAAAgD///////8BAP///////wAAB3gFAAACABcA//8IAAEAAQD//wEAAAAAeQUAAAIA/////wgAAQD/////AQAAAAB6BQAAAgD/////CAABAP////8BAAAAB3sFAAACAP////8IAAEA/////wEAAAAHfAUAAAIA/////wgAAQD/////AQAAAAd9BQAAAgD/////CAABAP////8BAAAAB34FAAACAP////8IAAEA/////wEAAAAHfwUAAAIA/////wgAAQD/////AQAAAAeABQAAAgD/////CAABAP////8BAAAAB4EFAAACAP////8IAAEA/////wEAAAADggUAAAAA////////AQD///////8AAAKDBQAAAAD///////8BAP///////wAAB4QFAAAAAP///////wEA////////AAAHhQUAAAAA/////wUAAQD/////AQAAAAeGBQAAAAD/////BQABAP////8BAAAAB4cFAAAAAP////8FAAEA/////wEAAAAHiAUAAAAA////////AQD///////8AAAeJBQAAAAD///////8BAP///////wAAB4oFAAAAAP////8FAAEA/////wEAAAAHiwUAAAAA/////wUAAQD/////AQAAAAeMBQAAAAD///////8BAP///////wAAB40FAAAAAP///////wEA////////AAAHjgUAAAAA////////AQD///////8AAAePBQAAAAD///////8BAP///////wAAB5AFAAAAAP////8BAAEA/////wYAAAAHkQUAAAAA/////wEAAQD/////BgAAAAeSBQAAAAD///////8BAP///////wAAB5MFAAAAAP///////wEA////////AAAHlAUAAAAA////////AQD///////8AAAeVBQAAAAD///////8BAP///////wAAB5YFAAACAP///////wEA////////AAAHlwUAAAIA////////AQD///////8AAAeYBQAAAgD///////8BAP///////wAAB5kFAAACAP///////wEA////////AAAHmgUAAAIA////////AQD///////8AAAebBQAAAgD///////8BAP///////wAAB5wFAAACAP///////wEA////////AAAHnQUAAAIA////////AQD///////8AAAeeBQAAAgD///////8BAP///////wAAB58FAAACAP///////wEA////////AAAHoAUAAAIAGAD//wgAAQABAP//AQAAAAehBQAAAgD/////CAABAP////8BAAAAB6IFAAACAP////8IAAEA/////wEAAAAHowUAAAIA/////wgAAQD/////AQAAAAekBQAAAgD/////CAABAP////8BAAAAB6UFAAACAP////8IAAEA/////wEAAAAHpgUAAAIA/////wgAAQD/////AQAAAAenBQAAAgD/////CAABAP////8BAAAAA6gFAAACAP////8IAAEA/////wEAAAACqQUAAAIA/////wgAAQD/////AQAAAACqBQAAAAD///////8BAP///////wAAB6sFAAAAAP///////wEA////////AAAHrAUAAAAA////////AQD///////8AAAetBQAAAAD///////8BAP///////wAAB64FAAAAAP////8FAAEA/////wEAAAAHrwUAAAAA////////AQD///////8AAAewBQAAAAD///////8BAP///////wAAB7EFAAAAAP///////wEA////////AAAHsgUAAAAA/////wUAAQD/////AQAAAAezBQAAAAD///////8BAP///////wAAB7QFAAAAAP///////wEA////////AAAHtQUAAAAA////////AQD///////8AAAe2BQAAAAD///////8BAP///////wAAB7cFAAAAAP///////wEA////////AAAHuAUAAAAA////////AQD///////8AAAe5BQAAAAD///////8BAP///////wAAB7oFAAAAAP///////wEA////////AAAHuwUAAAAA////////AQD///////8AAAe8BQAAAAD///////8BAP///////wAAB70FAAAAAP///////wEA////////AAAHvgUAAAIA////////AQD///////8AAAe/BQAAAgD///////8BAP///////wAAB8AFAAACAP///////wEA////////AAAHwQUAAAIA////////AQD///////8AAAfCBQAAAgD///////8BAP///////wAAB8MFAAACAP///////wEA////////AAAHxAUAAAIA////////AQD///////8AAAfFBQAAAgD///////8BAP///////wAAB8YFAAACAP///////wEA////////AAAHxwUAAAIA////////AQD///////8AAAfIBQAAAgAXAP//CAABAAEA//8BAAAAAskFAAACAP////8IAAEA/////wEAAAAHygUAAAIA/////wgAAQD/////AQAAAAfLBQAAAgD/////CAABAP////8BAAAAB8wFAAACAP////8IAAEA/////wEAAAAHzQUAAAIA/////wgAAQD/////AQAAAAPOBQAAAgD/////CAABAP////8BAAAAAs8FAAACAP////8IAAEA/////wEAAAAA0AUAAAIA/////wgAAQD/////AQAAAAfRBQAAAgD/////CAABAP////8BAAAAB9IFAAAAAP///////wEA////////AAAH0wUAAAAA////////AQD///////8AAAfUBQAAAAD///////8BAP///////wAAB9UFAAAAAP////8MAAEA/////wEAAAAH1gUAAAAA////////AQD///////8AAAfXBQAAAAD///////8BAP///////wAAB9gFAAAAAP////8MAAEA/////wEAAAAH2QUAAAAA////////AQD///////8AAAfaBQAAAAD///////8BAP///////wAAB9sFAAAAAP///////wEA////////AAAH3AUAAAAA////////AQD///////8AAAfdBQAAAAD///////8BAP///////wAAB94FAAAAAP///////wEA////////AAAH3wUAAAAA////////AQD///////8AAAfgBQAAAAD///////8BAP///////wAAB+EFAAAAAP///////wEA////////AAAH4gUAAAAA////////AQD///////8AAAfjBQAAAAD///////8BAP///////wAAB+QFAAAAAP///////wEA////////AAAH5QUAAAAA////////AQD///////8AAAfmBQAAAgD///////8BAP///////wAAB+cFAAACAP///////wEA////////AAAH6AUAAAIA////////AQD///////8AAAfpBQAAAgD///////8BAP///////wAAB+oFAAACAP///////wEA////////AAAH6wUAAAIA////////AQD///////8AAAfsBQAAAgD///////8BAP///////wAAB+0FAAACAP///////wEA////////AAAH7gUAAAIA////////AQD///////8AAAfvBQAAAgD///////8BAP///////wAAB/AFAAACABgA//8IAAEAAQD//wEAAAAA8QUAAAIA/////wgAAQD/////AQAAAALyBQAAAgD/////CAABAP////8BAAAAAvMFAAACAP////8IAAEA/////wEAAAAC9AUAAAIA/////wgAAQD/////AQAAAAL1BQAAAgD/////CAABAP////8BAAAAAPYFAAACAP////8IAAEA/////wEAAAAA9wUAAAIA/////wgAAQD/////AQAAAAf4BQAAAgD/////CAABAP////8BAAAAB/kFAAACAP////8IAAEA/////wEAAAAH+gUAAAAA////////AQD///////8AAAf7BQAAAAD/////BQABAP////8BAAAAB/wFAAAAAP///////wEA////////AAAD/QUAAAAA////////AQD///////8AAAf+BQAAAAD///////8BAP///////wAAB/8FAAAAAP///////wEA////////AAAHAAYAAAAA////////AQD///////8AAAcBBgAAAAD///////8BAP///////wAABwIGAAAAAP///////wEA////////AAAHAwYAAAAA////////AQD///////8AAAcEBgAAAAD///////8BAP///////wAABwUGAAAAAP///////wEA////////AAAHBgYAAAAA////////AQD///////8AAAcHBgAAAAD///////8BAP///////wAABwgGAAAAAP///////wEA////////AAAHCQYAAAAA////////AQD///////8AAAcKBgAAAAD///////8BAP///////wAABwsGAAAAAP///////wEA////////AAAHDAYAAAAA////////AQD///////8AAAcNBgAAAAD///////8BAP///////wAABw4GAAACAP///////wEA////////AAAHDwYAAAIA////////AQD///////8AAAcQBgAAAgD///////8BAP///////wAABxEGAAACAP///////wEA////////AAAHEgYAAAIA////////AQD///////8AAAcTBgAAAgD///////8BAP///////wAABxQGAAACAP///////wEA////////AAAHFQYAAAIA////////AQD///////8AAAcWBgAAAgD///////8BAP///////wAABxcGAAACAP///////wEA////////AAAHGAYAAAIAFwD//wgAAQABAP//AQAAAAAZBgAAAgD/////CAABAP////8BAAAAABoGAAACAP////8IAAEA/////wEAAAAAGwYAAAIA/////wgAAQD/////AQAAAAAcBgAAAgD/////CAABAP////8BAAAAAB0GAAACAP////8IAAEA/////wEAAAAAHgYAAAIA/////wgAAQD/////AQAAAAcfBgAAAgD/////CAABAP////8BAAAAByAGAAACAP////8IAAEA/////wEAAAAHIQYAAAIA/////wgAAQD/////AQAAAAciBgAAAAD///////8BAP///////wAAByMGAAAAAP///////wEA////////AAADJAYAAAAA////////AQD///////8AAAclBgAAAAD///////8BAP///////wAAByYGAAAAAP////8FAAEA/////wEAAAAHJwYAAAAA/////wUAAQD/////AQAAAAcoBgAAAAD///////8BAP///////wAABykGAAAAAP///////wEA////////AAAHKgYAAAAA////////AQD///////8AAAcrBgAAAAD///////8BAP///////wAABywGAAAAAP///////wEA////////AAAHLQYAAAAA////////AQD///////8AAAcuBgAAAAD///////8BAP///////wAABy8GAAAAAP///////wEA////////AAAHMAYAAAAA////////AQD///////8AAAcxBgAAAAD///////8BAP///////wAABzIGAAAAAP///////wEA////////AAAHMwYAAAAA////////AQD///////8AAAc0BgAAAAD///////8BAP///////wAABzUGAAAAAP///////wEA////////AAAHNgYAAAIA////////AQD///////8AAAc3BgAAAgD///////8BAP///////wAABzgGAAACAP///////wEA////////AAAHOQYAAAIA////////AQD///////8AAAc6BgAAAgD///////8BAP///////wAABzsGAAACAP///////wEA////////AAAHPAYAAAIA////////AQD///////8AAAc9BgAAAgD///////8BAP///////wAABz4GAAACAP///////wEA////////AAAHPwYAAAIA////////AQD///////8AAAdeBgAAAAAGAAUA//8CAAIAAgD//wAAAF8GAAAAAP//BQD//wIA//8CAP//AAAAYAYAAAAA//8FAP//AgD//wIA//8AAABhBgAAAAD//wcA//8CAP//AgD//wAAAGIGAAAAAP//BQD//wIA//8CAP//AAAAYwYAAAAA//8FAP//AgD//wIA//8AAABkBgAAAAD//wUA//8CAP//AgD//wAAAGUGAAAAAP//BQD//wIA//8CAP//AAAAZgYAAP//BgD///////8CAP////8AAACGBgAA//8GAP///////wIA/////wAAAIcGAAAAAP///////wIA////////AAAAiAYAAAAA////////AgD///////8AAACJBgAAAAD///////8CAP///////wAAAIoGAAAAAP///////wIA////////AAAAiwYAAAAA/////wQAAgD/////AgAAAACMBgAAAAD///////8CAP///////wAAAI0GAAAAAP///////wIA////////AAAAjgYAAP//BgD///////8CAP////8AAACuBgAA//8GAP///////wIA/////wAAAK8GAAAAAP///////wIA////////AAAAsAYAAAAA////////AgD///////8AAACxBgAAAAD///////8CAP///////wAAALIGAAAAAP///////wIA////////AAAAswYAAAAA////////AgD///////8AAAC0BgAAAAD///////8CAP///////wAAALUGAAAAAP///////wIA////////AAAAtgYAAP//BgD///////8CAP////8AAAC7BgAA////////AgD///////8EAAAAALwGAAD///////8BAP///////wQAAAAAvQYAAP///////wcA////////BAAAAADWBgAAAAAGAP////8CAAIA/////wAAANcGAAAAAP///////wIA////////AAAA2AYAAAAA////////AgD///////8AAADZBgAAAAD/////BAACAP////8CAAAAANoGAAAAAP////8DAAIA/////wIAAAAA2wYAAAAA////////AgD///////8AAADcBgAAAAD///////8CAP///////wAAAN0GAAAAAP///////wIA////////AAAA3gYAAP//BgD///////8CAP////8AAADjBgAA////////AAD///////8EAAAAAOQGAAAJAP///////wQA////////AAAA5QYAAP///////wYA////////BAAAAAD+BgAAAAAIAP////8CAAIA/////wAAAP8GAAAAAP///////wIA////////AAAAAAcAAAAA////////AgD///////8AAAABBwAAAAD/////AwACAP////8CAAAAAAIHAAAAAP////8EAAIA/////wIAAAAAAwcAAAAA////////AgD///////8AAAAEBwAAAAD///////8CAP///////wAAAAUHAAAAAP///////wIA////////AAAABgcAAP//CAD///////8CAP////8AAAALBwAA////////AwD///////8EAAAAAAwHAAD///////8EAP///////wQAAAAADQcAAP///////wUA////////BAAAAAAmBwAAAAAGAP////8CAAIA/////wAAACcHAAAAAP///////wIA////////AAAAKAcAAAAA/////wMAAgD/////AgAAAAApBwAAAAD/////BAACAP////8CAAAAACoHAAAAAP///////wIA////////AAAAKwcAAAAA////////AgD///////8AAAAsBwAAAAD///////8CAP///////wAAAC0HAAAAAP///////wIA////////AAAALgcAAP//BgD///////8CAP////8AAABOBwAAAAAGAP////8CAAIA/////wAAAE8HAAAAAP///////wIA////////AAAAUAcAAAAA////////AgD///////8AAABRBwAAAAD///////8CAP///////wAAAFIHAAAAAP///////wIA////////AAAAUwcAAAAA////////AgD///////8AAABUBwAAAAD///////8CAP///////wAAAFUHAAAAAP///////wIA////////AAAAVgcAAP//BgD///////8CAP////8AAAB2BwAAAAAGAP////8CAAIA/////wAAAHcHAAAAAP///////wIA////////AAAAeAcAAAAA////////AgD///////8AAAB5BwAAAAD///////8CAP///////wAAAHoHAAAAAP///////wIA////////AAAAewcAAAAA////////AgD///////8AAAB8BwAAAAD///////8CAP///////wAAAH0HAAAAAP///////wIA////////AAAAfgcAAP//BgD///////8CAP////8AAACeBwAA/////wUA////////AgD//wAAB58HAAD/////BQD///////8CAP//AAAHoAcAAP////8HAP///////wIA//8AAAehBwAA/////wUA////////AgD//wAAB6IHAAD/////BQD///////8CAP//AAAHowcAAP////8FAP///////wIA//8AAAekBwAA/////wUA////////AgD//wAAB6UHAAD/////BQD///////8CAP//AAAHpgcAAP//CQD///////8CAP////8AAAHaBwAAAgD///////8CAP///////wAAB9sHAAACAP///////wIA////////AAAH3AcAAAIA////////AgD///////8AAAfdBwAAAgD///////8CAP///////wAAB+AHAAACAP///////wIA////////AAAH4QcAAAIA////////AgD///////8AAAfiBwAAAgD///////8CAP///////wAABwIIAAACAP///////wIA////////AAAHAwgAAAIA////////AgD///////8AAAcECAAAAgD///////8CAP///////wAABwUIAAACAP///////wIA////////AAAHCAgAAAIA////////AgD///////8AAAcJCAAAAgD///////8CAP///////wAABwoIAAACAP///////wIA////////AAAHKggAAAIA////////AgD///////8AAAcrCAAAAgD///////8CAP///////wAABywIAAACAP///////wIA////////AAAHLQgAAAIA////////AgD///////8AAAcwCAAAAgD///////8CAP///////wAABzEIAAACAP///////wIA////////AAAHMggAAAIA////////AgD///////8AAAdSCAAAAgD///////8CAP///////wAAB1MIAAACAP///////wIA////////AAAHVAgAAAIA////////AgD///////8AAAdVCAAAAgD///////8CAP///////wAAB1gIAAACAP///////wIA////////AAAHWQgAAAIA////////AgD///////8AAAdaCAAAAgD///////8CAP///////wAAB3oIAAACAP///////wIA////////AAAHewgAAAIA////////AgD///////8AAAd8CAAAAgD///////8CAP///////wAAB30IAAACAP///////wIA////////AAAHgAgAAAIA////////AgD///////8AAAeBCAAAAgD///////8CAP///////wAAB4IIAAACAP///////wIA////////AAAHoggAAAIA////////AgD///////8AAAejCAAAAgD///////8CAP///////wAAB6QIAAACAP///////wIA////////AAAHpQgAAAIA////////AgD///////8AAAfKCAAAAgD///////8CAP///////wAAB8sIAAACAP///////wIA////////AAAHzAgAAAIA////////AgD///////8AAAfNCAAAAgD///////8CAP///////wAAB/IIAAACAP///////wIA////////AAAH8wgAAAIA////////AgD///////8AAAf0CAAAAgD///////8CAP///////wAAB/UIAAACAP///////wIA////////AAAHjgoAAP///////ywA////////BgAAAAePCgAA////////BgD///////8GAAAAB5IKAAD///////8MAP///////wYAAAAHkwoAAP///////ysA////////BgAAAAe2CgAA////////KgD///////8GAAAAB7cKAAD///////8FAP///////wYAAAAHugoAAP///////wsA////////BgAAAAe7CgAA////////KgD///////8GAAAAB94KAAD///////8qAP///////wYAAAAH3woAAP///////wQA////////BgAAAAfgCgAAAgD///////8GAP///////wAAB+EKAAACAP///////wYA////////AAAH4goAAP///////woA////////BgAAAAfjCgAA////////KgD///////8GAAAABwYLAAD///////8pAP///////wYAAAAHBwsAAP///////wQA////////BgAAAAcICwAAAgD///////8GAP///////wAABwkLAAACAP///////wYA////////AAAHCgsAAP///////woA////////BgAAAAcLCwAA////////KQD///////8GAAAABy8LAAD///////8EAP///////wYAAAAHMAsAAAIA////////BgD///////8AAAcxCwAAAgD///////8GAP///////wAABzILAAD///////8KAP///////wYAAAAHVwsAAP///////wQA////////BgAAAAdYCwAAAgD///////8GAP///////wAAB1kLAAACAP///////wYA////////AAAHWgsAAP///////woA////////BgAAAAd/CwAA////////BAD///////8GAAAAB4ALAAACAP///////wYA////////AAAHgQsAAAIA////////BgD///////8AAAeCCwAA////////CgD///////8GAAAAB6cLAAD///////8EAP///////wYAAAAHqAsAAAIA////////BgD///////8AAAepCwAAAgD///////8GAP///////wAAB6oLAAD///////8KAP///////wYAAAAHzwsAAP///////wMA////////BgAAAAfQCwAAAgD///////8GAP///////wAAB9ELAAACAP///////wYA////////AAAH0gsAAP///////wkA////////BgAAAAf3CwAA////////OgD///////8GAAAAB/gLAAA2AP////8zAAYA/////wYAAAAH+QsAAAIA/////zEABgD/////BgAAAAf6CwAA////////LwD///////8GAAAABx8MAAD///////87AP///////wYAAAAHIAwAADcA/////zAABgD/////BgAAAAchDAAAOAD/////MgAGAP////8GAAAAByIMAAD//y4A////////BgD/////AAAHSAwAAP///////zkA////////BgAAAAdJDAAA////////LQD///////8GAAAAB54MAAACAP///////wIA////////AAAAnwwAAAIA////////AgD///////8AAACgDAAAAgD///////8CAP///////wAAAKEMAAACAP///////wIA////////AAAAogwAAAIA////////AgD///////8AAACjDAAAAgD///////8CAP///////wAAAKQMAAACAP///////wIA////////AAAApQwAAAIA////////AgD///////8AAADGDAAAAgD///////8CAP///////wAAAMcMAAACAP///////wIA////////AAAAyAwAAAIA////////AgD///////8AAADJDAAAAgD///////8CAP///////wAAAMoMAAACAP///////wIA////////AAAAywwAAAIA////////AgD///////8AAADMDAAAAgD///////8CAP///////wAAAM0MAAACAP///////wIA////////AAAA7gwAAAIA////////AgD///////8AAADvDAAAAgD///////8CAP///////wAAAPAMAAACAP///////wIA////////AAAA8QwAAAIA////////AgD///////8AAADyDAAAAgD///////8CAP///////wAAAPMMAAACAP///////wIA////////AAAA9AwAAAIA////////AgD///////8AAAD1DAAAAgD///////8CAP///////wAAABYNAAACAP///////wIA////////AAAAFw0AAAIA////////AgD///////8AAAAYDQAAAgD///////8CAP///////wAAABkNAAACAP///////wIA////////AAAAGg0AAAIA////////AgD///////8AAAAbDQAAAgD///////8CAP///////wAAABwNAAACAP///////wIA////////AAAAHQ0AAAIA////////AgD///////8AAAAkDQAACgD///////8EAP///////wAAAD4NAAACAP///////wIA////////AAAAPw0AAAIA////////AgD///////8AAABADQAAAgD///////8CAP///////wAAAEENAAACAP///////wIA////////AAAAQg0AAAIA////////AgD///////8AAABDDQAAAgD///////8CAP///////wAAAEQNAAACAP///////wIA////////AAAARQ0AAAIA////////AgD///////8AAABmDQAAAgD///////8CAP///////wAAAGcNAAACAP///////wIA////////AAAAaA0AAAIA////////AgD///////8AAABpDQAAAgD///////8CAP///////wAAAGoNAAACAP///////wIA////////AAAAaw0AAAIA////////AgD///////8AAABsDQAAAgD///////8CAP///////wAAAG0NAAACAP///////wIA////////AAAAjg0AAAIA////////AgD///////8AAACPDQAAAgD///////8CAP///////wAAAJANAAACAP///////wIA////////AAAAkQ0AAAIA////////AgD///////8AAACSDQAAAgD///////8CAP///////wAAAJMNAAACAP///////wIA////////AAAAlA0AAAIA////////AgD///////8AAACVDQAAAgD///////8CAP///////wAAALYNAAACAP///////wIA////////AAAAtw0AAAIA////////AgD///////8AAAe4DQAAAgD///////8CAP///////wAAAbkNAAACAP///////wIA////////AAAAug0AAAIA////////AgD///////8AAAC7DQAAAgD///////8CAP///////wAAALwNAAACAP///////wIA////////AAAAvQ0AAAIA////////AgD///////8AAADMEAAADwD///////8GAP///////wAAB80QAAARAP///////wYA////////AAAHzhAAABMA////////BgD///////8AAAfPEAAAFgD///////8GAP///////wAAB9AQAAA8AAgA/////wYABgD/////AAAH0RAAAD0A/////w4ABgD/////BgAAAAfSEAAAHAD///////8GAP///////wAAB9MQAAAeAP///////wYA////////AAAH1BAAACEA////////BgD///////8AAAfVEAAAJQD///////8GAP///////wAAB/QQAAAQAP///////wYA////////AAAH9RAAABIA////////BgD///////8AAAf2EAAAFQD///////8GAP///////wAAB/cQAAAYAP///////wYA////////AAAH+BAAADwABwD/////BgAGAP////8AAAf5EAAAPQD/////DQAGAP////8GAAAAB/oQAAAdAP///////wYA////////AAAH+xAAACAA////////BgD///////8AAAf8EAAAJAD///////8GAP///////wAAB/0QAAAoAP///////wYA////////AAAHHREAABQA////////BgD///////8AAAceEQAAFwD///////8GAP///////wAABx8RAAAaAP///////wYA////////AAAHIBEAADwA////////BgD///////8AAAchEQAAPQD///////8GAP///////wAAByIRAAAfAP///////wYA////////AAAHIxEAACMA////////BgD///////8AAAckEQAAJwD///////8GAP///////wAAB0YRAAAZAP///////wYA////////AAAHRxEAABsA////////BgD///////8AAAdIEQAAPAD///////8GAP///////wAAB0kRAAA9AP///////wYA////////AAAHShEAACIA////////BgD///////8AAAdLEQAAJgD///////8GAP///////wAAB3ARAAA8AP///////wYA////////AAAHcREAAD0A////////BgD///////8AAAeYEQAAPAD///////8GAP///////wAAB5kRAAA9AP///////wYA////////AAAHwBEAADwA////////BgD///////8AAAfBEQAAPQD///////8GAP///////wAAB+YRAAAPAP///////wYA////////AAAH5xEAABEA////////BgD///////8AAAfoEQAAPAD///////8GAP///////wAAB+kRAAA9AP///////wYA////////AAAH6hEAACEA////////BgD///////8AAAfrEQAAJQD///////8GAP///////wAABw4SAAAQAP///////wYA////////AAAHDxIAABIA////////BgD///////8AAAcQEgAAPAD///////8GAP///////wAABxESAAA9AP///////wYA////////AAAHEhIAACQA////////BgD///////8AAAcTEgAAKAD///////8GAP///////wAABzcSAAAUAP///////wYA////////AAAHOBIAADQA////////BgD///////8AAAc5EgAANQD///////8GAP///////wAABzoSAAAnAP///////wYA////////AAAH
+  nodes:
+    - {id: 0,position: [14,4,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 1,links: [1,18,42,-5,-1]}
+    - {id: 1,position: [24,4,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 1,links: [3,22,0,-5,-1]}
+    - {id: 2,position: [38,3,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [-2,27,3,4,10,7]}
+    - {id: 3,position: [35,8,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [2,1,-5,10,-1]}
+    - {id: 4,position: [30,3,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 6,links: [2,5,-1,-1,-1,9]}
+    - {id: 5,position: [30,0,1],type: 2,rank: 0,flags: 0,reserved: 0,priority: 0,links: [4,6,-1,-1,-1]}
+    - {id: 6,position: [33,0,1],type: 2,rank: 0,flags: 8,reserved: 0,priority: 10,links: [9,7,5,-1,-1,10]}
+    - {id: 7,position: [37,4,1],type: 2,rank: 0,flags: 0,reserved: 0,priority: 10,links: [6,-1,8,-1,-1,2]}
+    - {id: 8,position: [32,7,1],type: 2,rank: 0,flags: 0,reserved: 0,priority: 10,links: [9,-1,7,-1,-1]}
+    - {id: 9,position: [30,4,1],type: 2,rank: 0,flags: 0,reserved: 0,priority: 10,links: [8,6,-1,-1,-1,4]}
+    - {id: 10,position: [33,3,2],type: 1,rank: 0,flags: 2,reserved: 0,priority: 0,links: [-2,3,-1,-5,2,6]}
+    - {id: 11,position: [4,14,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 1,links: [12,28,-4,44,-1]}
+    - {id: 12,position: [14,18,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [11,18,15,19,-1]}
+    - {id: 13,position: [19,13,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [30,19,14,21,-1]}
+    - {id: 14,position: [17,12,0],type: 2,rank: 0,flags: 5,reserved: 0,priority: 7,links: [13,-1,-1,-1,-1,21]}
+    - {id: 15,position: [14,12,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [25,12,16,20,-1,21]}
+    - {id: 16,position: [12,14,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 3,links: [17,15,-1,-1,-1,20]}
+    - {id: 17,position: [12,16,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 3,links: [16,18,-1,-1,-1]}
+    - {id: 18,position: [12,18,0],type: 0,rank: 0,flags: 4,reserved: 0,priority: 5,links: [0,12,20,17,-1]}
+    - {id: 19,position: [19,15,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [13,12,-1,-1,-1]}
+    - {id: 20,position: [11,13,1],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [15,18,21,-1,-1,16]}
+    - {id: 21,position: [17,12,1],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [13,20,-1,-1,-1,14,15]}
+    - {id: 22,position: [20,15,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [1,23,24,25,-1]}
+    - {id: 23,position: [25,10,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [26,22,25,24,-1]}
+    - {id: 24,position: [29,14,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [55,22,23,25,-1]}
+    - {id: 25,position: [24,18,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 1,links: [15,22,23,24,-1]}
+    - {id: 26,position: [37,17,0],type: 0,rank: 0,flags: 2,reserved: 0,priority: 2,links: [33,23,27,-1,-1]}
+    - {id: 27,position: [33,13,0],type: 0,rank: 0,flags: 2,reserved: 0,priority: 2,allocated: true,links: [26,-2,2,-1,-1]}
+    - {id: 28,position: [4,24,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 1,links: [30,34,-4,11,-1]}
+    - {id: 29,position: [12,21,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 2,links: [30,31,47,-1,-1]}
+    - {id: 30,position: [13,27,0],type: 0,rank: 0,flags: 2,reserved: 0,priority: 0,links: [29,31,28,13,-1]}
+    - {id: 31,position: [18,24,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [29,30,35,-1,-1]}
+    - {id: 32,position: [37,27,0],type: 0,rank: 0,flags: 2,reserved: 0,priority: 2,links: [39,46,33,-1,-1]}
+    - {id: 33,position: [33,23,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 4,links: [32,-2,26,-1,-1]}
+    - {id: 34,position: [4,34,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 1,links: [38,-3,-4,28,-1]}
+    - {id: 35,position: [10,35,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [31,36,37,38,-1]}
+    - {id: 36,position: [15,30,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [-2,35,38,37,-1]}
+    - {id: 37,position: [19,34,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [-3,35,36,38,-1]}
+    - {id: 38,position: [14,38,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 1,links: [34,35,36,37,-1]}
+    - {id: 39,position: [34,34,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 1,links: [-2,-3,-4,32,-1]}
+    - {id: 40,position: [4,4,0],type: 2,rank: 2,flags: 3,reserved: 0,priority: 3,links: [45,43,42,44,41]}
+    - {id: 41,position: [4,4,1],type: 2,rank: 2,flags: 0,reserved: 0,priority: 0,links: [40,-1,-1,-1,-1]}
+    - {id: 42,position: [4,0,0],type: 0,rank: 2,flags: 1,reserved: 0,priority: 1,links: [43,44,40,0,-1]}
+    - {id: 43,position: [0,4,0],type: 0,rank: 2,flags: 1,reserved: 0,priority: 1,links: [45,42,40,-5,-1]}
+    - {id: 44,position: [9,4,0],type: 0,rank: 2,flags: 1,reserved: 0,priority: 1,links: [42,45,40,11,-1]}
+    - {id: 45,position: [4,9,0],type: 0,rank: 2,flags: 1,reserved: 0,priority: 1,links: [43,44,40,-4,-1]}
+    - {id: 46,position: [24,24,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [32,54,55,50,-1]}
+    - {id: 47,position: [24,37,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [48,49,29,-1,-1,53]}
+    - {id: 48,position: [21,34,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [24,55,47,49,-1]}
+    - {id: 49,position: [27,34,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [-3,48,54,47,-1]}
+    - {id: 50,position: [24,29,1],type: 0,rank: 1,flags: 0,reserved: 0,priority: 0,links: [46,-1,-1,-1,-1]}
+    - {id: 51,position: [27,29,1],type: 0,rank: 1,flags: 0,reserved: 10,priority: 0,links: [-1,-1,-1,-1,-1]}
+    - {id: 52,position: [22,29,1],type: 0,rank: 1,flags: 0,reserved: 10,priority: 0,links: [-1,-1,-1,-1,-1]}
+    - {id: 53,position: [25,37,1],type: 0,rank: 1,flags: 0,reserved: 10,priority: 0,links: [-1,-1,-1,-1,-1,47]}
+    - {id: 54,position: [28,25,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [-3,46,49,-1,-1]}
+    - {id: 55,position: [21,25,0],type: 0,rank: 0,flags: 0,reserved: 0,priority: 0,links: [24,46,48,-1,-1]}
+  units:
+    - id: 1
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [12,16,0]
+      direction: 0
+      directionTurret: 0
+      tu: 7
+      health: 31
+      mana: 3
+      stunlevel: 0
+      energy: 18
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 59
+        stamina: 54
+        health: 31
+        bravery: 70
+        reactions: 62
+        firing: 52
+        throwing: 57
+        strength: 29
+        psiStrength: 56
+        psiSkill: 16
+        melee: 33
+        mana: 3
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 1
+      rankIntUnified: 1
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 36
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,96]
+        - [144,164]
+    - id: 2
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [31,28,0]
+      direction: 0
+      directionTurret: 0
+      tu: 51
+      health: 39
+      mana: 6
+      stunlevel: 0
+      energy: 32
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 63
+        stamina: 48
+        health: 39
+        bravery: 40
+        reactions: 51
+        firing: 69
+        throwing: 68
+        strength: 24
+        psiStrength: 76
+        psiSkill: 19
+        melee: 36
+        mana: 6
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 2
+      rankIntUnified: 2
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 8
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,96]
+        - [144,164]
+    - id: 3
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [27,31,0]
+      direction: 4
+      directionTurret: 0
+      tu: 34
+      health: 34
+      mana: 5
+      stunlevel: 0
+      energy: 43
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 62
+        stamina: 57
+        health: 34
+        bravery: 70
+        reactions: 64
+        firing: 69
+        throwing: 62
+        strength: 43
+        psiStrength: 9
+        psiSkill: 18
+        melee: 30
+        mana: 5
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 2
+      rankIntUnified: 2
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 24
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,96]
+        - [144,164]
+    - id: 4
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [25,30,1]
+      direction: 0
+      directionTurret: 0
+      tu: 65
+      health: 30
+      mana: 3
+      stunlevel: 0
+      energy: 58
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 65
+        stamina: 58
+        health: 30
+        bravery: 40
+        reactions: 47
+        firing: 73
+        throwing: 82
+        strength: 29
+        psiStrength: 45
+        psiSkill: 15
+        melee: 30
+        mana: 3
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 2
+      rankIntUnified: 2
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 0
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,96]
+        - [144,164]
+    - id: 5
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [24,31,1]
+      direction: 0
+      directionTurret: 0
+      tu: 50
+      health: 41
+      mana: 1
+      stunlevel: 0
+      energy: 49
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 50
+        stamina: 49
+        health: 41
+        bravery: 40
+        reactions: 47
+        firing: 57
+        throwing: 65
+        strength: 35
+        psiStrength: 97
+        psiSkill: 5
+        melee: 42
+        mana: 1
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 1
+      rankIntUnified: 1
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 0
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,96]
+        - [144,144]
+    - id: 6
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [25,31,1]
+      direction: 0
+      directionTurret: 0
+      tu: 58
+      health: 31
+      mana: 3
+      stunlevel: 0
+      energy: 73
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 58
+        stamina: 73
+        health: 31
+        bravery: 60
+        reactions: 48
+        firing: 69
+        throwing: 65
+        strength: 26
+        psiStrength: 31
+        psiSkill: 13
+        melee: 32
+        mana: 3
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 2
+      rankIntUnified: 2
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 0
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,96]
+        - [144,164]
+    - id: 7
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [24,32,1]
+      direction: 0
+      directionTurret: 0
+      tu: 63
+      health: 32
+      mana: 1
+      stunlevel: 0
+      energy: 74
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 63
+        stamina: 74
+        health: 32
+        bravery: 30
+        reactions: 61
+        firing: 70
+        throwing: 70
+        strength: 33
+        psiStrength: 59
+        psiSkill: 17
+        melee: 26
+        mana: 1
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 1
+      rankIntUnified: 1
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 0
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,96]
+        - [144,144]
+    - id: 8
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [25,32,1]
+      direction: 0
+      directionTurret: 0
+      tu: 57
+      health: 32
+      mana: 0
+      stunlevel: 0
+      energy: 53
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 57
+        stamina: 53
+        health: 32
+        bravery: 40
+        reactions: 46
+        firing: 49
+        throwing: 61
+        strength: 22
+        psiStrength: 93
+        psiSkill: 0
+        melee: 35
+        mana: 0
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 0
+      rankIntUnified: 0
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 0
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,96]
+        - [144,144]
+    - id: 9
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [24,33,1]
+      direction: 0
+      directionTurret: 0
+      tu: 54
+      health: 27
+      mana: 4
+      stunlevel: 0
+      energy: 57
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 54
+        stamina: 57
+        health: 27
+        bravery: 40
+        reactions: 42
+        firing: 43
+        throwing: 61
+        strength: 36
+        psiStrength: 81
+        psiSkill: 7
+        melee: 40
+        mana: 4
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 1
+      rankIntUnified: 1
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 0
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,96]
+        - [144,164]
+    - id: 10
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [25,33,1]
+      direction: 0
+      directionTurret: 0
+      tu: 51
+      health: 44
+      mana: 0
+      stunlevel: 0
+      energy: 51
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 51
+        stamina: 51
+        health: 44
+        bravery: 60
+        reactions: 34
+        firing: 52
+        throwing: 72
+        strength: 37
+        psiStrength: 88
+        psiSkill: 1
+        melee: 40
+        mana: 0
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 1
+      rankIntUnified: 1
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 0
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,96]
+        - [144,164]
+    - id: 11
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [24,34,1]
+      direction: 0
+      directionTurret: 0
+      tu: 67
+      health: 31
+      mana: 6
+      stunlevel: 0
+      energy: 52
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 67
+        stamina: 52
+        health: 31
+        bravery: 40
+        reactions: 52
+        firing: 57
+        throwing: 57
+        strength: 27
+        psiStrength: 46
+        psiSkill: 17
+        melee: 31
+        mana: 6
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 2
+      rankIntUnified: 2
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 0
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,96]
+        - [144,164]
+    - id: 12
+      genUnitType: SOLDIER
+      genUnitArmor: STR_NONE_UC
+      faction: 0
+      status: 0
+      position: [25,34,1]
+      direction: 0
+      directionTurret: 0
+      tu: 65
+      health: 36
+      mana: 5
+      stunlevel: 0
+      energy: 66
+      morale: 100
+      armor: [12,8,8,5,2]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 65
+        stamina: 66
+        health: 36
+        bravery: 40
+        reactions: 37
+        firing: 58
+        throwing: 65
+        strength: 40
+        psiStrength: 104
+        psiSkill: 4
+        melee: 37
+        mana: 5
+      visible: true
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 2
+      rankIntUnified: 2
+      moraleRestored: 0
+      killedBy: 0
+      motionPoints: 0
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+      recolor:
+        - [96,160]
+        - [144,245]
+    - id: 1000000
+      genUnitType: STR_SECTOID_SOLDIER
+      genUnitArmor: SECTOID_ARMOR0
+      faction: 1
+      status: 0
+      position: [34,3,0]
+      direction: 3
+      directionTurret: 3
+      tu: 20
+      health: 30
+      mana: 0
+      stunlevel: 0
+      energy: 73
+      morale: 100
+      armor: [2,1,1,1,1]
+      fatalWounds: [0,0,0,0,0,0]
+      fire: 0
+      expBravery: 0
+      expReactions: 0
+      expFiring: 0
+      expThrowing: 0
+      expPsiSkill: 0
+      expPsiStrength: 0
+      expMana: 0
+      expMelee: 0
+      currStats:
+        tu: 54
+        stamina: 90
+        health: 30
+        bravery: 80
+        reactions: 63
+        firing: 26
+        throwing: 58
+        strength: 30
+        psiStrength: 40
+        psiSkill: 0
+        melee: 76
+        mana: 0
+      turnsSinceSpotted: 255
+      turnsLeftSpottedForSnipers: 0
+      turnsSinceStunned: 255
+      rankInt: 5
+      rankIntUnified: 0
+      moraleRestored: 0
+      AI: {fromNode: 6,toNode: 27,AIMode: 0,wasHitBy: []}
+      killedBy: 1
+      aiMedikitUsed: true
+      motionPoints: 24
+      activeHand: STR_RIGHT_HAND
+      tempUnitStatistics: ~
+  items:
+    - id: 0
+      type: STR_RIFLE_CLIP
+      owner: 1
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 0
+      ammoqty: 20
+      XCOMProperty: true
+    - id: 1
+      type: STR_RIFLE_CLIP
+      ammoqty: 20
+      XCOMProperty: true
+    - id: 2
+      type: STR_HC_HE_AMMO
+      owner: 3
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 0
+      ammoqty: 6
+      XCOMProperty: true
+    - id: 3
+      type: STR_HC_HE_AMMO
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoqty: 6
+      XCOMProperty: true
+    - id: 4
+      type: STR_HEAVY_CANNON
+      owner: 3
+      inventoryslot: STR_RIGHT_HAND
+      ammoItem: 11
+      ammoItemSlots: [11,4,4,4]
+      XCOMProperty: true
+    - id: 5
+      type: STR_PISTOL
+      owner: 12
+      inventoryslot: STR_RIGHT_HAND
+      ammoItem: 8
+      ammoItemSlots: [8,5,5,5]
+      XCOMProperty: true
+    - id: 6
+      type: STR_HC_I_AMMO
+      owner: 3
+      inventoryslot: STR_BELT
+      inventoryX: 2
+      inventoryY: 0
+      ammoqty: 6
+      XCOMProperty: true
+    - id: 7
+      type: STR_HC_I_AMMO
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoqty: 6
+      XCOMProperty: true
+    - id: 8
+      type: STR_PISTOL_CLIP
+      ammoqty: 12
+      XCOMProperty: true
+    - id: 9
+      type: STR_PISTOL_CLIP
+      owner: 12
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 0
+      ammoqty: 12
+      XCOMProperty: true
+    - id: 10
+      type: STR_RIFLE
+      owner: 1
+      inventoryslot: STR_RIGHT_HAND
+      ammoItem: 1
+      ammoItemSlots: [1,10,10,10]
+      XCOMProperty: true
+    - id: 11
+      type: STR_HC_AP_AMMO
+      ammoqty: 6
+      XCOMProperty: true
+    - id: 12
+      type: STR_HC_AP_AMMO
+      owner: 3
+      inventoryslot: STR_RIGHT_LEG
+      inventoryX: 0
+      inventoryY: 0
+      ammoqty: 6
+      XCOMProperty: true
+    - id: 13
+      type: STR_LARGE_ROCKET
+      owner: 4
+      inventoryslot: STR_BACK_PACK
+      inventoryX: 0
+      inventoryY: 0
+      ammoqty: 1
+      XCOMProperty: true
+    - id: 14
+      type: STR_LARGE_ROCKET
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoqty: 1
+      XCOMProperty: true
+    - id: 15
+      type: STR_AUTO_CANNON
+      owner: 10
+      inventoryslot: STR_RIGHT_HAND
+      ammoItem: 19
+      ammoItemSlots: [19,15,15,15]
+      XCOMProperty: true
+    - id: 16
+      type: STR_ROCKET_LAUNCHER
+      owner: 4
+      inventoryslot: STR_RIGHT_HAND
+      ammoItem: 23
+      ammoItemSlots: [23,16,16,16]
+      XCOMProperty: true
+    - id: 17
+      type: STR_INCENDIARY_ROCKET
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoqty: 1
+      XCOMProperty: true
+    - id: 18
+      type: STR_INCENDIARY_ROCKET
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoqty: 1
+      XCOMProperty: true
+    - id: 19
+      type: STR_AC_AP_AMMO
+      ammoqty: 14
+      XCOMProperty: true
+    - id: 20
+      type: STR_AC_AP_AMMO
+      owner: 10
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 0
+      ammoqty: 14
+      XCOMProperty: true
+    - id: 21
+      type: STR_AC_HE_AMMO
+      owner: 10
+      inventoryslot: STR_BELT
+      inventoryX: 2
+      inventoryY: 0
+      ammoqty: 14
+      XCOMProperty: true
+    - id: 22
+      type: STR_AC_HE_AMMO
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoqty: 14
+      XCOMProperty: true
+    - id: 23
+      type: STR_SMALL_ROCKET
+      ammoqty: 1
+      XCOMProperty: true
+    - id: 24
+      type: STR_SMALL_ROCKET
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoqty: 1
+      XCOMProperty: true
+    - id: 25
+      type: STR_AC_I_AMMO
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoqty: 14
+      XCOMProperty: true
+    - id: 26
+      type: STR_AC_I_AMMO
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoqty: 14
+      XCOMProperty: true
+    - id: 27
+      type: STR_PROXIMITY_GRENADE
+      owner: 1
+      inventoryslot: STR_BELT
+      inventoryX: 1
+      inventoryY: 0
+      XCOMProperty: true
+    - id: 28
+      type: STR_MOTION_SCANNER
+      owner: 1
+      inventoryslot: STR_BELT
+      inventoryX: 2
+      inventoryY: 0
+      XCOMProperty: true
+    - id: 29
+      type: STR_LASER_PISTOL
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoqty: -1
+      ammoItem: 29
+      ammoItemSlots: [29,29,29,29]
+      XCOMProperty: true
+    - id: 30
+      type: STR_PSI_AMP
+      owner: 2
+      inventoryslot: STR_BACK_PACK
+      inventoryX: 0
+      inventoryY: 0
+      XCOMProperty: true
+    - id: 31
+      type: STR_SMOKE_GRENADE
+      owner: 1
+      inventoryslot: STR_BELT
+      inventoryX: 3
+      inventoryY: 0
+      XCOMProperty: true
+    - id: 32
+      type: STR_LASER_RIFLE
+      owner: 2
+      inventoryslot: STR_RIGHT_HAND
+      ammoqty: -1
+      ammoItem: 32
+      ammoItemSlots: [32,32,32,32]
+      XCOMProperty: true
+    - id: 33
+      type: STR_HEAVY_LASER
+      owner: 5
+      inventoryslot: STR_RIGHT_HAND
+      ammoqty: -1
+      ammoItem: 33
+      ammoItemSlots: [33,33,33,33]
+      XCOMProperty: true
+    - id: 34
+      type: STR_GRENADE
+      owner: 1
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 1
+      XCOMProperty: true
+    - id: 35
+      type: STR_HIGH_EXPLOSIVE
+      owner: 2
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 0
+      XCOMProperty: true
+    - id: 36
+      type: STR_MEDI_KIT
+      owner: 4
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 0
+      painKiller: 10
+      heal: 10
+      stimulant: 10
+      XCOMProperty: true
+    - id: 37
+      type: STR_PLASMA_PISTOL
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoItem: 47
+      ammoItemSlots: [47,37,37,37]
+      XCOMProperty: true
+    - id: 38
+      type: STR_STUN_ROD
+      owner: 6
+      inventoryslot: STR_RIGHT_HAND
+      ammoqty: -1
+      ammoItem: 38
+      ammoItemSlots: [38,38,38,38]
+      XCOMProperty: true
+    - id: 39
+      type: STR_HEAVY_PLASMA
+      owner: 7
+      inventoryslot: STR_RIGHT_HAND
+      ammoItem: 40
+      ammoItemSlots: [40,39,39,39]
+      XCOMProperty: true
+    - id: 40
+      type: STR_HEAVY_PLASMA_CLIP
+      ammoqty: 35
+      XCOMProperty: true
+    - id: 41
+      type: STR_HEAVY_PLASMA_CLIP
+      owner: 7
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 0
+      ammoqty: 35
+      XCOMProperty: true
+    - id: 42
+      type: STR_ELECTRO_FLARE
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      XCOMProperty: true
+    - id: 43
+      type: STR_PLASMA_RIFLE
+      owner: 8
+      inventoryslot: STR_RIGHT_HAND
+      ammoItem: 44
+      ammoItemSlots: [44,43,43,43]
+      XCOMProperty: true
+    - id: 44
+      type: STR_PLASMA_RIFLE_CLIP
+      ammoqty: 28
+      XCOMProperty: true
+    - id: 45
+      type: STR_PLASMA_RIFLE_CLIP
+      owner: 8
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 0
+      ammoqty: 28
+      XCOMProperty: true
+    - id: 46
+      type: STR_MIND_PROBE
+      owner: 5
+      inventoryslot: STR_BACK_PACK
+      inventoryX: 0
+      inventoryY: 0
+      XCOMProperty: true
+    - id: 47
+      type: STR_PLASMA_PISTOL_CLIP
+      ammoqty: 26
+      XCOMProperty: true
+    - id: 48
+      type: STR_PLASMA_PISTOL_CLIP
+      inventoryslot: STR_GROUND
+      position: [24,29,1]
+      ammoqty: 26
+      XCOMProperty: true
+    - id: 49
+      type: STR_BLASTER_BOMB
+      ammoqty: 1
+      XCOMProperty: true
+    - id: 50
+      type: STR_BLASTER_BOMB
+      owner: 9
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 0
+      ammoqty: 1
+      XCOMProperty: true
+    - id: 51
+      type: STR_BLASTER_LAUNCHER
+      owner: 9
+      inventoryslot: STR_RIGHT_HAND
+      ammoItem: 49
+      ammoItemSlots: [49,51,51,51]
+      XCOMProperty: true
+    - id: 52
+      type: STR_SMALL_LAUNCHER
+      owner: 11
+      inventoryslot: STR_RIGHT_HAND
+      ammoItem: 54
+      ammoItemSlots: [54,52,52,52]
+      XCOMProperty: true
+    - id: 53
+      type: STR_ALIEN_GRENADE
+      owner: 1
+      inventoryslot: STR_BELT
+      inventoryX: 3
+      inventoryY: 1
+      XCOMProperty: true
+    - id: 54
+      type: STR_STUN_BOMB
+      ammoqty: 1
+      XCOMProperty: true
+    - id: 55
+      type: STR_STUN_BOMB
+      owner: 11
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 0
+      ammoqty: 1
+      XCOMProperty: true
+    - id: 56
+      type: STR_PLASMA_RIFLE
+      owner: 1000000
+      inventoryslot: STR_RIGHT_HAND
+      ammoItem: 57
+      ammoItemSlots: [57,56,56,56]
+    - id: 57
+      type: STR_PLASMA_RIFLE_CLIP
+      ammoqty: 28
+    - id: 58
+      type: STR_PLASMA_RIFLE_CLIP
+      owner: 1000000
+      inventoryslot: STR_BELT
+      inventoryX: 0
+      inventoryY: 0
+      ammoqty: 28
+    - id: 59
+      type: STR_MIND_PROBE
+      owner: 1000000
+      inventoryslot: STR_BACK_PACK
+      inventoryX: 0
+      inventoryY: 0
+  itemsSpecial: []
+  tuReserved: 0
+  kneelReserved: false
+  depth: 0
+  ambience: -1
+  ambientVolume: 0.5
+  ambienceRandom: []
+  minAmbienceRandomDelay: 20
+  maxAmbienceRandomDelay: 60
+  currentAmbienceDelay: 357
+  music: ''
+  baseItems:
+    STR_AC_AP_AMMO: 1
+    STR_AC_HE_AMMO: 1
+    STR_AC_I_AMMO: 1
+    STR_ALIEN_ALLOYS: 1
+    STR_ALIEN_ENTERTAINMENT: 1
+    STR_ALIEN_FOOD: 1
+    STR_ALIEN_GRENADE: 1
+    STR_ALIEN_HABITAT: 1
+    STR_ALIEN_REPRODUCTION: 1
+    STR_ALIEN_SURGERY: 1
+    STR_AUTO_CANNON: 1
+    STR_AVALANCHE_LAUNCHER: 1
+    STR_AVALANCHE_MISSILES: 1
+    STR_BLASTER_BOMB: 1
+    STR_BLASTER_LAUNCHER: 1
+    STR_CANNON: 1
+    STR_CANNON_ROUNDS_X50: 1
+    STR_CELATID_TERRORIST: 1
+    STR_CHRYSSALID_TERRORIST: 1
+    STR_CYBERDISC_TERRORIST: 1
+    STR_ELECTRO_FLARE: 1
+    STR_ELERIUM_115: 1
+    STR_ETHEREAL_COMMANDER: 1
+    STR_ETHEREAL_LEADER: 1
+    STR_ETHEREAL_SOLDIER: 1
+    STR_EXAMINATION_ROOM: 1
+    STR_FLOATER_COMMANDER: 1
+    STR_FLOATER_ENGINEER: 1
+    STR_FLOATER_LEADER: 1
+    STR_FLOATER_MEDIC: 1
+    STR_FLOATER_NAVIGATOR: 1
+    STR_FLOATER_SOLDIER: 1
+    STR_FLYING_SUIT: 1
+    STR_FUSION_BALL: 1
+    STR_FUSION_BALL_LAUNCHER: 1
+    STR_GRENADE: 1
+    STR_HC_AP_AMMO: 1
+    STR_HC_HE_AMMO: 1
+    STR_HC_I_AMMO: 1
+    STR_HEAVY_CANNON: 1
+    STR_HEAVY_LASER: 1
+    STR_HEAVY_PLASMA: 1
+    STR_HEAVY_PLASMA_CLIP: 1
+    STR_HIGH_EXPLOSIVE: 1
+    STR_HOVERTANK_LAUNCHER: 1
+    STR_HOVERTANK_PLASMA: 1
+    STR_HWP_CANNON_SHELLS: 1
+    STR_HWP_FUSION_BOMB: 1
+    STR_HWP_ROCKETS: 1
+    STR_INCENDIARY_ROCKET: 1
+    STR_LARGE_ROCKET: 1
+    STR_LASER_CANNON: 1
+    STR_LASER_PISTOL: 1
+    STR_LASER_RIFLE: 1
+    STR_MEDI_KIT: 1
+    STR_MIND_PROBE: 1
+    STR_MOTION_SCANNER: 1
+    STR_MUTON_ENGINEER: 1
+    STR_MUTON_NAVIGATOR: 1
+    STR_MUTON_SOLDIER: 1
+    STR_PERSONAL_ARMOR: 1
+    STR_PISTOL: 1
+    STR_PISTOL_CLIP: 1
+    STR_PLASMA_BEAM: 1
+    STR_PLASMA_PISTOL: 1
+    STR_PLASMA_PISTOL_CLIP: 1
+    STR_PLASMA_RIFLE: 1
+    STR_PLASMA_RIFLE_CLIP: 1
+    STR_POWER_SUIT: 1
+    STR_PROXIMITY_GRENADE: 1
+    STR_PSI_AMP: 1
+    STR_REAPER_TERRORIST: 1
+    STR_RIFLE: 1
+    STR_RIFLE_CLIP: 1
+    STR_ROCKET_LAUNCHER: 1
+    STR_SECTOID_COMMANDER: 1
+    STR_SECTOID_ENGINEER: 1
+    STR_SECTOID_LEADER: 1
+    STR_SECTOID_MEDIC: 1
+    STR_SECTOID_NAVIGATOR: 1
+    STR_SECTOID_SOLDIER: 1
+    STR_SECTOPOD_TERRORIST: 1
+    STR_SILACOID_TERRORIST: 1
+    STR_SMALL_LAUNCHER: 1
+    STR_SMALL_ROCKET: 1
+    STR_SMOKE_GRENADE: 1
+    STR_SNAKEMAN_COMMANDER: 1
+    STR_SNAKEMAN_ENGINEER: 1
+    STR_SNAKEMAN_LEADER: 1
+    STR_SNAKEMAN_NAVIGATOR: 1
+    STR_SNAKEMAN_SOLDIER: 1
+    STR_STINGRAY_LAUNCHER: 1
+    STR_STINGRAY_MISSILES: 1
+    STR_STUN_BOMB: 1
+    STR_STUN_ROD: 1
+    STR_TANK_CANNON: 1
+    STR_TANK_LASER_CANNON: 1
+    STR_TANK_ROCKET_LAUNCHER: 1
+    STR_UFO_CONSTRUCTION: 1
+    STR_UFO_NAVIGATION: 1
+    STR_UFO_POWER_SOURCE: 1
+  turnLimit: 0
+  chronoTrigger: 0
+  cheatTurn: 20
+  togglePersonalLight: true
+  toggleNightVision: false
+  toggleBrightness: 0

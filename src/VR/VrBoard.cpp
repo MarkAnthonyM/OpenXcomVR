@@ -75,6 +75,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <set>
 #include <functional>
 #include <sstream>
@@ -434,6 +435,9 @@ struct Board::Impl
 	Mesh cube;                         // unit cube for voxel effects
 	bool shadowPass = false;           // drawing into the shadow map: terrain and figures only
 	bool feedPass = false;             // drawing for the scanner's camera: no markers
+	bool capturePass = false;          // drawing a terrain lab shot: no markers, labels or panels
+	Position captureTile = Position(-1, -1, -1); // the marked tile in that shot (corner ticks)
+	Mesh ticks;                        // corner ticks around a tile, on the ground
 	BattleUnit *hiddenUnit = nullptr;  // ...and in its soldier view, not the soldier's own figure
 
 	// ---- voxel effects: particles (board voxel space), what spawned them, and lights for the room
@@ -808,9 +812,17 @@ void Board::Impl::addRelief(const MapData *floor, int join, Proto &p)
 }
 
 /// Objects whose collision is much less than their art (a tree's trunk under a crown drawn around it, a
-/// bush, small props): display voxels fill the drawn shape. A voxel is added where the sprite has a pixel
-/// at its spot, within the art's reach of the part's vertical axis in that sprite row (the crown taken as
-/// round about the trunk, which settles the depth a picture from one side can't show). Display only.
+/// bush, a crop field, small props): the display shape is worked out from the art (0.21.0-terrain.3).
+/// The object is taken as a stack of horizontal slices round about its axis, each a disc clipped to the
+/// tile (a large one is a rounded square, the largest the whole square: a crop field). A slice at height z
+/// is centred on the sprite row groundRow - z; each gets the largest radius whose outline stays inside the
+/// art in every row it covers. Then:
+///  - slices that add nothing to what the slices under them already show are dropped from the top: a flat
+///    top face seen from above narrows toward its far corner, which read as a cone before;
+///  - when the art includes a patch of ground under the object (trees), the patch's colour inside the
+///    tile's diamond doesn't count as the object, so what stands on it is the trunk (no mound of grass);
+///  - the result replaces the collision voxels (a tree's collision is often a full column).
+/// If the slices don't explain the art well (under 60% overlap), the old rule adds voxels round about the axis instead.
 bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][TILE_H], int part)
 {
 	const int W = spr->getWidth(), H = spr->getHeight();
@@ -848,32 +860,226 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 			if (spr->getPixel(x, y)) { ++opaque; cov += covered[(size_t)y * W + x]; }
 	if (opaque < 12 || cov * 10 >= opaque * 7) return false; // the collision already matches (70%+ of the art)
 	if (nfoot) { ax /= nfoot; ay /= nfoot; } else { ax = ay = 8.f; }
-	// a crown round about the axis: its widest points in a sprite row are its sides, square to the view,
-	// which sit at one height (row = the axis' ground row - z); so each row gives the radius at that height
-	// (screen px across the view -> map voxels: / sqrt 2), the left and right reach averaged
 	const float axisPx = 16.f + (ax - ay), groundRow = 24.f + (ax + ay) * 0.5f + yoff;
-	std::vector<float> radius(H, -1.f);
-	bool added = false;
+	// the art, less a ground patch drawn under the object: the outline just above the middle row narrows
+	// like the tile's diamond (a tree on a patch of grass; a crop field's sides go straight up instead).
+	// Then pixels inside that diamond in the patch's colour family (green, brown or other) aren't the
+	// object; what is left there is its trunk or stem.
+	auto colourClass = [&](Uint8 c) -> int
+	{
+		const SDL_Color &k = pal[c];
+		return k.g > k.r * 1.15f ? 0 : (k.r > k.g ? 1 : 2);
+	};
+	auto extent = [&](int y, int &l, int &r)
+	{
+		l = W; r = -1;
+		if (y < 0 || y >= H) return;
+		for (int x = 0; x < W; ++x) if (spr->getPixel(x, y)) { l = std::min(l, x); r = std::max(r, x); }
+	};
+	auto diamondHalf = [&](float row) { return 2.f * (8.f - std::fabs(row + 0.5f - groundRow)); };
+	bool patch = true;
+	for (int d = 1; d <= 4 && patch; ++d)
+	{
+		int y = (int)std::floor(groundRow - d), l, r;
+		extent(y, l, r);
+		if (r < 0 || (r + 1 - l) > 2.f * diamondHalf((float)y) + 2.f) patch = false;
+	}
+	for (int d = 2; d <= 5 && patch; ++d)
+	{
+		int y = (int)std::floor(groundRow + d), l, r;
+		extent(y, l, r);
+		if (r < 0 || (r + 1 - l) < 2.f * diamondHalf((float)y) * 0.8f) patch = false;
+	}
+	std::vector<uint8_t> art((size_t)W * H, 0);
+	for (int y = 0; y < H; ++y)
+		for (int x = 0; x < W; ++x)
+			art[(size_t)y * W + x] = spr->getPixel(x, y) ? 1 : 0;
+	if (patch)
+	{
+		int votes[3] = {0, 0, 0};
+		for (int d = 3; d <= 6; ++d)
+		{
+			int y = (int)std::floor(groundRow + d);
+			if (y < 0 || y >= H) continue;
+			for (int x = 0; x < W; ++x) if (Uint8 c = spr->getPixel(x, y)) ++votes[colourClass(c)];
+		}
+		int ground = (int)(std::max_element(votes, votes + 3) - votes);
+		for (int y = 0; y < H; ++y)
+		{
+			float half = diamondHalf((float)y);
+			if (half <= 0.f) continue;
+			for (int x = 0; x < W; ++x)
+			{
+				Uint8 c = spr->getPixel(x, y);
+				if (c && std::fabs(x + 0.5f - 16.f) <= half && colourClass(c) == ground) art[(size_t)y * W + x] = 0;
+			}
+		}
+	}
+	int artCount = 0;
+	for (uint8_t v : art) artCount += v;
+	// the art's reach either side of the axis in each row (left and right averaged, as a round thing has)
+	std::vector<float> reach(H, -1.f);
 	for (int y = 0; y < H; ++y)
 	{
 		int l = W, r = -1;
-		for (int x = 0; x < W; ++x) if (spr->getPixel(x, y)) { l = std::min(l, x); r = std::max(r, x); }
+		for (int x = 0; x < W; ++x) if (art[(size_t)y * W + x]) { l = std::min(l, x); r = std::max(r, x); }
 		if (r < 0) continue;
-		float left = std::max(0.f, axisPx - l), right = std::max(0.f, r + 1.f - axisPx);
-		radius[y] = std::min(7.5f, (left + right) * 0.5f / 1.4142f); // inside the tile
+		float left = axisPx - l, right = r + 1.f - axisPx;
+		if (left <= -1.5f || right <= -1.5f) continue; // the row is off to one side of the axis
+		reach[y] = std::max(0.5f, (left + right) * 0.5f); // a thin trunk a pixel off the axis still counts
 	}
+	// a slice: a disc of radius rad round the axis, clipped to the tile (so a large one is a rounded
+	// square, and from 11.3 the whole square). Seen from the flat game's view, at row offset v from the
+	// slice's middle row its points have x + y = 2v (relative to the axis) and the horizontal offset
+	// u = x - y; the disc allows |u| <= sqrt(2 (rad^2 - 2 v^2)), the tile x0 <= x <= x1, y0 <= y <= y1.
+	const float x0 = -ax, x1 = 16.f - ax, y0 = -ay, y1 = 16.f - ay;
+	auto span = [&](float rad, float v, float &lo, float &hi) -> bool
+	{
+		float q = rad * rad - 2.f * v * v;
+		if (q < 0.f) return false;
+		float c = std::sqrt(2.f * q);
+		lo = std::max({-c, 2.f * (x0 - v), 2.f * (v - y1)});
+		hi = std::min({c, 2.f * (x1 - v), 2.f * (v - y0)});
+		return lo <= hi;
+	};
+	auto fits = [&](float rad, float row) -> bool
+	{
+		bool any = false;
+		for (int y = (int)std::floor(row - 12.f); y <= (int)std::floor(row + 12.f); ++y)
+		{
+			float lo, hi;
+			if (!span(rad, y + 0.5f - row, lo, hi)) continue;
+			if (y < 0 || y >= H || reach[y] < 0.f) return false;
+			if (hi > reach[y] + 0.75f || -lo > reach[y] + 0.75f) return false;
+			any = true;
+		}
+		return any;
+	};
+	struct Fit { std::vector<float> rad; int top = -1; float iou = 0.f; };
+	Fit best;
+	best.rad.assign(TILE_H, 0.f);
+	for (int z = 2; z < TILE_H; ++z)
+	{
+		float row = groundRow - (z + 0.5f);
+		for (float rad = 11.4f; rad >= 0.5f; rad -= 0.25f)
+			if (fits(rad, row)) { best.rad[z] = rad; break; }
+	}
+	// a gap between slices (a trunk hidden for a row or two) takes the narrower of its neighbours
+	for (int z = 3; z < TILE_H - 1; ++z)
+	{
+		if (best.rad[z] > 0.f || best.rad[z - 1] <= 0.f) continue;
+		int z2 = z;
+		while (z2 < TILE_H && best.rad[z2] <= 0.f) ++z2;
+		if (z2 >= TILE_H || z2 - z > 3) continue;
+		float m = std::min(best.rad[z - 1], best.rad[z2]);
+		for (int q = z; q < z2; ++q) best.rad[q] = m;
+	}
+	// what each slice shows, bottom up; drop slices from the top while the art they explain is (almost)
+	// all explained by the slices under them (a flat top seen from above is not a cone)
+	{
+		std::vector<uint8_t> mask((size_t)W * H, 0);
+		std::vector<int> gained(TILE_H, 0);
+		int total = 0, uni = 0;
+		for (int z = 2; z < TILE_H; ++z)
+		{
+			if (best.rad[z] <= 0.f) continue;
+			float row = groundRow - (z + 0.5f);
+			for (int y = (int)std::floor(row - 12.f); y <= (int)std::floor(row + 12.f); ++y)
+			{
+				float lo, hi;
+				if (y < 0 || y >= H || !span(best.rad[z], y + 0.5f - row, lo, hi)) continue;
+				for (int x = (int)std::floor(axisPx + lo); x < (int)std::ceil(axisPx + hi); ++x)
+				{
+					if (x < 0 || x >= W) continue;
+					uint8_t &m = mask[(size_t)y * W + x];
+					if (m) continue;
+					m = 1; ++uni;
+					if (art[(size_t)y * W + x]) { ++gained[z]; ++total; }
+				}
+			}
+		}
+		if (uni && artCount)
+		{
+			best.iou = (float)total / (float)(uni + artCount - total);
+			int keep = total, top = TILE_H - 1;
+			while (top >= 2 && (best.rad[top] <= 0.f || keep - gained[top] >= total - std::max(2, total / 50)))
+			{
+				keep -= gained[top];
+				best.rad[top] = 0.f;
+				--top;
+			}
+			best.top = top;
+		}
+	}
+	// a height from the hand-checked list (terrain-relief.txt, "tall"): the slices squeezed or stretched
+	if (float want = VR::shapeHeight(md))
+	{
+		int newTop = std::max(2, std::min(TILE_H - 1, (int)std::lround(want) - 1));
+		if (best.top >= 2 && newTop != best.top)
+		{
+			std::vector<float> r(TILE_H, 0.f);
+			for (int z = 2; z <= newTop; ++z)
+			{
+				float src = newTop == 2 ? 2.f : 2.f + (z - 2) * (float)(best.top - 2) / (float)(newTop - 2);
+				r[z] = best.rad[std::max(2, std::min(best.top, (int)std::lround(src)))];
+			}
+			best.rad = r;
+			best.top = newTop;
+		}
+	}
+	static const bool shapeLog = std::getenv("OXCE_VR_SHAPE_LOG") != nullptr;
+	if (shapeLog)
+	{
+		std::ostringstream o;
+		o << "[VR] shape " << (md->getDataset() ? md->getDataset()->getName() : std::string("?")) << " sprite "
+		  << md->getSprite(0) << ": iou " << best.iou << " collision " << (100 * cov / opaque) << "% top " << best.top
+		  << (patch ? " patch" : "") << " radii";
+		for (int z = 2; z <= best.top; ++z) o << " " << best.rad[z];
+		Log(LOG_INFO) << o.str();
+	}
+	// natural terrain only: craft, UFO and base parts keep their collision with the old rule's additions
+	bool natural = true;
+	if (md->getDataset())
+	{
+		const std::string &n = md->getDataset()->getName();
+		for (const char *pre : {"U_", "UFO", "PLANE", "XBASE", "UBASE", "BRAIN", "BLANKS"})
+			if (n.compare(0, std::strlen(pre), pre) == 0) natural = false;
+		if (craftSets.count(n)) natural = false;
+	}
+	bool added = false;
+	if (natural && best.top >= 2 && best.iou >= 0.6f)
+	{
+		// the shape replaces the collision (the floor keeps its slab)
+		for (int z = 0; z < TILE_H; ++z)
+			for (int y = 0; y < TILE_W; ++y)
+				for (int x = 0; x < TILE_W; ++x)
+					if (own[x][y][z] == part + 1) own[x][y][z] = 0;
+		for (int z = 2; z <= best.top; ++z)
+		{
+			float rad = best.rad[z];
+			if (rad <= 0.f) continue;
+			for (int y = 0; y < TILE_W; ++y)
+				for (int x = 0; x < TILE_W; ++x)
+				{
+					if (own[x][y][z]) continue;
+					float dx = x + 0.5f - ax, dy = y + 0.5f - ay;
+					if (dx * dx + dy * dy <= (rad + 0.2f) * (rad + 0.2f)) { own[x][y][z] = (uint8_t)(part + 1); added = true; }
+				}
+		}
+		return added;
+	}
+	// no slice shape fits the art: add voxels round about the axis where the art has something (the old rule)
 	for (int z = 2; z < TILE_H; ++z)
 	{
 		int row = (int)std::floor(groundRow - z - 0.5f);
-		if (row < 0 || row >= H || radius[row] < 0.f) continue;
-		float rr = radius[row];
+		if (row < 0 || row >= H || reach[row] < 0.f) continue;
+		float rr = std::min(7.5f, reach[row] / 1.4142f);
 		for (int y = 0; y < TILE_W; ++y)
 			for (int x = 0; x < TILE_W; ++x)
 			{
 				if (own[x][y][z]) continue;
 				float dx = x + 0.5f - ax, dy = y + 0.5f - ay;
 				if (dx * dx + dy * dy > rr * rr) continue;
-				// and the art has something at the voxel's own spot (gaps in a crown stay open)
 				int px, py;
 				proj(x + 0.5f, y + 0.5f, z + 0.5f, px, py);
 				bool art = false;
@@ -2058,8 +2264,26 @@ void Board::Impl::drawBattle(const Shader &sh)
 
 	drawEffects(sh, M);
 
-	if (!feedPass) drawHud(sh, M);
-	if (!feedPass && !shadowPass && lab) drawLab(sh, M);
+	if (!feedPass && !capturePass) drawHud(sh, M);
+	if (!feedPass && !shadowPass && lab)
+	{
+		if (!capturePass) drawLab(sh, M);
+		else if (captureTile.x >= 0 && captureTile.z <= viewLevel)
+		{
+			glm::vec3 at(captureTile.x * TILE_W, captureTile.z * TILE_H + 2.f, captureTile.y * TILE_W);
+			sh.set("uMode", 2);
+			sh.set("uModel", M * glm::translate(glm::mat4(1.f), at));
+			glDisable(GL_DEPTH_TEST); // faintly through whatever stands in front
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+			sh.set("uTint", glm::vec4(1.f, 0.85f, 0.2f, 0.35f));
+			ticks.draw();
+			glDisable(GL_BLEND);
+			glEnable(GL_DEPTH_TEST);
+			sh.set("uTint", glm::vec4(2.2f, 1.6f, 0.2f, 1.f));
+			ticks.draw();
+		}
+	}
 	drawCurtain(sh);
 	sh.set("uTint", glm::vec4(1.f));
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
@@ -3300,6 +3524,23 @@ void Board::init(const RoomLayout &layout)
 		cb.addBox({-0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}, glm::vec4(1), 0);
 		_p->cube.upload(cb);
 	}
+	{
+		// corner ticks around a tile on the ground (the terrain lab's shots): an L at each corner, just
+		// outside the tile, so nothing crosses what stands on it
+		MeshData tk;
+		const float o = 1.2f, len = 4.f, th = 0.9f, hgt = 0.8f, L = (float)TILE_W;
+		for (int cx = 0; cx < 2; ++cx)
+			for (int cz = 0; cz < 2; ++cz)
+			{
+				float x = cx ? L + o : -o, z = cz ? L + o : -o, sx = cx ? -1.f : 1.f, sz = cz ? -1.f : 1.f;
+				// the arm along x and the arm along z, both starting at the corner point
+				float xa = x - sx * th, xb = x + sx * len, za = z - sz * th, zb = z;
+				tk.addBox({std::min(xa, xb), 0.f, std::min(za, zb)}, {std::max(xa, xb), hgt, std::max(za, zb)}, glm::vec4(1), 0);
+				xa = x - sx * th; xb = x; za = z - sz * th; zb = z + sz * len;
+				tk.addBox({std::min(xa, xb), 0.f, std::min(za, zb)}, {std::max(xa, xb), hgt, std::max(za, zb)}, glm::vec4(1), 0);
+			}
+		_p->ticks.upload(tk);
+	}
 	// HUD meshes: wireframe boxes for one and two tiles (thin bars along the 12 edges)
 	for (int n = 0; n < 2; ++n)
 	{
@@ -3624,6 +3865,16 @@ void Board::update(Game *game, float dt)
 }
 
 void Board::setFeedPass(bool on) { _p->feedPass = on; }
+void Board::setCapturePass(bool on, int x, int y, int z) { _p->capturePass = on; _p->captureTile = Position(x, y, z); }
+bool Board::tileWorld(int x, int y, int z, glm::vec3 &centre, float &tileMetres) const
+{
+	const Impl &p = *_p;
+	if (!p.hasBattle || x < 0 || y < 0 || z < 0 || x >= p.mx || y >= p.my || z >= p.mz) return false;
+	glm::vec3 v(x * TILE_W + TILE_W * 0.5f, z * TILE_H + TILE_H * 0.4f, y * TILE_W + TILE_W * 0.5f);
+	centre = glm::vec3(p.boardMatrix() * glm::vec4(v, 1.f));
+	tileMetres = p.tileSize;
+	return true;
+}
 void Board::setHiddenUnit(BattleUnit *unit) { _p->hiddenUnit = unit; }
 glm::vec3 Board::voxelToWorld(const glm::vec3 &v) const { return glm::vec3(_p->boardMatrix() * glm::vec4(v.x, v.z, v.y, 1.f)); }
 

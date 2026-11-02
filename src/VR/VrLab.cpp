@@ -672,7 +672,7 @@ void TerrainLabState::addMark(int x, int y, int z, const std::string &reasons, c
 	_marks.push_back(m);
 	saveMarks();
 	std::string base = labFolder() + _session + "/" + num;
-	VR::requestViewCapture(base + "-view.png");
+	VR::requestViewCapture(base + "-view.png", base + "-close.png", x, y, z);
 	VR::saveInspectPicture(base + "-art.png", x, y, z);
 	updateTexts();
 	Log(LOG_INFO) << "[VR] terrain lab: mark #" << num << " " << m.terrain << " " << m.page << " " << x << "," << y << "," << z << " (" << m.reasons << ")";

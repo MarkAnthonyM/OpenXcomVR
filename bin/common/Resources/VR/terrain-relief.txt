@@ -4,8 +4,9 @@
 # game's collision, line of fire and movement are unchanged). Parts not listed stay flat.
 #
 #   SET   part  kind   height
-#   kind:   up = rocks, rubble, a mound;  down = a hole, crater, crevasse
-#   height: the peak or the depth in map voxels (24 = one level, 6 = a quarter level)
+#   kind:   up = rocks, rubble, a mound;  down = a hole, crater, crevasse;
+#           tall = an object whose shape the table works out from its art (crowns, crop fields): its height
+#   height: the peak, the depth or the object's height in map voxels (24 = one level, 6 = a quarter level)
 #
 # Check them in the terrain lab: openxcom.exe -vrTerrainLab [TERRAIN]
 
@@ -82,3 +83,4 @@ FOREST    7  up    4
 JUNGLE   54  up    4
 JUNGLE   55  up    4
 CULTIVAT  7  up    4    # a bush painted on the dirt
+CULTIVAT  4  tall 11    # wheat: up to a soldier's waist (owner)

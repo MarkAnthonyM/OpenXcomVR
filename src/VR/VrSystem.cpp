@@ -204,10 +204,11 @@ struct State
 	std::string pendingShot;
 	int frameCount = 0;
 	bool labStarted = false; // -vrTerrainLab: the lab replaced the menus once the game had loaded
-	struct Capture { std::string path; double at; };
+	struct Capture { std::string path, closePath; int x, y, z; double at; };
 	std::vector<Capture> captures;   // terrain lab: views to save (after the mark window has folded away)
 	RenderTarget captureTarget;
 	Texture captureTex;
+	bool capturing = false;          // drawing a lab shot: no hands, controllers or lasers
 	double time = 0.0;
 };
 
@@ -1355,6 +1356,7 @@ static void drawScene(const glm::mat4 &view, const glm::mat4 &proj, const glm::v
 	sh.set("uTint", glm::vec4(1.f));
 	S->board.drawWeather(sh);
 
+	if (S->capturing) return; // the lab's shots: nothing of the player's in the picture
 	S->handsVis.draw(sh);
 	if (!drawHands) return;
 	// controllers, only when there is no hand to show
@@ -2068,13 +2070,9 @@ static void saveShot(const std::string &path, int w, int h)
 	Log(LOG_INFO) << "[VR] screenshot " << path << (err ? " FAILED" : " saved");
 }
 
-/// The terrain lab's mark screenshots: the scene drawn once more from the head into a 1600 x 1000 picture
-/// (a 70 degree view, hands included) and saved as a PNG.
-static void doCaptures(const glm::mat4 &view, const glm::vec3 &eye)
+/// One picture of the scene into the capture target (1600 x 1000), saved as a PNG.
+static void captureTo(const std::string &path, const glm::mat4 &view, const glm::vec3 &eye, float fovDeg)
 {
-	if (S->captures.empty() || S->time < S->captures.front().at) return;
-	std::string path = S->captures.front().path;
-	S->captures.erase(S->captures.begin());
 	const int W = 1600, H = 1000;
 	if (S->captureTarget.width() != W)
 	{
@@ -2082,7 +2080,7 @@ static void doCaptures(const glm::mat4 &view, const glm::vec3 &eye)
 		S->captureTex.create(W, H, false, true);
 	}
 	S->captureTarget.bind();
-	drawScene(view, glm::perspective(glm::radians(70.f), (float)W / (float)H, 0.03f, 60.f), eye, true);
+	drawScene(view, glm::perspective(glm::radians(fovDeg), (float)W / (float)H, 0.01f, 60.f), eye, false);
 	glDisable(GL_FRAMEBUFFER_SRGB);
 	S->captureTarget.resolveTo(S->captureTex.id());
 	std::vector<unsigned char> px((size_t)W * H * 4), flipped((size_t)W * H * 4);
@@ -2095,9 +2093,39 @@ static void doCaptures(const glm::mat4 &view, const glm::vec3 &eye)
 	Log(LOG_INFO) << "[VR] view " << path << (err ? " FAILED" : " saved");
 }
 
-void requestViewCapture(const std::string &path)
+/// The terrain lab's mark screenshots (0.21.0-terrain.3): clean pictures, without the lab's flags, labels,
+/// cards and panels and without hands or lasers; corner ticks on the ground show the marked tile.
+///  - the view: the scene from the head, a 70 degree view;
+///  - the close-up: from the same direction, moved in until the tile and a level above it fill the frame.
+static void doCaptures(const glm::mat4 &view, const glm::vec3 &eye)
 {
-	if (S) S->captures.push_back({path, S->time + 0.6}); // the mark window folds away first
+	if (S->captures.empty() || S->time < S->captures.front().at) return;
+	State::Capture c = S->captures.front();
+	S->captures.erase(S->captures.begin());
+	S->capturing = true;
+	S->board.setCapturePass(true, c.x, c.y, c.z);
+	captureTo(c.path, view, eye, 70.f);
+	glm::vec3 centre;
+	float ts = 0.f;
+	if (!c.closePath.empty() && S->board.tileWorld(c.x, c.y, c.z, centre, ts))
+	{
+		glm::vec3 dir = centre - eye;
+		if (glm::length(dir) < 1e-4f) dir = glm::vec3(0.f, -0.6f, -0.8f);
+		dir = glm::normalize(dir);
+		if (dir.y > -0.35f) { dir.y = -0.35f; dir = glm::normalize(dir); } // looking down at it a little
+		const float fov = 40.f;
+		float dist = 3.f * ts / (2.f * std::tan(glm::radians(fov * 0.5f))); // three tiles across the frame's height
+		glm::vec3 from = centre - dir * dist;
+		glm::mat4 v = glm::lookAt(from, centre, glm::vec3(0.f, 1.f, 0.f));
+		captureTo(c.closePath, v, from, fov);
+	}
+	S->board.setCapturePass(false);
+	S->capturing = false;
+}
+
+void requestViewCapture(const std::string &path, const std::string &closePath, int x, int y, int z)
+{
+	if (S) S->captures.push_back({path, closePath, x, y, z, S->time + 0.6}); // the mark window folds away first
 }
 
 bool saveInspectPicture(const std::string &path, int x, int y, int z)

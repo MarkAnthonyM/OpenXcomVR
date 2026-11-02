@@ -93,7 +93,8 @@ python3 vr-dev/test/regress.py v3 i3            # some of it
   7 heavy plasma), `night` (battle start at night), `outnight` (`outside`
   with global shade 15), `newbattle`, `geo_test` (geoscape), `tap_test`
   (the tap test's roofs and soldiers), `bigunit` (`outside` with its sectoid
-  made a moving reaper next to unit 7: the scanner's big-unit test).
+  made a moving reaper next to unit 7: the scanner's big-unit test), `farm_wheat`
+  (the owner's farm: unit 2 in a wheat field).
 - The owner can send save files from his game for specific situations; they
   need the same mods (plain xcom1) and an OXCE 8.7.1-compatible version.
 
@@ -202,6 +203,16 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     STRENGTH (Weather::force "kind:N" for dust/sand/mist/clouds too: density), ASSEMBLED (mutual 3-in-4
     neighbour rule over the map blocks), PICTURES (cards; Board::flatPicture). Owner's choices: all
     three picture kinds, A to mark, screenshots, a folder per run, marks persist until removed.
+  - Owner's first lab notes (CULTA: wheat too tall and cone-topped, two fruit trees "crown wrong") and
+    his save `vr-dev/test/saves/farm_wheat.asav` (unit 2 standing in wheat at 31,28; wheat should come
+    to a soldier's waist). terrain.3: growToArt fits slices (a disc clipped to the tile, radius per
+    height, largest that stays inside the art), drops top slices that add nothing (flat tops, no
+    cones), ignores a ground patch's colour inside the diamond (trunks), replaces the collision when
+    the overlap is 60%+ (natural sets only; U_/UFO/PLANE/XBASE/UBASE/BRAIN and craft sets keep the old
+    additive rule). "tall" entries in terrain-relief.txt set an object's height (CULTIVAT 4 tall 11).
+    `OXCE_VR_SHAPE_LOG=1` logs each fit. Lab shots are clean (Board::setCapturePass: no HUD, lab
+    overlays, hands or lasers; corner ticks round the marked tile) plus `NNN-close.png` (40 degrees,
+    three tiles high, from the head's direction, at least 20 degrees down). PICTURES starts off (owner).
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
