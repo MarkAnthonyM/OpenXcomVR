@@ -486,6 +486,12 @@ struct Board::Impl
 	struct Label { std::unique_ptr<Texture> tex; int w = 0, h = 0; double used = 0.0; };
 	std::map<std::string, Label> labels;
 	Label inspectPanel;             // the terrain lab's inspect panel (drawLab)
+	std::map<std::string, Label> labPictures; // the lab's picture cards and flat views (drawLab), per map
+	/// Tiles x0..x1, y0..y1, levels z0..z1 of the battle map as the flat game draws them (RGBA, on a dark
+	/// backing): floors, walls and objects, back to front, level by level.
+	void flatPicture(int x0, int y0, int z0, int x1, int y1, int z1, std::vector<uint32_t> &px, int &W, int &H);
+	/// An upright picture turned about the vertical to face the viewer, its bottom middle at base (voxels).
+	void drawCard(const Shader &sh, const glm::mat4 &M, const glm::vec3 &base, const glm::vec3 &viewerVox, const Label &l, float pxSize, float lean = 0.f) const;
 	const Label &label(const std::string &text, Uint8 color);
 	glm::vec4 palColor(int index, float glow) const
 	{
@@ -572,6 +578,7 @@ void Board::Impl::resetBattle()
 	cursorSet = false;
 	fingerFrames = 0;
 	labels.clear();
+	labPictures.clear();
 	particles.clear();
 	seenExplosions.clear();
 	lastProjectile = nullptr;
@@ -2816,6 +2823,91 @@ void Board::Impl::drawLab(const Shader &sh, const glm::mat4 &M)
 		const Label &l = label(num + why, redIdx);
 		drawLabel(sh, M, glm::vec3(m.x * TILE_W + TILE_W * 0.5f, m.z * TILE_H + TILE_H + 13.f, m.y * TILE_W + TILE_W * 0.5f), viewerVox, l, 0.36f);
 	}
+	// pictures (PICTURES key): each part's sprite on a card beside it, each assembled piece and each map
+	// block as the flat game draws it
+	if (lab->pictures())
+	{
+		auto picture = [&](const std::string &key, auto make) -> Label&
+		{
+			Label &l = labPictures[key];
+			if (!l.tex)
+			{
+				std::vector<uint32_t> px;
+				int w = 0, h = 0;
+				make(px, w, h);
+				if (w > 0 && h > 0)
+				{
+					l.tex = std::make_unique<Texture>();
+					l.tex->create(w, h, true, true);
+					l.tex->update(px.data(), w, h);
+					l.w = w; l.h = h;
+				}
+			}
+			return l;
+		};
+		glEnable(GL_DEPTH_TEST);
+		if (page == "parts")
+			for (const TerrainLabState::LabelAt &a : lab->labels())
+			{
+				if (a.z > viewLevel) continue;
+				Tile *t = battle->getTile(Position(a.x, a.y, a.z));
+				const MapData *md = nullptr;
+				for (int part : {O_OBJECT, O_NORTHWALL, O_WESTWALL, O_FLOOR})
+					if (!md && t && t->getMapData((TilePart)part)) md = t->getMapData((TilePart)part);
+				if (!md || !md->getDataset() || !md->getDataset()->getSurfaceset()) continue;
+				char key[32];
+				snprintf(key, sizeof(key), "p%p", (const void*)md);
+				const Label &l = picture(key, [&](std::vector<uint32_t> &px, int &w, int &h)
+				{
+					const Surface *spr = static_cast<const SurfaceSet*>(md->getDataset()->getSurfaceset())->getFrame(md->getSprite(0));
+					if (!spr) return;
+					// cropped to the sprite's drawn pixels, two pixels of backing around them
+					int x0 = spr->getWidth(), y0 = spr->getHeight(), x1 = -1, y1 = -1;
+					for (int y = 0; y < spr->getHeight(); ++y)
+						for (int x = 0; x < spr->getWidth(); ++x)
+							if (spr->getPixel(x, y)) { x0 = std::min(x0, x); y0 = std::min(y0, y); x1 = std::max(x1, x); y1 = std::max(y1, y); }
+					if (x1 < 0) return;
+					w = x1 - x0 + 5; h = y1 - y0 + 5;
+					px.assign((size_t)w * h, Dash::C(16, 22, 40));
+					for (int y = y0; y <= y1; ++y)
+						for (int x = x0; x <= x1; ++x)
+							if (Uint8 c = spr->getPixel(x, y)) px[(size_t)(y - y0 + 2) * w + x - x0 + 2] = rgba(pal[c]);
+				});
+				// on the empty row behind the part (north), standing on the ground, a tile wide
+				// a card leaning back on the empty row behind the part, 0.6 tile wide
+				if (l.w > 0) drawCard(sh, M, glm::vec3(a.x * TILE_W + TILE_W * 0.5f, a.z * TILE_H + 0.5f, a.y * TILE_W - TILE_W * 0.55f), viewerVox, l, TILE_W * 0.7f / 32.f, glm::radians(50.f));
+			}
+		else if (page == "assembled")
+		{
+			int i = 0;
+			for (const TerrainLabState::Piece &pc : lab->pieces())
+			{
+				char key[32];
+				snprintf(key, sizeof(key), "a%d", i++);
+				const Label &l = picture(key, [&](std::vector<uint32_t> &px, int &w, int &h)
+				{
+					flatPicture(pc.x0, pc.y0, 0, pc.x0 + pc.w - 1, pc.y0 + pc.l - 1, std::min(mz - 1, pc.h), px, w, h);
+				});
+				// behind the piece, as wide as the piece's own footprint across the view
+				float wv = (pc.w + pc.l) * TILE_W * 0.5f;
+				if (l.w > 0) drawCard(sh, M, glm::vec3((pc.x0 + pc.w * 0.5f) * TILE_W, 0.f, pc.y0 * TILE_W - TILE_W * 0.6f), viewerVox, l, wv / l.w);
+			}
+		}
+		else
+		{
+			// the whole block, as on the flat screen, over the table's far edge: about 45 cm wide
+			const Label &l = picture("block", [&](std::vector<uint32_t> &px, int &w, int &h) { flatPicture(0, 0, 0, mx - 1, my - 1, mz - 1, px, w, h); });
+			if (l.w > 0)
+			{
+				float k = tileSize / TILE_W;
+				glm::vec3 far = glm::vec3(glm::inverse(M) * glm::vec4((mapRect.x + mapRect.z) * 0.5f, surfaceY() + 0.06f, mapRect.y - 0.02f, 1.f));
+				sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f)); // it stands beyond the map's area
+				drawCard(sh, M, far, viewerVox, l, 0.45f / (l.w * k));
+				sh.set("uClip", clipRect());
+			}
+		}
+		glDisable(GL_DEPTH_TEST);
+	}
 	// the inspect panel: beside and above the tile, turned to the head, about 24 cm wide whatever the zoom
 	bool show = pinned || (hoverValid && !hoverGlobe);
 	Position t = pinned ? pinTile : hoverTile;
@@ -2847,11 +2939,84 @@ void Board::Impl::drawLab(const Shader &sh, const glm::mat4 &M)
 			toV.y = 0.f;
 			glm::vec3 right = glm::length(toV) > 1e-3f ? glm::normalize(glm::cross(glm::vec3(0, 1, 0), toV)) : glm::vec3(1, 0, 0);
 			glm::vec3 at = c + right * (0.17f / k) + glm::vec3(0.f, 0.06f / k, 0.f);
+			sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f)); // beside the tile, maybe beyond the map's area
 			drawLabel(sh, M, at, viewerVox, inspectPanel, 0.24f / (inspectPanel.w * k));
 		}
 	}
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
+	sh.set("uClip", clipRect());
+}
+
+void Board::Impl::drawCard(const Shader &sh, const glm::mat4 &M, const glm::vec3 &base, const glm::vec3 &viewerVox, const Label &l, float pxSize, float lean) const
+{
+	if (!l.tex) return;
+	glm::vec3 toV = viewerVox - base;
+	toV.y = 0.f;
+	if (glm::length(toV) < 1e-3f) toV = glm::vec3(0, 0, 1);
+	toV = glm::normalize(toV);
+	glm::vec3 right = glm::normalize(glm::cross(glm::vec3(0, 1, 0), toV));
+	// leaning back (radians), its face turned up toward the viewer by as much
+	glm::vec3 up = glm::vec3(0, std::cos(lean), 0) - toV * std::sin(lean);
+	toV = glm::normalize(glm::cross(right, up));
+	glm::mat4 B(1.f);
+	B[0] = glm::vec4(right * (l.w * pxSize), 0.f);
+	B[1] = glm::vec4(up * (l.h * pxSize), 0.f);
+	B[2] = glm::vec4(toV, 0.f);
+	B[3] = glm::vec4(base + up * (l.h * pxSize * 0.5f), 1.f);
+	sh.set("uMode", 4);
+	sh.set("uTint", glm::vec4(1.f));
+	sh.set("uModel", M * B);
+	l.tex->bind(0);
+	quad.draw();
+}
+
+void Board::Impl::flatPicture(int x0, int y0, int z0, int x1, int y1, int z1, std::vector<uint32_t> &px, int &W, int &H)
+{
+	int nx = x1 - x0 + 1, ny = y1 - y0 + 1, nz = z1 - z0 + 1;
+	// the flat game's projection: a tile's sprite at ((x - y) * 16, (x + y) * 8 - z * 24), 32 x 40
+	W = (nx + ny) * 16 + 8;
+	H = (nx + ny) * 8 + nz * 24 + 24;
+	int ox = ny * 16 - 16 + 4, oy = nz * 24 - 12;
+	px.assign((size_t)W * H, Dash::C(16, 22, 40));
+	for (int z = z0; z <= z1; ++z)
+		for (int sum = 0; sum <= nx + ny - 2; ++sum)
+			for (int dx = 0; dx < nx; ++dx)
+			{
+				int dy = sum - dx;
+				if (dy < 0 || dy >= ny) continue;
+				Tile *t = battle->getTile(Position(x0 + dx, y0 + dy, z));
+				if (!t) continue;
+				int sx = ox + (dx - dy) * 16, sy = oy + (dx + dy) * 8 - (z - z0) * 24;
+				for (int part : {O_FLOOR, O_WESTWALL, O_NORTHWALL, O_OBJECT})
+				{
+					const MapData *md = t->getMapData((TilePart)part);
+					if (!md || !md->getDataset() || !md->getDataset()->getSurfaceset() || t->isUfoDoorOpen((TilePart)part)) continue;
+					const Surface *spr = static_cast<const SurfaceSet*>(md->getDataset()->getSurfaceset())->getFrame(md->getSprite(0));
+					if (!spr) continue;
+					for (int y = 0; y < spr->getHeight(); ++y)
+						for (int x = 0; x < spr->getWidth(); ++x)
+						{
+							Uint8 c = spr->getPixel(x, y);
+							int X = sx + x, Y = sy + y - md->getYOffset();
+							if (c && X >= 0 && Y >= 0 && X < W && Y < H) px[(size_t)Y * W + X] = rgba(pal[c]);
+						}
+				}
+			}
+	// cropped to what was drawn, with a small margin
+	const uint32_t bg = Dash::C(16, 22, 40);
+	int cx0 = W, cy0 = H, cx1 = -1, cy1 = -1;
+	for (int y = 0; y < H; ++y)
+		for (int x = 0; x < W; ++x)
+			if (px[(size_t)y * W + x] != bg) { cx0 = std::min(cx0, x); cy0 = std::min(cy0, y); cx1 = std::max(cx1, x); cy1 = std::max(cy1, y); }
+	if (cx1 < 0) { W = H = 0; px.clear(); return; }
+	cx0 = std::max(0, cx0 - 3); cy0 = std::max(0, cy0 - 3); cx1 = std::min(W - 1, cx1 + 3); cy1 = std::min(H - 1, cy1 + 3);
+	int nw = cx1 - cx0 + 1, nh = cy1 - cy0 + 1;
+	std::vector<uint32_t> out((size_t)nw * nh);
+	for (int y = 0; y < nh; ++y)
+		for (int x = 0; x < nw; ++x) out[(size_t)y * nw + x] = px[(size_t)(y + cy0) * W + x + cx0];
+	px.swap(out);
+	W = nw; H = nh;
 }
 
 bool Board::Impl::inspectPicture(const Position &pos, std::vector<uint32_t> &px, int &W, int &H)
