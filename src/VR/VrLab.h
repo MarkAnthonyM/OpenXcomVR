@@ -32,6 +32,7 @@ class TextEdit;
 class SavedBattleGame;
 class RuleTerrain;
 class MapData;
+class MapDataSet;
 
 namespace VR
 {
@@ -53,6 +54,11 @@ unsigned partStyleGeneration();
 void requestViewCapture(const std::string &path, const std::string &closePath, int x, int y, int z);
 /// Saves the inspect panel of a tile of the lab's map as a PNG (false if there is nothing to show).
 bool saveInspectPicture(const std::string &path, int x, int y, int z);
+/// Saves the table's shape of a tile against its art (VrCompare.h) as a PNG.
+bool saveComparePicture(const std::string &path, int x, int y, int z);
+/// Saves the contact sheet of a terrain set (every part against its art) as a PNG; report: its scores as
+/// text, worst first. False when the table has no map bound (it needs the palette and voxel shapes).
+bool savePartSheet(const MapDataSet *ds, const std::string &path, std::string &report);
 
 }
 
@@ -109,6 +115,10 @@ public:
 	/// The table's lamps (soldiers' light) for the tile the laser points at (hover false: none); called
 	/// every frame by Board::update. True when the tiles' light changed.
 	bool updateLamps(int hx, int hy, int hz, bool hover);
+	/// Contact sheets (SHEETS key, test op `sheets`): every part of each terrain set against its art, one PNG
+	/// per set and scores.txt (worst first), in <user folder>/terrain-lab/sheets/<date_time>/. which: "" the
+	/// current terrain, "all" every terrain, else a terrain's name. Returns the folder ("" if nothing made).
+	std::string makeSheets(const std::string &which);
 
 private:
 	struct Entry { std::string label; RuleTerrain *rule; };
@@ -117,7 +127,7 @@ private:
 	Text *_txtTitle, *_txtTerrain, *_txtPage, *_txtInfo;
 	TextButton *_btnPrevTerrain, *_btnNextTerrain, *_btnPrevPage, *_btnNextPage;
 	TextButton *_btnRelief, *_btnLight, *_btnSun, *_btnWeather;
-	TextButton *_btnLamps, *_btnStrength, *_btnPictures, *_btnClear, *_btnQuit;
+	TextButton *_btnLamps, *_btnStrength, *_btnPictures, *_btnClear, *_btnSheets, *_btnQuit;
 
 	std::vector<Entry> _terrains;
 	int _terrain = 0, _page = 0, _light = 0, _weather = 0, _strength = 1, _lamps = 0;
@@ -166,6 +176,7 @@ private:
 	void btnStrengthClick(Action *action);
 	void btnPicturesClick(Action *action);
 	void btnClearClick(Action *action);
+	void btnSheetsClick(Action *action);
 	void btnQuitClick(Action *action);
 };
 

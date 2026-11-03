@@ -148,6 +148,7 @@ TerrainLabState::TerrainLabState()
 	_btnPictures = new TextButton(72, 16, 162, 90);
 	_btnClear = new TextButton(72, 16, 238, 90);
 	_txtInfo = new Text(300, 64, 10, 112);
+	_btnSheets = new TextButton(72, 16, 162, 178);
 	_btnQuit = new TextButton(72, 16, 238, 178);
 
 	setInterface("geoscape");
@@ -156,7 +157,7 @@ TerrainLabState::TerrainLabState()
 	add(_txtTerrain, "genericText", "geoscape");
 	add(_txtPage, "genericText", "geoscape");
 	for (TextButton *b : {_btnPrevTerrain, _btnNextTerrain, _btnPrevPage, _btnNextPage, _btnRelief, _btnLight, _btnSun, _btnWeather,
-		_btnStrength, _btnLamps, _btnPictures, _btnClear, _btnQuit})
+		_btnStrength, _btnLamps, _btnPictures, _btnClear, _btnSheets, _btnQuit})
 		add(b, "genericButton2", "geoscape");
 	add(_txtInfo, "genericText", "geoscape");
 	centerAllSurfaces();
@@ -172,6 +173,7 @@ TerrainLabState::TerrainLabState()
 	_btnNextPage->setText("PAGE >");
 	_btnSun->setText("TURN SUN");
 	_btnClear->setText("CLEAR MARKS");
+	_btnSheets->setText("SHEETS");
 	_btnQuit->setText("QUIT");
 	_btnPrevTerrain->onMouseClick((ActionHandler)&TerrainLabState::btnPrevTerrainClick);
 	_btnNextTerrain->onMouseClick((ActionHandler)&TerrainLabState::btnNextTerrainClick);
@@ -185,6 +187,7 @@ TerrainLabState::TerrainLabState()
 	_btnLamps->onMouseClick((ActionHandler)&TerrainLabState::btnLampsClick);
 	_btnPictures->onMouseClick((ActionHandler)&TerrainLabState::btnPicturesClick);
 	_btnClear->onMouseClick((ActionHandler)&TerrainLabState::btnClearClick);
+	_btnSheets->onMouseClick((ActionHandler)&TerrainLabState::btnSheetsClick);
 	_btnQuit->onMouseClick((ActionHandler)&TerrainLabState::btnQuitClick);
 
 	collectTerrains();
@@ -676,6 +679,7 @@ void TerrainLabState::addMark(int x, int y, int z, const std::string &reasons, c
 	std::string base = labFolder() + _session + "/" + num;
 	VR::requestViewCapture(base + "-view.png", base + "-close.png", x, y, z);
 	VR::saveInspectPicture(base + "-art.png", x, y, z);
+	VR::saveComparePicture(base + "-compare.png", x, y, z);
 	updateTexts();
 	Log(LOG_INFO) << "[VR] terrain lab: mark #" << num << " " << m.terrain << " " << m.page << " " << x << "," << y << "," << z << " (" << m.reasons << ")";
 }
@@ -759,6 +763,51 @@ void TerrainLabState::btnClearClick(Action *)
 	_marks.clear();
 	saveMarks();
 	updateTexts();
+}
+
+void TerrainLabState::btnSheetsClick(Action *)
+{
+	std::string folder = makeSheets("");
+	_txtInfo->setText(folder.empty() ? std::string("No sheets made (see the log).") : "Sheets saved: " + folder);
+}
+
+std::string TerrainLabState::makeSheets(const std::string &which)
+{
+	if (_terrains.empty()) return "";
+	std::vector<RuleTerrain*> rules;
+	if (which.empty()) rules.push_back(_terrains[_terrain].rule);
+	else
+		for (const Entry &e : _terrains)
+			if (which == "all" || e.rule->getName() == which) rules.push_back(e.rule);
+	if (rules.empty()) { Log(LOG_WARNING) << "[VR] sheets: no terrain " << which; return ""; }
+	char stamp[32];
+	time_t now = time(nullptr);
+	std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H%M%S", std::localtime(&now));
+	std::string folder = labFolder() + "sheets/" + stamp + "/";
+	CrossPlatform::createFolder(labFolder());
+	CrossPlatform::createFolder(labFolder() + "sheets/");
+	CrossPlatform::createFolder(folder);
+	Mod *mod = _game->getMod();
+	std::set<MapDataSet*> done;
+	std::ostringstream all;
+	int made = 0;
+	for (RuleTerrain *rule : rules)
+		for (MapDataSet *ds : *rule->getMapDataSets())
+		{
+			if (isBlanks(ds) || !done.insert(ds).second) continue;
+			ds->loadData(mod->getMCDPatch(ds->getName()));
+			std::string report;
+			if (!VR::savePartSheet(ds, folder + ds->getName() + ".png", report)) continue;
+			all << report << "\n";
+			++made;
+		}
+	if (!made) return "";
+	std::ofstream f(folder + "scores.txt");
+	f << "Terrain lab contact sheets, " << OXCE_VR_PROTOTYPE_VERSION << "\n"
+		<< "shape: pixels the table's shape (seen from the game's angle) and the art share, out of all either has;\n"
+		<< "table only / art only: as a share of the art's pixels. One-pixel edges are not counted.\n\n" << all.str();
+	Log(LOG_INFO) << "[VR] sheets: " << made << " sets in " << folder;
+	return folder;
 }
 
 void TerrainLabState::btnQuitClick(Action *) { _game->quit(); }

@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.5)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.6)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -492,6 +492,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrWeather.*` | The sky over an outdoor battle: the sun's direction at the site and its height and colour from the mission's darkness, the weather roll, rain / snow / dust particles stopping at roofs, mist, cloud drift, lightning and procedural thunder. |
 | `VrDebug.*` | The sky debug panel on the left wrist (weather branch): info and controls pages drawn with the dashboards' canvas, pressed with the right index finger. |
 | `VrLab.*` | The terrain lab (developer tool, `-vrTerrainLab`): a terrain's parts or map blocks on the table without a mission; also the relief mode switch. |
+| `VrCompare.*` | The lab's comparison of the table's shapes with the art: a CPU renderer from the game's angle, the difference and its score (contact sheets, inspect panel). |
 | `VrRelief.*` | Relief for painted floor parts listed in `Resources/VR/terrain-relief.txt`: heights worked out from the painting. |
 | `VrDash.*` | The geoscape dashboards on the back-wall monitors, drawn with the game's fonts straight from the saved game. |
 | `VrGL.*`, `VrShaders.h` | Tiny GL helper layer (incl. a shadow map target) and the single scene shader: linear lighting into an sRGB target, up to 12 point lights per frame, shadows from the key light, soft room-corner shading, the table's up-glow, the fog material. |
@@ -562,6 +563,21 @@ Key ideas:
   around the marked tile. Open marks are kept in `terrain-lab/marks.txt` and
   show as red corner ticks round the tile (with the mark's number and reason
   above) until removed. PICTURES starts off.
+- **Comparing the table with the art** (`VrCompare.*`, terrain lab, 0.21.0-terrain.6):
+  a small software renderer draws the table's shape of a part or tile from
+  the flat game's own angle, where one voxel step is one pixel, so it lies
+  over the sprite pixel for pixel. Where they differ is shown red (the table
+  has something the art doesn't) or blue (the art has something the table
+  doesn't); the shape score is the pixels both have out of all either has.
+  A mismatch right beside a pixel of the other kind (the one-pixel stair-step
+  of a slanted edge) is drawn dim and not counted. A floor's art is lined up
+  with its top (2 voxels up), a raised tree with how far it was raised. The
+  inspect panel shows the tile's MATCH score; a mark also saves
+  `NNN-compare.png` (art, table, difference, the table's shape from behind and
+  low). The SHEETS key makes a contact sheet per terrain set of the current
+  terrain: every part on its own, with those four pictures and its scores,
+  in `terrain-lab/sheets/<date_time>/<SET>.png`, plus `scores.txt` (each set's
+  parts, worst first).
 - **Standees** are drawn with the game's own `UnitSprite`, after temporarily
   rotating the unit's facing by the angle you view it from, so a soldier seen
   from behind shows its back.
