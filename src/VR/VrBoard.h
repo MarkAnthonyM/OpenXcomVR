@@ -105,6 +105,8 @@ public:
 	/// The terrain lab's contact sheet of one terrain set: every part against its art, and the scores as text
 	/// (worst first). Needs a bound map (the palette and the voxel shapes).
 	bool partSheet(const MapDataSet *ds, std::vector<uint32_t> &px, int &w, int &h, std::string &report);
+	/// The battlescape palette the table colours terrain with (256 entries; valid once a map was bound).
+	const void *palette() const;
 	/// Continuous map tile coordinates (x, y) under a world point.
 	bool tileCoords(const glm::vec3 &world, glm::vec2 &tile) const;
 	/// Shows which way the selected soldier would turn (tile-space direction) while a finger drags.

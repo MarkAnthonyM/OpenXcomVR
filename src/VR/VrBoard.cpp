@@ -24,6 +24,7 @@
 #include "VrRelief.h"
 #include "VrDash.h"
 #include "VrCompare.h"
+#include "VrModels.h"
 #include "VrVersion.h"
 #include "../Engine/Game.h"
 #include "../Engine/State.h"
@@ -164,6 +165,7 @@ struct Proto
 	uint32_t avg = 0;  // average sprite colour (minimap)
 	uint8_t stray = 0; // tile shapes: parts (bits) whose faces landing on empty art were left out
 	uint8_t grew = 0;  // tile shapes: objects (bits) that grew display voxels into their art (crowns)
+	uint8_t model = 0; // tile shapes: parts (bits) drawn from a hand-built model (VrModels.h)
 	int8_t yoffs[O_MAX] = {0, 0, 0, 0}; // per part: sprite row = the shape's projected row + this (lab comparison)
 };
 
@@ -344,6 +346,9 @@ struct Board::Impl
 	void buildTile(const TileKey &k, Proto &p);
 	void addCard(const MapData *md, Proto &p);
 	void addRelief(const MapData *floor, int join, Proto &p);
+	void addModel(const VR::Model &m, const Surface *spr, int yoff, Proto &p);
+	/// The part's hand-built model (VrModels.h), or null.
+	const VR::Model *modelOf(const MapData *md);
 	bool growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][SHAPE_H], int part, int &rowShift);
 	TileKey tileKey(Tile *t, int x, int y, int z);
 	/// The terrain lab's inspect panel for a tile: its parts as the game draws them, each on its own, and
@@ -355,7 +360,7 @@ struct Board::Impl
 	{
 		std::vector<uint32_t> art, table, diff, look;
 		VR::Compare::Score score;
-		uint8_t grew = 0, stray = 0;
+		uint8_t grew = 0, stray = 0, model = 0;
 		bool card = false, empty = true;
 	};
 	/// scratchBuild: build the shape afresh in the scratch atlas (parts that aren't on the map); else the
@@ -1259,6 +1264,200 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 ///    sprite is empty there the face isn't drawn (the art says nothing is there), except on floors;
 ///  - faces it never shows (west, north) take the colour of the opposite side of the same solid, straight
 ///    through it (a wall's far side looks like its near side), else the nearest colour in the sprite.
+const VR::Model *Board::Impl::modelOf(const MapData *md)
+{
+	MapDataSet *ds = md ? md->getDataset() : nullptr;
+	if (!ds) return nullptr;
+	for (size_t i = 0; i < ds->getSize(); ++i)
+		if (ds->getObject(i) == md) return VR::terrainModel(ds->getName(), (int)i);
+	return nullptr;
+}
+
+/// A hand-built model (VrModels.h) for a part: its faces greedy-merged per slice, two model voxels per table
+/// voxel, coloured from the part's sprite by kind. A face the flat game's view sees takes the sprite pixel
+/// it lands on (or the nearest one of its kind); a face it never sees takes the colour of the matching
+/// point on the other side of the model's axis; undersides are that colour darkened. The paint layer
+/// (z = 0) lies flat on the floor's top.
+void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, Proto &p)
+{
+	if (!spr) return;
+	const int W = spr->getWidth(), H = spr->getHeight();
+	const float hx = m.sx * 0.5f, hy = m.sy * 0.5f;
+	// the model's axis: the middle of its solid voxels
+	double cx = 0, cy = 0;
+	long n = 0;
+	for (int z = 1; z < m.sz; ++z)
+		for (int y = 0; y < m.sy; ++y)
+			for (int x = 0; x < m.sx; ++x)
+				if (m.at(x, y, z)) { cx += x + 0.5; cy += y + 0.5; ++n; }
+	const float axX = n ? 8.f + ((float)(cx / n) - hx) * 0.5f : 8.f, axZ = n ? 8.f + ((float)(cy / n) - hy) * 0.5f : 8.f;
+	auto toTable = [&](float fx, float fy, float fz) { return glm::vec3(8.f + (fx - hx) * 0.5f, 2.f + (fz - 1.f) * 0.5f, 8.f + (fy - hy) * 0.5f); };
+	auto classOf = [&](Uint8 c) -> int
+	{
+		const SDL_Color &k = pal[c];
+		if (k.g > k.r * 1.15f && k.g >= k.b) return VR::MK_LEAF;
+		if (k.r > k.g * 1.6f && k.r > 90) return VR::MK_FRUIT;
+		return VR::MK_WOOD;
+	};
+	// the sprite pixel of kind `kind` nearest (px, py) within `reach`, else any pixel; false: none
+	auto sample = [&](float px, float py, int kind, int reach, uint32_t &out) -> bool
+	{
+		int x0 = (int)std::floor(px), y0 = (int)std::floor(py);
+		int want = kind == VR::MK_PATCH ? (int)VR::MK_LEAF : kind;
+		for (int pass = 0; pass < 2; ++pass)
+			for (int r = 0; r <= reach; ++r)
+				for (int dy = -r; dy <= r; ++dy)
+					for (int dx = -r; dx <= r; ++dx)
+					{
+						if (std::max(std::abs(dx), std::abs(dy)) != r) continue;
+						int sx = x0 + dx, sy = y0 + dy;
+						if (sx < 0 || sy < 0 || sx >= W || sy >= H) continue;
+						Uint8 c = spr->getPixel(sx, sy);
+						if (!c) continue;
+						int cl = classOf(c);
+						if (pass == 0 && cl != want && !(want == VR::MK_FRUIT && cl == VR::MK_LEAF && r > 1)) continue;
+						out = rgba(pal[c]);
+						return true;
+					}
+		return false;
+	};
+	auto colour = [&](glm::vec3 P, int axis, int sign, int kind) -> uint32_t
+	{
+		bool under = axis == 2 && sign < 0;
+		bool shown = sign > 0;
+		if (!shown && !under) { P.x = 2.f * axX - P.x; P.z = 2.f * axZ - P.z; } // the other side of the axis
+		float px = 16.f + P.x - P.z, py = 24.f + (P.x + P.z) * 0.5f - P.y + yoff + 2.f;
+		if (kind == VR::MK_LEAF)
+		{
+			// leaves: a pixel up to two away, picked per voxel, so the art's rows don't streak across the
+			// crown's sides (where many voxels along the view land on the same pixel)
+			uint32_t hsh = (uint32_t)(std::floor(P.x * 2.f) * 73856093.f) ^ (uint32_t)(std::floor(P.y * 2.f) * 19349663.f) ^ (uint32_t)(std::floor(P.z * 2.f) * 83492791.f);
+			hsh = hsh * 2654435761u;
+			px += (float)((int)((hsh >> 8) % 5) - 2);
+			py += (float)((int)((hsh >> 16) % 5) - 2);
+		}
+		uint32_t c = 0xFF404040u;
+		sample(px, py, kind, kind == VR::MK_PATCH ? 8 : 5, c);
+		if (under)
+		{
+			uint32_t r = (c & 255) * 6 / 10, g = ((c >> 8) & 255) * 6 / 10, b = ((c >> 16) & 255) * 6 / 10;
+			c = r | (g << 8) | (b << 16) | 0xFF000000u;
+		}
+		return c;
+	};
+	auto solid = [&](int x, int y, int z) -> bool { return z >= 1 && m.at(x, y, z) != VR::MK_EMPTY && m.at(x, y, z) != VR::MK_PATCH; };
+	const int dims[3] = {m.sx, m.sy, m.sz};
+	std::vector<uint32_t> maskCol;
+	std::vector<uint8_t> mask, used;
+	struct Dir { int axis, sign; };
+	const Dir dirs[6] = {{0, 1}, {0, -1}, {1, 1}, {1, -1}, {2, 1}, {2, -1}};
+	auto emit = [&](int axis, int sign, float plane, int u, int v, int w, int h, int ua, int va, int nu, bool paint)
+	{
+		int ax, ay;
+		if (!build->alloc(w + 2, h + 2, ax, ay)) return;
+		for (int j = -1; j <= h; ++j)
+			for (int i = -1; i <= w; ++i)
+			{
+				int si = glm::clamp(i, 0, w - 1), sj = glm::clamp(j, 0, h - 1);
+				build->put(ax + 1 + i, ay + 1 + j, maskCol[(size_t)(v + sj) * nu + u + si]);
+			}
+		auto corner = [&](float uu, float vv) -> glm::vec3
+		{
+			float cc[3];
+			cc[axis] = plane; cc[ua] = uu; cc[va] = vv;
+			glm::vec3 t = toTable(cc[0], cc[1], cc[2]);
+			if (paint) t.y = 2.05f; // flat on the floor's top
+			return t;
+		};
+		float nn[3] = {0, 0, 0};
+		nn[axis] = (float)sign;
+		glm::vec3 nrm(nn[0], nn[2], nn[1]);
+		float tu0 = (ax + 1) / (float)ATLAS, tv0 = (ay + 1) / (float)ATLAS;
+		float tu1 = (ax + 1 + w) / (float)ATLAS, tv1 = (ay + 1 + h) / (float)ATLAS;
+		glm::vec4 white(1.f);
+		uint32_t b = (uint32_t)p.verts.size();
+		p.verts.push_back({corner((float)u, (float)v), nrm, {tu0, tv0}, white, MAT_BOARD});
+		p.verts.push_back({corner((float)(u + w), (float)v), nrm, {tu1, tv0}, white, MAT_BOARD});
+		p.verts.push_back({corner((float)(u + w), (float)(v + h)), nrm, {tu1, tv1}, white, MAT_BOARD});
+		p.verts.push_back({corner((float)u, (float)(v + h)), nrm, {tu0, tv1}, white, MAT_BOARD});
+		// keep the winding the same way round as the table's own faces
+		p.idx.insert(p.idx.end(), {b, b + 1, b + 2, b, b + 2, b + 3});
+	};
+	auto greedy = [&](int axis, int sign, float plane, int ua, int va, int nu, int nv, bool paint)
+	{
+		used.assign((size_t)nu * nv, 0);
+		for (int v = 0; v < nv; ++v)
+			for (int u = 0; u < nu; ++u)
+			{
+				size_t o = (size_t)v * nu + u;
+				if (!mask[o] || used[o]) continue;
+				int w = 1;
+				while (u + w < nu && mask[o + w] && !used[o + w]) ++w;
+				int h = 1;
+				for (bool ok = true; v + h < nv && ok;)
+				{
+					for (int i = 0; i < w; ++i)
+						if (!mask[(size_t)(v + h) * nu + u + i] || used[(size_t)(v + h) * nu + u + i]) { ok = false; break; }
+					if (ok) ++h;
+				}
+				for (int j = 0; j < h; ++j)
+					for (int i = 0; i < w; ++i) used[(size_t)(v + j) * nu + u + i] = 1;
+				emit(axis, sign, plane, u, v, w, h, ua, va, nu, paint);
+			}
+	};
+	for (const Dir &d : dirs)
+	{
+		int ua = d.axis == 0 ? 1 : 0;
+		int va = d.axis == 2 ? 1 : 2;
+		int nu = dims[ua], nv = dims[va];
+		mask.assign((size_t)nu * nv, 0);
+		maskCol.assign((size_t)nu * nv, 0u);
+		for (int k = (d.axis == 2 ? 1 : 0); k < dims[d.axis]; ++k)
+		{
+			bool any = false;
+			for (int v = 0; v < nv; ++v)
+				for (int u = 0; u < nu; ++u)
+				{
+					int c[3];
+					c[d.axis] = k; c[ua] = u; c[va] = v;
+					int nb[3] = {c[0], c[1], c[2]};
+					nb[d.axis] += d.sign;
+					size_t o = (size_t)v * nu + u;
+					bool f = solid(c[0], c[1], c[2]) && !solid(nb[0], nb[1], nb[2]);
+					if (f && d.axis == 2 && d.sign < 0 && k == 1) f = false; // stands on the floor
+					mask[o] = f;
+					if (!f) continue;
+					any = true;
+					// one colour per voxel (from its centre), whichever face: faces of a stepped surface
+					// coloured from different sprite rows striped
+					maskCol[o] = colour(toTable(c[0] + 0.5f, c[1] + 0.5f, c[2] + 0.5f), d.axis, d.sign, m.at(c[0], c[1], c[2]));
+				}
+			if (any) greedy(d.axis, d.sign, (float)k + (d.sign > 0 ? 1.f : 0.f), ua, va, nu, nv, false);
+		}
+	}
+	// the paint layer, flat on the floor
+	{
+		int nu = m.sx, nv = m.sy;
+		mask.assign((size_t)nu * nv, 0);
+		maskCol.assign((size_t)nu * nv, 0u);
+		bool any = false;
+		for (int y = 0; y < nv; ++y)
+			for (int x = 0; x < nu; ++x)
+			{
+				if (!m.at(x, y, 0)) continue;
+				size_t o = (size_t)y * nu + x;
+				mask[o] = 1;
+				any = true;
+				glm::vec3 P = toTable(x + 0.5f, y + 0.5f, 1.f); // ground: Y 2
+				float px = 16.f + P.x - P.z, py = 24.f + (P.x + P.z) * 0.5f + yoff;
+				uint32_t c = 0xFF305020u;
+				sample(px, py, VR::MK_PATCH, 8, c);
+				maskCol[o] = c;
+			}
+		if (any) greedy(2, 1, 1.f, 0, 1, nu, nv, true);
+	}
+}
+
 void Board::Impl::buildTile(const TileKey &k, Proto &p)
 {
 	struct Src { const Surface *spr = nullptr; int yoff = 0; bool floor = false; uint32_t avg = 0; };
@@ -1274,6 +1473,7 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 	};
 	static const int ORDER[O_MAX] = {O_WESTWALL, O_NORTHWALL, O_OBJECT, O_FLOOR};
 	bool any = false;
+	const VR::Model *modelled = nullptr;
 	for (int part : ORDER)
 	{
 		const MapData *md = k.m[part];
@@ -1286,6 +1486,8 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 		sc.floor = md->getObjectType() == O_FLOOR;
 		sc.avg = partInfo(md).avg;
 		if (!sc.avg) continue; // fully transparent sprite: nothing to show
+		if (part == O_OBJECT)
+			if (const VR::Model *mm = modelOf(md)) { modelled = mm; continue; } // hand-built: not its voxels
 		int count = 0;
 		for (int z = 0; z < TILE_H; ++z)
 			for (int y = 0; y < TILE_W; ++y)
@@ -1308,10 +1510,15 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 	// where each part's art lies over the shape seen from the flat game's angle (the lab's comparison): a
 	// floor's top is 2 voxels up but its art is drawn at height 0
 	for (int part = 0; part < O_MAX; ++part)
-		if (k.m[part]) p.yoffs[part] = (int8_t)((src[part].spr ? src[part].yoff : k.m[part]->getYOffset()) + (part == O_FLOOR ? 2 : 0));
+		if (k.m[part]) p.yoffs[part] = (int8_t)((src[part].spr ? src[part].yoff : k.m[part]->getYOffset()) + (part == O_FLOOR || (part == O_OBJECT && modelled) ? 2 : 0));
 	// painted rocks, mounds and holes on a listed floor (VrRelief.h)
 	bool relief = k.m[O_FLOOR] && src[O_FLOOR].spr && VR::reliefMode() != VR::RELIEF_FLAT && VR::reliefSpec(k.m[O_FLOOR]);
 	if (relief) addRelief(k.m[O_FLOOR], k.join, p);
+	if (modelled)
+	{
+		addModel(*modelled, src[O_OBJECT].spr, src[O_OBJECT].yoff, p);
+		p.model |= (uint8_t)(1 << O_OBJECT);
+	}
 	if (!any) return;
 	auto S = [&](int x, int y, int z) -> int
 	{
@@ -3474,6 +3681,7 @@ bool Board::Impl::inspectPicture(const Position &pos, std::vector<uint32_t> &px,
 		std::string did;
 		if (const VR::ReliefSpec *rs = part == O_FLOOR ? VR::reliefSpec(md) : nullptr)
 			did = std::string("relief ") + (rs->sign > 0 ? "up " : "down ") + std::to_string((int)rs->height) + (VR::reliefMode() == VR::RELIEF_FLAT ? " (off)" : "");
+		else if (tp.model & (1 << part)) did = "hand-built model";
 		else if (tp.grew & (1 << part)) did = "crown added";
 		else if (tp.stray & (1 << part)) did = "art mismatch: faces dropped";
 		else if (part == O_FLOOR) did = "flat";
@@ -3524,6 +3732,7 @@ void Board::Impl::compareKey(const TileKey &k, bool scratchBuild, Comparison &c)
 	const Atlas &at = scratchBuild ? scratch : atlas;
 	c.grew = pp->grew;
 	c.stray = pp->stray;
+	c.model = pp->model;
 	c.card = pp->card;
 	c.empty = pp->idx.empty();
 	// the art as the game draws the tile: floor, walls, object, each where the table lines it up
@@ -3559,6 +3768,7 @@ static uint32_t scoreColor(int shape) { return shape >= 85 ? Dash::GREEN : shape
 /// What the table did with a part, for the sheets and the comparison picture.
 static std::string didText(const Board::Impl::Comparison &c, int part, const MapData *md)
 {
+	if (c.model & (1 << part)) return "hand-built";
 	if (c.card) return "no voxels: cards";
 	if (part == O_FLOOR && VR::reliefSpec(md)) return VR::reliefMode() == VR::RELIEF_FLAT ? "relief (off)" : "relief";
 	if (c.grew & (1 << part)) return "crown added";
@@ -4060,6 +4270,8 @@ bool Board::partSheet(const MapDataSet *ds, std::vector<uint32_t> &px, int &w, i
 {
 	return _p->partSheet(ds, px, w, h, report);
 }
+
+const void *Board::palette() const { return _p->pal; }
 
 bool Board::mapFootprint(glm::mat4 &worldToMap, glm::vec2 &size) const
 {

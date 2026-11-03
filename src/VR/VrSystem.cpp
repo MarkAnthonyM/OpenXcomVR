@@ -28,6 +28,8 @@
 #include "../Savegame/SavedGame.h"
 #include "../Mod/MapData.h"
 #include "../Mod/MapDataSet.h"
+#include "../Engine/SurfaceSet.h"
+#include "../Engine/CrossPlatform.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/Craft.h"
 #include "../Savegame/Ufo.h"
@@ -1891,6 +1893,39 @@ static void runScript()
 		{
 			// inspect x y z name : the lab's inspect panel of a tile (shots/<name>_art.png)
 			saveInspectPicture("shots/" + c.args[3] + "_art.png", (int)num(0, 0), (int)num(1, 0), (int)num(2, 0));
+		}
+		else if (c.op == "dumpart" && !c.args.empty())
+		{
+			// dumpart SET : each part's sprite of a terrain set of the lab's map as an 8-bit picture of palette
+			// indices (shots/art/<SET>_<id>.png, grey = index), the parts (art/<SET>.txt: id type sprite yoff) and
+			// the palette (art/palette.txt): the hand-built models are designed from these (vr-dev/models)
+			TerrainLabState *lab = nullptr;
+			for (OpenXcom::State *st : S->game->getStates())
+				if (auto *l = dynamic_cast<TerrainLabState*>(st)) lab = l;
+			const SDL_Color *pal = static_cast<const SDL_Color*>(S->board.palette());
+			CrossPlatform::createFolder("shots/art");
+			if (lab && lab->battle())
+				for (MapDataSet *ds : *lab->battle()->getMapDataSets())
+				{
+					if (ds->getName() != c.args[0]) continue;
+					std::ofstream list("shots/art/" + ds->getName() + ".txt");
+					for (size_t i = 0; i < ds->getSize(); ++i)
+					{
+						MapData *md = ds->getObject(i);
+						if (!md || !ds->getSurfaceset()) continue;
+						Surface *spr = ds->getSurfaceset()->getFrame(md->getSprite(0));
+						if (!spr) continue;
+						int w = spr->getWidth(), h = spr->getHeight();
+						std::vector<unsigned char> g((size_t)w * h);
+						for (int y = 0; y < h; ++y)
+							for (int x = 0; x < w; ++x) g[(size_t)y * w + x] = spr->getPixel(x, y);
+						lodepng::encode("shots/art/" + ds->getName() + "_" + std::to_string(i) + ".png", g, w, h, LCT_GREY, 8);
+						list << i << " " << (int)md->getObjectType() << " " << md->getSprite(0) << " " << md->getYOffset() << "\n";
+					}
+					std::ofstream pf("shots/art/palette.txt");
+					for (int i = 0; i < 256; ++i) pf << (int)pal[i].r << " " << (int)pal[i].g << " " << (int)pal[i].b << "\n";
+					Log(LOG_INFO) << "[VR] dumpart " << ds->getName() << ": " << ds->getSize() << " parts";
+				}
 		}
 		else if (c.op == "sheets")
 		{

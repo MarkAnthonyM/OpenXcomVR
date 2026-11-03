@@ -134,6 +134,7 @@ Script commands (one per line; numbers are optional with defaults):
 | `reveal`, `findset NAME`, `centertile x y` | the whole map explored (looking at terrain without fog); log where a terrain set's tiles are and centre the table on them (`findset UFO1`, `findset PLANE`); centre the table on a tile |
 | `nofloor`, `floorids [part]` | log ground tiles without a floor part; which parts (0 floor .. 3 object) the ground level uses, how often, one place each |
 | `closeup x y z name` | the terrain lab's two clean shots of a tile (`shots/<name>_view.png`, `_close.png`) |
+| `dumpart SET` | the lab's terrain set's sprites as palette indices (`shots/art/<SET>_<id>.png`), the parts list and the palette: input for `vr-dev/models/` |
 | `compare x y z name`, `inspect x y z name`, `sheets [all\|TERRAIN]` | the lab's comparison picture of a tile (`shots/<name>_compare.png`); its inspect panel (`_art.png`); contact sheets (current terrain without an argument) |
 | `log text`, `quit` | |
 
@@ -180,7 +181,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.6).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.7).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -250,6 +251,23 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     points for the ground patch the table leaves out on purpose; worst: UFO1 (small scout hull blocks
     +74..123% table only), U_BITS, JUNGLE, DESERT, PLANE, CULTIVAT hedge posts 20-22, dead tree 13,
     wheat 4 (the ears).
+  - terrain.7 (owner: hand-built trees first; farm trees first, 32 model voxels across a tile, the
+    grass patch painted flat): `VrModels.*` loads `Resources/VR/models/<SET>_<id>.vox` (MagicaVoxel;
+    `FileMap::fileExists` first, FileMap::at stops the game on a missing file). Kinds by palette entry:
+    1 wood, 2 leaves, 3 fruit, 4 patch (others by colour). Shapes only: Board::Impl::addModel colours them
+    from the sprite at build time (kind-aware; hidden faces from the point mirrored through the model's
+    axis = centroid of its solid voxels; one colour per voxel from its centre, else stepped surfaces
+    striped; leaves jitter +-2 px per voxel, else streaks on the crown's sides), greedy-meshed into the
+    build atlas; z = 0 paint at height 2.05; undersides darkened. buildTile: a modelled object skips its
+    LOFT voxels and growToArt; Proto::model bit; yoffs + 2 (art height 0 = floor top). Sheets say
+    "hand-built". Models made by `vr-dev/models/farm_trees.py` (voxlib.py: grid, projection, .vox writer)
+    from sprites dumped with `dumpart CULTIVAT` (never committed). Trunks stand where the art puts their
+    foot (roots widest on sprite row 35: table (11, 11); the collision is a 3x3 column at the centre).
+    Fruit trees: ellipsoid + 140 leaf clumps, fitted to the art (carve empty pixels, fill uncovered crown
+    pixels near the surface), branches where wood shows through the crown (leaves in front removed,
+    a branch back to the trunk), apples where the art has them and mirrored. Dead tree: screen
+    polylines lifted to 3D by an azimuth each (limbs at most 6 out, twigs grow from their limb's point).
+    Scores 9 100%, 12 100%, 13 98% (were 79, 74, 37). Farm save: atlas 33% (27% without the models).
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -425,7 +443,7 @@ Room and rendering
   than three cells are only in the screen's inventory. (Planned on the terrain branch.)
 - Terrain parts' animations (8 frames) aren't shown: the table builds frame 0. (Planned on the terrain branch.)
 - Craft and UFO hulls are their collision voxels; the small scout is close to a box. A hand-built scout
-  model is planned on the terrain branch.
+  model is planned on the terrain branch (shortlist after the farm trees: Skyranger, small scout, wheat).
 - Weather and the sun have only been judged in the desktop preview (no
   headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).

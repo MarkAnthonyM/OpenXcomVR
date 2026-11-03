@@ -554,6 +554,7 @@ set ( vr_src
   VR/VrHands.cpp
   VR/VrLab.cpp
   VR/VrCompare.cpp
+  VR/VrModels.cpp
   VR/VrRelief.cpp
   VR/VrTable.cpp
   VR/VrFloat.cpp

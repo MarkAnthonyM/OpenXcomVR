@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.6)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.7)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -492,6 +492,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrWeather.*` | The sky over an outdoor battle: the sun's direction at the site and its height and colour from the mission's darkness, the weather roll, rain / snow / dust particles stopping at roofs, mist, cloud drift, lightning and procedural thunder. |
 | `VrDebug.*` | The sky debug panel on the left wrist (weather branch): info and controls pages drawn with the dashboards' canvas, pressed with the right index finger. |
 | `VrLab.*` | The terrain lab (developer tool, `-vrTerrainLab`): a terrain's parts or map blocks on the table without a mission; also the relief mode switch. |
+| `VrModels.*` | Hand-built terrain models (`Resources/VR/models/<SET>_<id>.vox`): shapes only, coloured from the player's sprites. |
 | `VrCompare.*` | The lab's comparison of the table's shapes with the art: a CPU renderer from the game's angle, the difference and its score (contact sheets, inspect panel). |
 | `VrRelief.*` | Relief for painted floor parts listed in `Resources/VR/terrain-relief.txt`: heights worked out from the painting. |
 | `VrDash.*` | The geoscape dashboards on the back-wall monitors, drawn with the game's fonts straight from the saved game. |
@@ -563,6 +564,22 @@ Key ideas:
   around the marked tile. Open marks are kept in `terrain-lab/marks.txt` and
   show as red corner ticks round the tile (with the mark's number and reason
   above) until removed. PICTURES starts off.
+- **Hand-built models** (`VrModels.*`, 0.21.0-terrain.7): a part the rules can't
+  shape well can have a model, `bin/common/Resources/VR/models/<SET>_<id>.vox`
+  (MagicaVoxel's format), used instead of its voxels on the table. Models are
+  shapes only, at twice the table's detail (32 model voxels across a tile): each
+  voxel says whether it is wood, leaves, fruit or ground patch, and the table
+  colours it from the player's own sprite when it builds the tile (a face the
+  flat view sees takes the pixel it lands on, or the nearest one of its kind;
+  one it never sees, the matching point on the other side of the model's axis;
+  leaves pick a pixel up to two away so the art's rows don't streak). So the
+  files carry none of the game's pictures. Layer z = 0 is paint, flat on the
+  floor (a tree's grass patch); the rest stands on the floor's top. x east,
+  y south, z up; the model's centre is the tile's; models may overhang the
+  tile. Display only: collision and line of fire keep the part's own voxels.
+  The first models are the farm trees (CULTIVAT 9, 12 and 13), made by
+  `vr-dev/models/farm_trees.py` from the sprites (dumped with the test op
+  `dumpart`).
 - **Comparing the table with the art** (`VrCompare.*`, terrain lab, 0.21.0-terrain.6):
   a small software renderer draws the table's shape of a part or tile from
   the flat game's own angle, where one voxel step is one pixel, so it lies
