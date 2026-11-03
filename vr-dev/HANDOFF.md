@@ -226,6 +226,11 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     ragged block tops (top band under 92% filled) -> top 2 lower, stalks 1-4 high on 45% of columns.
     Drop-from-top tolerance is now max(3, total/150) pixels. Marks: Board::Impl::drawTicks (red), the
     shots' ticks yellow. Test op `closeup x y z name` (the lab's two shots of any tile).
+  - terrain.5 (owner: the lab crashed paging CULTA 18 -> 19 and 21 -> 20): map-block pages put each
+    part by its MCD type; BARN 7 (a roof piece in CULTA16-18) has type 10, so setMapData wrote past the
+    tile's four slots (heap corruption, the crash came in the next lighting pass). Parts now go by their
+    byte in the .MAP tile, as BattlescapeGenerator does. BARN 7 is the only MCD typed outside 0-3 in
+    xcom1; the parts page still leaves it out (it lists types 0-3).
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a

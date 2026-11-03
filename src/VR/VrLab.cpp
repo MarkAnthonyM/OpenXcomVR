@@ -105,7 +105,7 @@ std::string lower(std::string s) { std::transform(s.begin(), s.end(), s.begin(),
 std::string oneLine(std::string s) { for (char &c : s) if (c == '\t' || c == '\n' || c == '\r') c = ' '; return s; }
 
 /// A map block's object parts as the game reads them (BattlescapeGenerator::loadMAP): x, y, z and the part.
-struct BlockObj { int x, y, z; MapData *md; int id, set; };
+struct BlockObj { int x, y, z; MapData *md; int id, set, part; }; // part: which of the tile's four bytes
 bool readBlock(RuleTerrain *rule, MapBlock *mb, std::vector<BlockObj> &out, int parts = 1 << O_OBJECT)
 {
 	auto in = FileMap::getIStream("MAPS/" + mb->getName() + ".MAP");
@@ -121,7 +121,7 @@ bool readBlock(RuleTerrain *rule, MapBlock *mb, std::vector<BlockObj> &out, int 
 			if (!(parts & (1 << part)) || !v[part]) continue;
 			unsigned int id = v[part];
 			int set = 0;
-			if (MapData *md = rule->getMapData(&id, &set)) out.push_back({x, y, z, md, (int)id, set});
+			if (MapData *md = rule->getMapData(&id, &set)) out.push_back({x, y, z, md, (int)id, set, part});
 		}
 		if (++x == sx) { x = 0; if (++y == sy) { y = 0; --z; } }
 	}
@@ -480,8 +480,10 @@ void TerrainLabState::buildBlock(RuleTerrain *rule, int block)
 	_battle->initMap(sx + 2, sy + 2, std::max(sz, 1), false);
 	std::vector<BlockObj> all;
 	readBlock(rule, mb, all, 0xF);
+	// each part goes where the map file puts it (its byte in the tile), as the game does: a part's own MCD
+	// type can be outside 0-3 (CULTA16-18 use one typed 10), which wrote past the tile's four slots
 	for (const BlockObj &o : all)
-		_battle->getTile(Position(o.x + 1, o.y + 1, o.z))->setMapData(o.md, o.id, o.set, o.md->getObjectType());
+		_battle->getTile(Position(o.x + 1, o.y + 1, o.z))->setMapData(o.md, o.id, o.set, (TilePart)o.part);
 }
 
 std::string TerrainLabState::partsAt(int x, int y, int z) const
