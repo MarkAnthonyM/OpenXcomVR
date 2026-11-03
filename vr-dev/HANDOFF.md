@@ -134,11 +134,12 @@ Script commands (one per line; numbers are optional with defaults):
 | `reveal`, `findset NAME`, `centertile x y` | the whole map explored (looking at terrain without fog); log where a terrain set's tiles are and centre the table on them (`findset UFO1`, `findset PLANE`); centre the table on a tile |
 | `nofloor`, `floorids [part]` | log ground tiles without a floor part; which parts (0 floor .. 3 object) the ground level uses, how often, one place each |
 | `closeup x y z name` | the terrain lab's two clean shots of a tile (`shots/<name>_view.png`, `_close.png`) |
+| `compare x y z name`, `inspect x y z name`, `sheets [all\|TERRAIN]` | the lab's comparison picture of a tile (`shots/<name>_compare.png`); its inspect panel (`_art.png`); contact sheets (current terrain without an argument) |
 | `log text`, `quit` | |
 
 Terrain lab: `run.sh <script> -vrTerrainLab POLAR` (switch last). Its keys by `click` in game-frame
 pixels, columns x 526/602/678/754: row y 358 terrain-, terrain+, page-, page+; 378 relief, light, sun,
-sky; 398 strength, lamps, pictures, clear marks. `pointer x y` + `boardclick [right]` = trigger / A on
+sky; 398 strength, lamps, pictures, clear marks; 486 (x 678) sheets. `pointer x y` + `boardclick [right]` = trigger / A on
 the table; `move` before `click` in the mark window. Marks go to `$VR_RUN/user/terrain-lab/`.
 
 Practical notes: the first 9 s of every script are loading (`wait 9000`).
@@ -175,10 +176,11 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   0.14.0 (sky debug panel `vrDebugPanel`, moon, vanilla mode `vrVanillaSky`); thunder -> 0.15.0;
   scanner -> 0.16.0 (0.20.1 fix: 2x2 units count once, test `bigscan`); select (taps) -> 0.17.0;
   shade (indoors rule) -> 0.18.0; fog -> 0.19.0; hidden (alien turn) -> 0.20.0; rain (weather sound)
-  -> 0.21.0. Test `v2` failed on 0.16.1 (0.062 m off centre, check allows 0.06); passes on terrain.1.
+  -> 0.21.0. Test `v2` failed on 0.16.1 (0.062 m off centre, check allows 0.06); passed on terrain.1; fails again
+  the same way on terrain.5 and .6 (checked: identical readout on both).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>`.
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.6).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -231,6 +233,23 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     tile's four slots (heap corruption, the crash came in the next lighting pass). Parts now go by their
     byte in the .MAP tile, as BattlescapeGenerator does. BARN 7 is the only MCD typed outside 0-3 in
     xcom1; the parts page still leaves it out (it lists types 0-3).
+  - Owner (2026-11-03): the rule-based shapes are hard to get right; he has no time to sculpt models
+    himself. Agreed plan: (1) measure the shapes against the art, (2) contact sheets so his reviews take
+    minutes, (3) Claude hand-builds the few pieces rules won't get (shortlist: Skyranger, small scout,
+    farm trees, wheat; he'll add more as he finds them), saved as .vox so he could nudge one in
+    MagicaVoxel but never has to, (4) the rest stays rule-based. Send a set of sheets with every terrain
+    build. terrain.6 does (1) and (2): `VrCompare.*`, a CPU renderer of a Proto from the game's angle
+    (isoView: one voxel step = one pixel, so it lies on the sprite exactly; a full block fills the 32x40
+    frame), diff (red table only, blue art only, mismatches beside the other kind not counted) and the
+    shape score (shared / union). Proto::yoffs: per part, sprite row = projected row + yoffs (floors +2:
+    their top is 2 voxels up but drawn at height 0; raised trees include rowShift). Board::Impl::build
+    points at the atlas shapes go into: the sheets build in `scratch` so the table's atlas never fills.
+    Inspect panel: MATCH line; marks also save NNN-compare.png; the SHEETS key / test op `sheets` write
+    `terrain-lab/sheets/<date_time>/<SET>.png` + scores.txt (worst first). All 26 xcom1 sets take ~11 s.
+    First sheets: plain walls 98-100%, floors 93-94% (the 2-voxel slab's sides, by design); trees lose
+    points for the ground patch the table leaves out on purpose; worst: UFO1 (small scout hull blocks
+    +74..123% table only), U_BITS, JUNGLE, DESERT, PLANE, CULTIVAT hedge posts 20-22, dead tree 13,
+    wheat 4 (the ears).
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a

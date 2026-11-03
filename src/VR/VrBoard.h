@@ -18,6 +18,7 @@ class Game;
 class BattleUnit;
 class BattlescapeState;
 class SavedBattleGame;
+class MapDataSet;
 
 namespace VR
 {
@@ -98,6 +99,12 @@ public:
 	bool mapFootprint(glm::mat4 &worldToMap, glm::vec2 &size) const;
 	/// The terrain lab's inspect panel of a tile (RGBA, w x h), for its mark screenshots.
 	bool inspectPicture(int x, int y, int z, std::vector<uint32_t> &px, int &w, int &h);
+	/// The terrain lab: a tile's shape against its art (VrCompare.h): the art, the shape from the game's angle,
+	/// where they differ, the shape from behind, and the score.
+	bool comparePicture(int x, int y, int z, std::vector<uint32_t> &px, int &w, int &h);
+	/// The terrain lab's contact sheet of one terrain set: every part against its art, and the scores as text
+	/// (worst first). Needs a bound map (the palette and the voxel shapes).
+	bool partSheet(const MapDataSet *ds, std::vector<uint32_t> &px, int &w, int &h, std::string &report);
 	/// Continuous map tile coordinates (x, y) under a world point.
 	bool tileCoords(const glm::vec3 &world, glm::vec2 &tile) const;
 	/// Shows which way the selected soldier would turn (tile-space direction) while a finger drags.

@@ -1882,6 +1882,25 @@ static void runScript()
 			std::string base = "shots/" + c.args[3];
 			requestViewCapture(base + "_view.png", base + "_close.png", (int)num(0, 0), (int)num(1, 0), (int)num(2, 0));
 		}
+		else if (c.op == "compare" && c.args.size() >= 4)
+		{
+			// compare x y z name : the lab's comparison of a tile with its art (shots/<name>_compare.png)
+			saveComparePicture("shots/" + c.args[3] + "_compare.png", (int)num(0, 0), (int)num(1, 0), (int)num(2, 0));
+		}
+		else if (c.op == "inspect" && c.args.size() >= 4)
+		{
+			// inspect x y z name : the lab's inspect panel of a tile (shots/<name>_art.png)
+			saveInspectPicture("shots/" + c.args[3] + "_art.png", (int)num(0, 0), (int)num(1, 0), (int)num(2, 0));
+		}
+		else if (c.op == "sheets")
+		{
+			// sheets [all|TERRAIN] : the lab's contact sheets (the current terrain without an argument)
+			TerrainLabState *lab = nullptr;
+			for (OpenXcom::State *st : S->game->getStates())
+				if (auto *l = dynamic_cast<TerrainLabState*>(st)) lab = l;
+			std::string folder = lab ? lab->makeSheets(c.args.empty() ? std::string() : c.args[0]) : std::string();
+			Log(LOG_INFO) << "[VR] sheets " << (folder.empty() ? std::string("none made") : folder);
+		}
 		else if (c.op == "centertile") { S->board.centerOnTile(glm::vec2((float)num(0, 0) + 0.5f, (float)num(1, 0) + 0.5f)); }
 		else if (c.op == "findset")
 		{
@@ -2134,12 +2153,9 @@ void requestViewCapture(const std::string &path, const std::string &closePath, i
 	if (S) S->captures.push_back({path, closePath, x, y, z, S->time + 0.6}); // the mark window folds away first
 }
 
-bool saveInspectPicture(const std::string &path, int x, int y, int z)
+/// Saves an RGBA picture as a PNG, K screen pixels per picture pixel (the game's art stays crisp).
+static bool savePicture(const std::string &path, const std::vector<uint32_t> &px, int w, int h, int K, const char *what)
 {
-	std::vector<uint32_t> px;
-	int w = 0, h = 0;
-	if (!S || !S->board.inspectPicture(x, y, z, px, w, h)) return false;
-	const int K = 3; // three screen pixels per picture pixel: the game's art stays crisp
 	std::vector<unsigned char> out((size_t)w * K * h * K * 4);
 	for (int y2 = 0; y2 < h * K; ++y2)
 		for (int x2 = 0; x2 < w * K; ++x2)
@@ -2149,8 +2165,32 @@ bool saveInspectPicture(const std::string &path, int x, int y, int z)
 			o[0] = c & 255; o[1] = (c >> 8) & 255; o[2] = (c >> 16) & 255; o[3] = 255;
 		}
 	unsigned err = lodepng::encode(path, out, w * K, h * K);
-	Log(LOG_INFO) << "[VR] inspect picture " << path << (err ? " FAILED" : " saved");
+	Log(LOG_INFO) << "[VR] " << what << " " << path << (err ? " FAILED" : " saved");
 	return !err;
+}
+
+bool saveInspectPicture(const std::string &path, int x, int y, int z)
+{
+	std::vector<uint32_t> px;
+	int w = 0, h = 0;
+	if (!S || !S->board.inspectPicture(x, y, z, px, w, h)) return false;
+	return savePicture(path, px, w, h, 3, "inspect picture");
+}
+
+bool saveComparePicture(const std::string &path, int x, int y, int z)
+{
+	std::vector<uint32_t> px;
+	int w = 0, h = 0;
+	if (!S || !S->board.comparePicture(x, y, z, px, w, h)) return false;
+	return savePicture(path, px, w, h, 3, "compare picture");
+}
+
+bool savePartSheet(const MapDataSet *ds, const std::string &path, std::string &report)
+{
+	std::vector<uint32_t> px;
+	int w = 0, h = 0;
+	if (!S || !S->board.partSheet(ds, px, w, h, report)) return false;
+	return savePicture(path, px, w, h, 3, "part sheet");
 }
 
 static void previewFrame()
