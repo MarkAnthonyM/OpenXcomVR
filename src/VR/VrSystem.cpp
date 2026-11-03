@@ -1876,6 +1876,12 @@ static void runScript()
 				}
 			for (auto &kv : ids) Log(LOG_INFO) << "[VR] floorids " << kv.first << " x" << kv.second.first << " at " << kv.second.second;
 		}
+		else if (c.op == "closeup" && c.args.size() >= 4)
+		{
+			// closeup x y z name : the lab's two shots of a tile (shots/<name>_view.png, shots/<name>_close.png)
+			std::string base = "shots/" + c.args[3];
+			requestViewCapture(base + "_view.png", base + "_close.png", (int)num(0, 0), (int)num(1, 0), (int)num(2, 0));
+		}
 		else if (c.op == "centertile") { S->board.centerOnTile(glm::vec2((float)num(0, 0) + 0.5f, (float)num(1, 0) + 0.5f)); }
 		else if (c.op == "findset")
 		{

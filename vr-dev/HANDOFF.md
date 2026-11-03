@@ -133,6 +133,7 @@ Script commands (one per line; numbers are optional with defaults):
 | `boardinfo`, `status` | log the table view (focus, where the soldier sits, level) / the table state |
 | `reveal`, `findset NAME`, `centertile x y` | the whole map explored (looking at terrain without fog); log where a terrain set's tiles are and centre the table on them (`findset UFO1`, `findset PLANE`); centre the table on a tile |
 | `nofloor`, `floorids [part]` | log ground tiles without a floor part; which parts (0 floor .. 3 object) the ground level uses, how often, one place each |
+| `closeup x y z name` | the terrain lab's two clean shots of a tile (`shots/<name>_view.png`, `_close.png`) |
 | `log text`, `quit` | |
 
 Terrain lab: `run.sh <script> -vrTerrainLab POLAR` (switch last). Its keys by `click` in game-frame
@@ -213,6 +214,18 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     `OXCE_VR_SHAPE_LOG=1` logs each fit. Lab shots are clean (Board::setCapturePass: no HUD, lab
     overlays, hands or lasers; corner ticks round the marked tile) plus `NNN-close.png` (40 degrees,
     three tiles high, from the head's direction, at least 20 degrees down). PICTURES starts off (owner).
+  - Owner's notes on terrain.3 (wheat: ears should stick out; fruit trees: taller trunk, round top,
+    gaps in the leaves showing trunk and branches, "match the original art more accurately"; and marks
+    as corner ticks, not red boxes). terrain.4: SHAPE_H = TILE_H + 16 (own[] and the mesher; shapes
+    rise into the level above, levels are drawn by chunk so nothing clips them); round slices capped at
+    8.75 unless the tile-clipped (square) fit beats them by 0.1 IoU; a dome (half ellipsoid from where
+    the crown reaches 60% of its width, its outline reaching the art's top near the axis); rowShift:
+    the trunk's lowest art row (within 3 px of the axis, after the patch) is height 0, up to 6 rows,
+    also added to the part's yoff when faces are coloured; gaps by line of sight (sprite pixel of each
+    voxel centre: empty -> the ray goes, trunk colour -> voxels in front of the one nearest the axis go);
+    ragged block tops (top band under 92% filled) -> top 2 lower, stalks 1-4 high on 45% of columns.
+    Drop-from-top tolerance is now max(3, total/150) pixels. Marks: Board::Impl::drawTicks (red), the
+    shots' ticks yellow. Test op `closeup x y z name` (the lab's two shots of any tile).
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a

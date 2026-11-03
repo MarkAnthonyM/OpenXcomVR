@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.3)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.4)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -516,12 +516,18 @@ Key ideas:
 - **Display-only additions to the voxels.** Objects of natural terrain whose
   collision covers under 70% of their art (trees, bushes, crop fields) get a
   shape worked out from the art (`growToArt`): a stack of slices round about
-  the part's axis, each a disc clipped to the tile (a large one is a rounded
-  square, the largest the whole square), each as large as fits inside the art
-  where it projects. Slices that add nothing to what the slices under them show
-  are dropped (a flat top seen from above narrows like a cone), a ground patch
-  drawn under a tree isn't counted as the tree (so a trunk stands on it), and
-  the shape replaces the collision voxels. An object's height can be set in the
+  the part's axis, each a disc (or, for blocks such as crop fields, a disc
+  clipped to the tile, which makes a square), each as large as fits inside the
+  art where it projects. Slices that add nothing to what the slices under them
+  show are dropped (a flat top seen from above narrows like a cone), a ground
+  patch drawn under a tree isn't counted as the tree (so a trunk stands on it),
+  and the shape replaces the collision voxels. Shapes may rise into the level
+  above, as the art does. Crowns get a dome on top (the flat view can't tell a
+  flat top from a round one); a tree whose trunk is drawn below the tile's
+  middle stands that much taller; where the art shows a gap in the leaves the
+  voxels along that line of sight go, and where it shows the trunk's or a
+  branch's colour the leaves in front of it go. A block whose top is ragged in
+  the art (wheat) gets single-voxel stalks on a lower top. An object's height can be set in the
   list below ("tall": wheat comes up to a soldier's waist). Shapes that don't
   explain the art (under 60% overlap), and craft, UFO and base parts, keep the
   older rule: voxels added round about the axis where the art is. Floor parts whose rocks,
@@ -554,7 +560,8 @@ Key ideas:
   direction) and `NNN-art.png` (the inspect panel). The two shots are clean: no
   flags, labels, cards, panels, hands or lasers, only corner ticks on the ground
   around the marked tile. Open marks are kept in `terrain-lab/marks.txt` and
-  show as red boxes until removed. PICTURES starts off.
+  show as red corner ticks round the tile (with the mark's number and reason
+  above) until removed. PICTURES starts off.
 - **Standees** are drawn with the game's own `UnitSprite`, after temporarily
   rotating the unit's facing by the angle you view it from, so a soldier seen
   from behind shows its back.

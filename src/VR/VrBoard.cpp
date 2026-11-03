@@ -70,6 +70,7 @@
 #include "../Geoscape/Globe.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include <array>
 #include <map>
 #include <unordered_map>
 #include <cmath>
@@ -87,6 +88,7 @@ namespace VR
 
 static const int TILE_W = 16;   // voxels per tile, horizontally
 static const int TILE_H = 24;   // voxels per tile, vertically
+static const int SHAPE_H = TILE_H + 16; // a tile's display shape may rise into the level above (a tree's crown)
 static const int CHUNK = 8;     // tiles per chunk side
 static const int ATLAS = 2048;
 static const float MAT_BOARD = 8.f;
@@ -337,7 +339,7 @@ struct Board::Impl
 	void buildTile(const TileKey &k, Proto &p);
 	void addCard(const MapData *md, Proto &p);
 	void addRelief(const MapData *floor, int join, Proto &p);
-	bool growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][TILE_H], int part);
+	bool growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][SHAPE_H], int part, int &rowShift);
 	TileKey tileKey(Tile *t, int x, int y, int z);
 	/// The terrain lab's inspect panel for a tile: its parts as the game draws them, each on its own, and
 	/// what the table did with them.
@@ -505,6 +507,7 @@ struct Board::Impl
 	void drawWire(const Shader &sh, const glm::mat4 &M, const glm::vec3 &at, int size, const glm::vec4 &col, float xray) const;
 	void drawLabel(const Shader &sh, const glm::mat4 &M, const glm::vec3 &at, const glm::vec3 &viewerVox, const Label &l, float pxSize) const;
 	void drawLab(const Shader &sh, const glm::mat4 &M);
+	void drawTicks(const Shader &sh, const glm::mat4 &M, const Position &t, const glm::vec4 &col) const;
 	void drawHud(const Shader &sh, const glm::mat4 &M);
 
 	// grabbing
@@ -823,8 +826,9 @@ void Board::Impl::addRelief(const MapData *floor, int join, Proto &p)
 ///    tile's diamond doesn't count as the object, so what stands on it is the trunk (no mound of grass);
 ///  - the result replaces the collision voxels (a tree's collision is often a full column).
 /// If the slices don't explain the art well (under 60% overlap), the old rule adds voxels round about the axis instead.
-bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][TILE_H], int part)
+bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][SHAPE_H], int part, int &rowShift)
 {
+	rowShift = 0;
 	const int W = spr->getWidth(), H = spr->getHeight();
 	auto loftSolid = [&](int x, int y, int z) -> bool
 	{
@@ -915,6 +919,26 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 			}
 		}
 	}
+	// trunk and branch colours: what is left standing on a ground patch near the axis. Trees are drawn with
+	// the trunk reaching below the tile's middle row; that lowest trunk row is taken as the ground for the
+	// heights (the crown sits that much higher, as drawn). rowShift moves the art's rows the same way when
+	// the faces are coloured.
+	std::set<Uint8> trunkCols;
+	int trunkBottom = -1;
+	if (patch)
+		for (int y = 0; y < H; ++y)
+		{
+			float half = diamondHalf((float)y);
+			if (half <= 0.f || y + 0.5f > groundRow + 8.f) continue;
+			for (int x = 0; x < W; ++x)
+				if (art[(size_t)y * W + x] && std::fabs(x + 0.5f - axisPx) <= 3.f)
+				{
+					trunkCols.insert(spr->getPixel(x, y));
+					trunkBottom = std::max(trunkBottom, y);
+				}
+		}
+	rowShift = trunkBottom >= 0 ? std::max(0, std::min(6, (int)std::floor(trunkBottom + 1.f - groundRow))) : 0;
+	const float gv = groundRow + rowShift; // the row of height 0 for the shape
 	int artCount = 0;
 	for (uint8_t v : art) artCount += v;
 	// the art's reach either side of the axis in each row (left and right averaged, as a round thing has)
@@ -955,69 +979,121 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 		}
 		return any;
 	};
-	struct Fit { std::vector<float> rad; int top = -1; float iou = 0.f; };
-	Fit best;
-	best.rad.assign(TILE_H, 0.f);
-	for (int z = 2; z < TILE_H; ++z)
+	// slices from z 2 up, as high as the art goes (a tree's crown rises above its level)
+	struct Fit { std::vector<float> rad; int top = -1; float iou = 0.f; std::vector<uint8_t> mask; };
+	auto fitWith = [&](float cap) -> Fit
 	{
-		float row = groundRow - (z + 0.5f);
-		for (float rad = 11.4f; rad >= 0.5f; rad -= 0.25f)
-			if (fits(rad, row)) { best.rad[z] = rad; break; }
-	}
-	// a gap between slices (a trunk hidden for a row or two) takes the narrower of its neighbours
-	for (int z = 3; z < TILE_H - 1; ++z)
-	{
-		if (best.rad[z] > 0.f || best.rad[z - 1] <= 0.f) continue;
-		int z2 = z;
-		while (z2 < TILE_H && best.rad[z2] <= 0.f) ++z2;
-		if (z2 >= TILE_H || z2 - z > 3) continue;
-		float m = std::min(best.rad[z - 1], best.rad[z2]);
-		for (int q = z; q < z2; ++q) best.rad[q] = m;
-	}
-	// what each slice shows, bottom up; drop slices from the top while the art they explain is (almost)
-	// all explained by the slices under them (a flat top seen from above is not a cone)
-	{
-		std::vector<uint8_t> mask((size_t)W * H, 0);
-		std::vector<int> gained(TILE_H, 0);
-		int total = 0, uni = 0;
-		for (int z = 2; z < TILE_H; ++z)
+		Fit f;
+		f.rad.assign(SHAPE_H, 0.f);
+		for (int z = 2; z < SHAPE_H; ++z)
 		{
-			if (best.rad[z] <= 0.f) continue;
-			float row = groundRow - (z + 0.5f);
+			float row = gv - (z + 0.5f);
+			if (row < 0.f) break;
+			for (float rad = cap; rad >= 0.5f; rad -= 0.25f)
+				if (fits(rad, row)) { f.rad[z] = rad; break; }
+		}
+		// a gap between slices (a trunk hidden for a row or two) takes the narrower of its neighbours
+		for (int z = 3; z < SHAPE_H - 1; ++z)
+		{
+			if (f.rad[z] > 0.f || f.rad[z - 1] <= 0.f) continue;
+			int z2 = z;
+			while (z2 < SHAPE_H && f.rad[z2] <= 0.f) ++z2;
+			if (z2 >= SHAPE_H || z2 - z > 3) continue;
+			float m = std::min(f.rad[z - 1], f.rad[z2]);
+			for (int q = z; q < z2; ++q) f.rad[q] = m;
+		}
+		// what each slice shows, bottom up; drop slices from the top while the art they explain is (almost)
+		// all explained by the slices under them (a flat top seen from above is not a cone)
+		f.mask.assign((size_t)W * H, 0);
+		std::vector<int> gained(SHAPE_H, 0);
+		int total = 0, uni = 0;
+		for (int z = 2; z < SHAPE_H; ++z)
+		{
+			if (f.rad[z] <= 0.f) continue;
+			float row = gv - (z + 0.5f);
 			for (int y = (int)std::floor(row - 12.f); y <= (int)std::floor(row + 12.f); ++y)
 			{
 				float lo, hi;
-				if (y < 0 || y >= H || !span(best.rad[z], y + 0.5f - row, lo, hi)) continue;
+				if (y < 0 || y >= H || !span(f.rad[z], y + 0.5f - row, lo, hi)) continue;
 				for (int x = (int)std::floor(axisPx + lo); x < (int)std::ceil(axisPx + hi); ++x)
 				{
 					if (x < 0 || x >= W) continue;
-					uint8_t &m = mask[(size_t)y * W + x];
+					uint8_t &m = f.mask[(size_t)y * W + x];
 					if (m) continue;
 					m = 1; ++uni;
 					if (art[(size_t)y * W + x]) { ++gained[z]; ++total; }
 				}
 			}
 		}
-		if (uni && artCount)
+		if (!uni || !artCount) return f;
+		f.iou = (float)total / (float)(uni + artCount - total);
+		int keep = total, top = SHAPE_H - 1;
+		while (top >= 2 && (f.rad[top] <= 0.f || keep - gained[top] >= total - std::max(3, total / 150)))
 		{
-			best.iou = (float)total / (float)(uni + artCount - total);
-			int keep = total, top = TILE_H - 1;
-			while (top >= 2 && (best.rad[top] <= 0.f || keep - gained[top] >= total - std::max(2, total / 50)))
-			{
-				keep -= gained[top];
-				best.rad[top] = 0.f;
-				--top;
-			}
-			best.top = top;
+			keep -= gained[top];
+			f.rad[top] = 0.f;
+			--top;
 		}
+		f.top = top;
+		return f;
+	};
+	// round slices (a crown: at most a little wider than the tile's inscribed circle), unless square ones
+	// (a crop field's block) explain the art clearly better
+	Fit round = fitWith(8.75f), square = fitWith(11.4f);
+	const bool boxy = square.iou > round.iou + 0.1f;
+	Fit best = boxy ? square : round;
+	// a crown's top is a dome: the flat view can't tell a flat top from a round one (the top face of a
+	// flat-topped crown covers the same rows), and the art's crowns are drawn round. From where the crown
+	// reaches most of its width, half an ellipsoid as wide as the crown, high enough that its outline
+	// reaches the art's top near the axis.
+	if (!boxy && best.top >= 2)
+	{
+		float rm = 0.f;
+		for (int z = 2; z <= best.top; ++z) rm = std::max(rm, best.rad[z]);
+		int zb = -1;
+		for (int z = 2; z <= best.top && zb < 0; ++z) if (best.rad[z] >= 0.6f * rm) zb = z;
+		int artTop = -1;
+		for (int y = 0; y < H && artTop < 0; ++y)
+			for (int x = (int)std::floor(axisPx - 2.f); x <= (int)std::floor(axisPx + 2.f); ++x)
+				if (x >= 0 && x < W && art[(size_t)y * W + x]) { artTop = y; break; }
+		float D = gv - zb - artTop;
+		if (rm >= 3.f && zb >= 2 && artTop >= 0 && D > rm)
+		{
+			float c = (D * D - rm * rm * 0.5f) / (2.f * D), zc = zb + c;
+			if (c > 2.f)
+			{
+				int top = std::min(SHAPE_H - 1, (int)std::floor(zc + c - 0.5f));
+				for (int z = (int)std::ceil(zc); z < SHAPE_H; ++z)
+				{
+					float t = (z + 0.5f - zc) / c;
+					best.rad[z] = (z <= top && t < 1.f) ? std::max(0.5f, rm * std::sqrt(1.f - t * t)) : 0.f;
+				}
+				best.top = top;
+			}
+		}
+	}
+	// a block whose top band in the art is ragged (a crop field's ears): stalks stand on a lower top
+	bool ragged = false;
+	if (boxy && best.top >= 2)
+	{
+		int band = 0, filled = 0;
+		for (int x = 0; x < W; ++x)
+		{
+			int mtop = -1;
+			for (int y = 0; y < H && mtop < 0; ++y) if (best.mask[(size_t)y * W + x]) mtop = y;
+			if (mtop < 0) continue;
+			for (int y = mtop; y < std::min(H, mtop + 7); ++y)
+				if (best.mask[(size_t)y * W + x]) { ++band; filled += art[(size_t)y * W + x]; }
+		}
+		ragged = band > 0 && filled < band * 0.92f;
 	}
 	// a height from the hand-checked list (terrain-relief.txt, "tall"): the slices squeezed or stretched
 	if (float want = VR::shapeHeight(md))
 	{
-		int newTop = std::max(2, std::min(TILE_H - 1, (int)std::lround(want) - 1));
+		int newTop = std::max(2, std::min(SHAPE_H - 1, (int)std::lround(want) - 1));
 		if (best.top >= 2 && newTop != best.top)
 		{
-			std::vector<float> r(TILE_H, 0.f);
+			std::vector<float> r(SHAPE_H, 0.f);
 			for (int z = 2; z <= newTop; ++z)
 			{
 				float src = newTop == 2 ? 2.f : 2.f + (z - 2) * (float)(best.top - 2) / (float)(newTop - 2);
@@ -1027,13 +1103,22 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 			best.top = newTop;
 		}
 	}
+	float stalkH = 0.f, stalkFill = 0.f;
+	if (ragged && best.top >= 6)
+	{
+		best.rad[best.top] = best.rad[best.top - 1] = 0.f;
+		best.top -= 2;
+		stalkH = 2.5f;
+		stalkFill = 0.45f;
+	}
 	static const bool shapeLog = std::getenv("OXCE_VR_SHAPE_LOG") != nullptr;
 	if (shapeLog)
 	{
 		std::ostringstream o;
 		o << "[VR] shape " << (md->getDataset() ? md->getDataset()->getName() : std::string("?")) << " sprite "
-		  << md->getSprite(0) << ": iou " << best.iou << " collision " << (100 * cov / opaque) << "% top " << best.top
-		  << (patch ? " patch" : "") << " radii";
+		  << md->getSprite(0) << ": " << (boxy ? "square" : "round") << " iou " << best.iou << " (round " << round.iou
+		  << ", square " << square.iou << ") collision " << (100 * cov / opaque) << "% top " << best.top
+		  << (patch ? " patch" : "") << " stalks " << stalkH << "/" << stalkFill << " trunk colours " << trunkCols.size() << " radii";
 		for (int z = 2; z <= best.top; ++z) o << " " << best.rad[z];
 		Log(LOG_INFO) << o.str();
 	}
@@ -1050,7 +1135,7 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 	if (natural && best.top >= 2 && best.iou >= 0.6f)
 	{
 		// the shape replaces the collision (the floor keeps its slab)
-		for (int z = 0; z < TILE_H; ++z)
+		for (int z = 0; z < SHAPE_H; ++z)
 			for (int y = 0; y < TILE_W; ++y)
 				for (int x = 0; x < TILE_W; ++x)
 					if (own[x][y][z] == part + 1) own[x][y][z] = 0;
@@ -1066,9 +1151,63 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 					if (dx * dx + dy * dy <= (rad + 0.2f) * (rad + 0.2f)) { own[x][y][z] = (uint8_t)(part + 1); added = true; }
 				}
 		}
+		// stalks on the top: single voxels standing on some of the top's columns, 1 to 4 high
+		if (stalkH >= 1.f && stalkFill > 0.f)
+			for (int y = 0; y < TILE_W; ++y)
+				for (int x = 0; x < TILE_W; ++x)
+				{
+					int zt = -1;
+					for (int z = SHAPE_H - 1; z >= 2; --z) if (own[x][y][z] == part + 1) { zt = z; break; }
+					if (zt < 2) continue;
+					uint32_t hsh = (uint32_t)(x * 73856093u) ^ (uint32_t)(y * 19349663u) ^ (uint32_t)(md->getSprite(0) * 83492791u);
+					hsh ^= hsh >> 13; hsh *= 0x5bd1e995u; hsh ^= hsh >> 15;
+					if ((hsh & 1023) / 1024.f >= stalkFill) continue;
+					int hgt = std::max(1, (int)std::lround(stalkH * (0.5f + ((hsh >> 10) & 1023) / 1024.f)));
+					for (int z = zt + 1; z <= std::min(SHAPE_H - 1, zt + hgt); ++z) own[x][y][z] = (uint8_t)(part + 1);
+				}
+		// gaps a crown's art shows: where the picture is empty the voxels along that line of sight go (light
+		// through the leaves); where it shows the trunk's or a branch's colour, the leaves in front of the
+		// voxel nearest the axis on that line go, so the branch shows in a gap
+		if (!boxy && patch)
+		{
+			std::map<int, std::vector<std::array<int, 3>>> rays; // sprite pixel -> the part's voxels drawn there
+			for (int z = 2; z < SHAPE_H; ++z)
+				for (int y = 0; y < TILE_W; ++y)
+					for (int x = 0; x < TILE_W; ++x)
+					{
+						if (own[x][y][z] != part + 1) continue;
+						int px, py;
+						proj(x + 0.5f, y + 0.5f, z + 0.5f, px, py);
+						py += rowShift;
+						rays[py * 1024 + px].push_back({x, y, z});
+					}
+			for (auto &r : rays)
+			{
+				int px = r.first % 1024, py = r.first / 1024;
+				Uint8 c = (px >= 0 && py >= 0 && px < W && py < H) ? spr->getPixel(px, py) : 0;
+				if (!c)
+				{
+					for (auto &v : r.second) own[v[0]][v[1]][v[2]] = 0;
+					continue;
+				}
+				if (!trunkCols.count(c) || py + 0.5f > gv - 3.f) continue; // the trunk below the crown stays
+				// the voxel nearest the axis; the ones in front of it (towards the flat view's eye) go
+				size_t keep = 0;
+				float bestD = 1e9f;
+				for (size_t i = 0; i < r.second.size(); ++i)
+				{
+					float dx = r.second[i][0] + 0.5f - ax, dy = r.second[i][1] + 0.5f - ay, d = dx * dx + dy * dy;
+					if (d < bestD) { bestD = d; keep = i; }
+				}
+				int sKeep = r.second[keep][0] + r.second[keep][1] + r.second[keep][2];
+				for (auto &v : r.second)
+					if (v[0] + v[1] + v[2] > sKeep) own[v[0]][v[1]][v[2]] = 0;
+			}
+		}
 		return added;
 	}
 	// no slice shape fits the art: add voxels round about the axis where the art has something (the old rule)
+	rowShift = 0;
 	for (int z = 2; z < TILE_H; ++z)
 	{
 		int row = (int)std::floor(groundRow - z - 0.5f);
@@ -1103,7 +1242,7 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 {
 	struct Src { const Surface *spr = nullptr; int yoff = 0; bool floor = false; uint32_t avg = 0; };
 	Src src[O_MAX];
-	static uint8_t own[TILE_W][TILE_W][TILE_H]; // 0 empty, else part + 1
+	static uint8_t own[TILE_W][TILE_W][SHAPE_H]; // 0 empty, else part + 1
 	std::memset(own, 0, sizeof(own));
 	auto loftSolid = [&](const MapData *md, int x, int y, int z) -> bool
 	{
@@ -1138,7 +1277,12 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 				}
 		if (count == 0) { addCard(md, p); continue; }
 		any = true;
-		if (part == O_OBJECT && growToArt(md, sc.spr, sc.yoff, own, part)) p.grew |= (uint8_t)(1 << part);
+		int rowShift = 0;
+		if (part == O_OBJECT && growToArt(md, sc.spr, sc.yoff, own, part, rowShift))
+		{
+			p.grew |= (uint8_t)(1 << part);
+			sc.yoff += rowShift; // the shape was raised: its faces take the art's rows the same way
+		}
 	}
 	// painted rocks, mounds and holes on a listed floor (VrRelief.h)
 	bool relief = k.m[O_FLOOR] && src[O_FLOOR].spr && VR::reliefMode() != VR::RELIEF_FLAT && VR::reliefSpec(k.m[O_FLOOR]);
@@ -1146,7 +1290,7 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 	if (!any) return;
 	auto S = [&](int x, int y, int z) -> int
 	{
-		if (x < 0 || y < 0 || z < 0 || x >= TILE_W || y >= TILE_W || z >= TILE_H) return 0;
+		if (x < 0 || y < 0 || z < 0 || x >= TILE_W || y >= TILE_W || z >= SHAPE_H) return 0;
 		return own[x][y][z];
 	};
 	// a sprite pixel at (px, py), or a near one (the projection is a little coarse at edges)
@@ -1169,7 +1313,7 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 	{
 		int hits[O_MAX] = {0, 0, 0, 0}, total[O_MAX] = {0, 0, 0, 0};
 		uint32_t dummy;
-		for (int z = 0; z < TILE_H; ++z)
+		for (int z = 0; z < SHAPE_H; ++z)
 			for (int y = 0; y < TILE_W; ++y)
 				for (int x = 0; x < TILE_W; ++x)
 				{
@@ -1203,7 +1347,7 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 		if (!shown)
 		{
 			// through the solid to its far side, which the flat view does see
-			while (S(e[0] + (axis == 0), e[1] + (axis == 1), e[2]) && e[axis] + 1 < (axis == 2 ? TILE_H : TILE_W)) ++e[axis];
+			while (S(e[0] + (axis == 0), e[1] + (axis == 1), e[2]) && e[axis] + 1 < (axis == 2 ? SHAPE_H : TILE_W)) ++e[axis];
 			epart = own[e[0]][e[1]][e[2]] - 1;
 		}
 		const Src &es = src[epart];
@@ -1225,9 +1369,9 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 
 	struct Dir { int axis, sign; };
 	const Dir dirs[5] = {{0, 1}, {0, -1}, {1, 1}, {1, -1}, {2, 1}}; // no bottom faces: never seen from above
-	const int dims[3] = {TILE_W, TILE_W, TILE_H};
-	static uint32_t maskCol[TILE_H][TILE_H];
-	static bool mask[TILE_H][TILE_H], used[TILE_H][TILE_H];
+	const int dims[3] = {TILE_W, TILE_W, SHAPE_H};
+	static uint32_t maskCol[SHAPE_H][SHAPE_H];
+	static bool mask[SHAPE_H][SHAPE_H], used[SHAPE_H][SHAPE_H];
 	for (const Dir &d : dirs)
 	{
 		int ua = d.axis == 0 ? 1 : 0;
@@ -2268,21 +2412,7 @@ void Board::Impl::drawBattle(const Shader &sh)
 	if (!feedPass && !shadowPass && lab)
 	{
 		if (!capturePass) drawLab(sh, M);
-		else if (captureTile.x >= 0 && captureTile.z <= viewLevel)
-		{
-			glm::vec3 at(captureTile.x * TILE_W, captureTile.z * TILE_H + 2.f, captureTile.y * TILE_W);
-			sh.set("uMode", 2);
-			sh.set("uModel", M * glm::translate(glm::mat4(1.f), at));
-			glDisable(GL_DEPTH_TEST); // faintly through whatever stands in front
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-			sh.set("uTint", glm::vec4(1.f, 0.85f, 0.2f, 0.35f));
-			ticks.draw();
-			glDisable(GL_BLEND);
-			glEnable(GL_DEPTH_TEST);
-			sh.set("uTint", glm::vec4(2.2f, 1.6f, 0.2f, 1.f));
-			ticks.draw();
-		}
+		else if (captureTile.x >= 0 && captureTile.z <= viewLevel) drawTicks(sh, M, captureTile, glm::vec4(2.2f, 1.6f, 0.2f, 1.f));
 	}
 	drawCurtain(sh);
 	sh.set("uTint", glm::vec4(1.f));
@@ -2822,6 +2952,27 @@ void Board::Impl::drawWire(const Shader &sh, const glm::mat4 &M, const glm::vec3
 	m.draw();
 }
 
+/// Corner ticks on the ground round a tile (the terrain lab's marks and shots), faintly through whatever
+/// stands in front of them too.
+void Board::Impl::drawTicks(const Shader &sh, const glm::mat4 &M, const Position &t, const glm::vec4 &col) const
+{
+	const GLboolean blend = glIsEnabled(GL_BLEND), depth = glIsEnabled(GL_DEPTH_TEST);
+	glm::vec3 at(t.x * TILE_W, t.z * TILE_H + 2.f, t.y * TILE_W);
+	sh.set("uMode", 2);
+	sh.set("uModel", M * glm::translate(glm::mat4(1.f), at));
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+	sh.set("uTint", glm::vec4(glm::vec3(col) * 0.45f, 0.35f));
+	ticks.draw();
+	glDisable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
+	sh.set("uTint", col);
+	ticks.draw();
+	if (blend) { glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); }
+	if (!depth) glDisable(GL_DEPTH_TEST);
+}
+
 /// A readout floating at a point (board voxels), turned to face the player, drawn over everything.
 void Board::Impl::drawLabel(const Shader &sh, const glm::mat4 &M, const glm::vec3 &at, const glm::vec3 &viewerVox, const Label &l, float pxSize) const
 {
@@ -3028,14 +3179,14 @@ void Board::Impl::drawLab(const Shader &sh, const glm::mat4 &M)
 		const Label &l = label(a.text, (Uint8)(Palette::blockOffset(1) + 1));
 		drawLabel(sh, M, glm::vec3(a.x * TILE_W + TILE_W * 0.5f, a.z * TILE_H + TILE_H + 6.f, a.y * TILE_W + TILE_W * 0.5f), viewerVox, l, 0.32f);
 	}
-	// marks: a red box over the tile and its number and reason
+	// marks: corner ticks on the ground round the tile (the owner found a box over it distracting) and its
+	// number and reason above it
 	const Uint8 redIdx = (Uint8)(Palette::blockOffset(Pathfinding::red - 1) - 1);
 	const std::string page = lab->pageKey();
-	glEnable(GL_DEPTH_TEST);
 	for (const LabMark &m : lab->marks())
 	{
 		if (m.terrain != lab->terrainName() || m.page != page || m.z > viewLevel) continue;
-		drawWire(sh, M, glm::vec3(m.x * TILE_W, m.z * TILE_H + 0.3f, m.y * TILE_W), 1, glm::vec4(2.4f, 0.25f, 0.2f, 1.f), 0.45f);
+		drawTicks(sh, M, Position(m.x, m.y, m.z), glm::vec4(2.4f, 0.35f, 0.2f, 1.f));
 	}
 	glDisable(GL_DEPTH_TEST);
 	for (const LabMark &m : lab->marks())
