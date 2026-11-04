@@ -1536,6 +1536,33 @@ void Table::Impl::updateTaps(TableContext &ctx, const Hands &hands, float dt)
 	{
 		cooldown[h] = std::max(0.f, cooldown[h] - dt);
 		const HandPose &P = hands.pose[h];
+		if (board->labActive())
+		{
+			// the terrain lab (0.21.0-terrain.8): a pointing fingertip over a tile shows its inspect panel,
+			// touching the tile pins it (again: releases it); A marks it (VrSystem)
+			touching[h] = touching[h] && P.valid && !P.ghost && !P.pinch && P.indexExtended && !ctx.handBusy[h];
+			if (!P.valid || P.ghost || P.pinch || !P.indexExtended || ctx.handBusy[h]) continue;
+			glm::vec3 tip = P.tip(F_INDEX);
+			float r = P.radius[fingerTip(F_INDEX)];
+			int tx, ty, tz;
+			float floorY;
+			if (!board->tileUnder(tip, tx, ty, tz, floorY)) { touching[h] = false; continue; }
+			float gap = tip.y - r - floorY;
+			if (gap < 0.10f) board->labFinger(tx, ty, tz);
+			bool now = touching[h] ? gap < 0.012f : gap < 0.004f;
+			if (now && !touching[h] && cooldown[h] <= 0.f && P.tipVelocity.y < -0.02f)
+			{
+				board->labTouch(tx, ty, tz);
+				ctx.haptic(h, 0.45f, 0.02f);
+				cooldown[h] = 0.3f;
+				std::ostringstream ss;
+				ss << "lab: touched tile " << tx << "," << ty << "," << tz;
+				lastEvent = ss.str();
+				Log(LOG_INFO) << "[VR] " << lastEvent;
+			}
+			touching[h] = now;
+			continue;
+		}
 		if (!inBattle || !P.valid || P.ghost || P.pinch || held.hand == h)
 		{
 			touching[h] = false;

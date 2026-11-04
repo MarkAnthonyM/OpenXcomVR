@@ -181,7 +181,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.7).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.8).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -268,6 +268,29 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     a branch back to the trunk), apples where the art has them and mirrored. Dead tree: screen
     polylines lifted to 3D by an azimuth each (limbs at most 6 out, twigs grow from their limb's point).
     Scores 9 100%, 12 100%, 13 98% (were 79, 74, 37). Farm save: atlas 33% (27% without the models).
+  - Owner on terrain.7: trees "a lot better"; but (1) the grass at the apple trees' base looked strange (a
+    dark corner, not matching the grass round it), (2) the roots didn't show (and the sheets didn't say),
+    (3) the laser is cumbersome for the inspect panel. Causes: the paint took the nearest green to each
+    ground point's sprite pixel, so the diamond's back corner (behind the crown in the art) got crown
+    leaves and the roots/sticks drawn on the ground became grass; the paint was a hard square at twice
+    the floor's detail in the art's patch colours. The shape score can't see colour; and from the game's
+    angle terrain.7's flared trunk covered the root pixels in a similar brown, so not even a colour check
+    would have caught it there. Owner chose: paint as drawn minus the tree, low raised roots, paint only
+    where it differs from the floor (ragged edge), a colour check, fingertip hover + touch to pin, the
+    panel staying beside the tile with the comparison in it. terrain.8: addModel's paint: sprite pixels
+    the model's standing voxels (z >= 3) cover are the tree; other ground pixels as drawn; hidden cells
+    by BFS from visible ones; painted where the colour is over 34 (RGB) from every floor colour making 2%+
+    of the floor sprite (no floor: all); edge cells kept with probability 0.3 + 0.175 per cell in (hash);
+    lone cells dropped, holes (6+ neighbours) filled. Generator roots(): cells within 6 of the axis whose
+    visible ground pixel is wood (or red-brown, read as fruit) get z = 1, within 3.5 also z = 2 (tree 9:
+    19 cells, 12: none, its art has no roots apart from the trunk, 13: 47). Compare: colourOff /
+    colour() (3 x 3 averages over each side's own pixels, distance over 48 = yellow), sheets sort by
+    min(shape, colour); fifth picture "above" (lookView 45, 78 degrees). All sets: 52 parts under 90%
+    colour, mostly relief floors (POLAR craters, MOUNT rocks: the painting sits at the relief's depth, so
+    from the game's angle it is shifted; real, not fixed) and URBITS 0. Lab: Table updateTaps has a lab
+    branch (pointing fingertip within 10 cm of a tile's floor -> Board::labFinger, 0.25 s; touch-down
+    -> labTouch toggles the pin); VrSystem routes A to Board::labFingerMark first (no laser needed). Panel
+    320 x 300: scores line, the five pictures along the bottom.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a

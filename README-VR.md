@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.7)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.8)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -553,8 +553,10 @@ Key ideas:
   on the game's unit light layer: a grid, or one where the laser points; on by
   itself at dusk and night), PICTURES (each part's sprite on a card behind it,
   each piece and each map block as the flat game draws it) and CLEAR MARKS.
-  Pointing at a tile shows its inspect panel (the parts as the game draws them,
-  each on its own, what the table did with them); the trigger pins it. A marks
+  A pointing fingertip over a tile (or the laser) shows its inspect panel beside
+  it (the parts as the game draws them, each on its own, what the table did with
+  them, the comparison); touching the tile, or the trigger, pins it (again:
+  releases it); A with a fingertip over a tile marks that tile. A marks
   the tile for fixing (reasons and a typed note in a window over the table) or
   unmarks it: each lab run that marks something gets
   `<user folder>/terrain-lab/<date_time>/` with `notes.txt`, `NNN-view.png`
@@ -577,6 +579,12 @@ Key ideas:
   floor (a tree's grass patch); the rest stands on the floor's top. x east,
   y south, z up; the model's centre is the tile's; models may overhang the
   tile. Display only: collision and line of fire keep the part's own voxels.
+  The paint (0.21.0-terrain.8) is the ground as the sprite draws it (roots,
+  shadows, sticks) less the tree: ground the tree hides in the art takes the
+  nearest ground that shows, and only what differs from the tile's floor is
+  painted, with a ragged edge, so the floor's own grass shows round it. Where
+  the art draws roots on the ground near the trunk, the model has low root
+  voxels.
   The first models are the farm trees (CULTIVAT 9, 12 and 13), made by
   `vr-dev/models/farm_trees.py` from the sprites (dumped with the test op
   `dumpart`).
@@ -589,9 +597,12 @@ Key ideas:
   A mismatch right beside a pixel of the other kind (the one-pixel stair-step
   of a slanted edge) is drawn dim and not counted. A floor's art is lined up
   with its top (2 voxels up), a raised tree with how far it was raised. The
-  inspect panel shows the tile's MATCH score; a mark also saves
-  `NNN-compare.png` (art, table, difference, the table's shape from behind and
-  low). The SHEETS key makes a contact sheet per terrain set of the current
+  colour check (0.21.0-terrain.8) marks yellow where both have something but in
+  clearly different colours (3 x 3 averages, so leaves sampled a pixel or two
+  away don't count), with its own score. A fifth picture shows the table's shape
+  from above (the ground under a crown, which the game's angle never shows; it
+  has no art to compare with, it is for the eye). The inspect panel shows the
+  tile's scores and all five pictures; a mark also saves `NNN-compare.png`. The SHEETS key makes a contact sheet per terrain set of the current
   terrain: every part on its own, with those four pictures and its scores,
   in `terrain-lab/sheets/<date_time>/<SET>.png`, plus `scores.txt` (each set's
   parts, worst first).

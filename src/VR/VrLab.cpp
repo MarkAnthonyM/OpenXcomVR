@@ -527,7 +527,7 @@ void TerrainLabState::updateTexts()
 	}
 	int here = 0;
 	for (const LabMark &m : _marks) if (m.terrain == terrainName() && m.page == pageKey()) ++here;
-	info << "Point at a tile: its art. Trigger: pin it. A: mark it for fixing (A again: unmark). "
+	info << "Fingertip over a tile (or the laser): its art and comparison. Touch it (or trigger): pin it. A: mark it for fixing (A again: unmark). "
 		<< _marks.size() << " marks open (" << here << " on this page). Notes: "
 		<< (_session.empty() ? labFolder() + "<date_time>/" : labFolder() + _session + "/");
 	_txtTerrain->setText(t.str());
@@ -805,7 +805,9 @@ std::string TerrainLabState::makeSheets(const std::string &which)
 	std::ofstream f(folder + "scores.txt");
 	f << "Terrain lab contact sheets, " << OXCE_VR_PROTOTYPE_VERSION << "\n"
 		<< "shape: pixels the table's shape (seen from the game's angle) and the art share, out of all either has;\n"
-		<< "table only / art only: as a share of the art's pixels. One-pixel edges are not counted.\n\n" << all.str();
+		<< "colour: of the pixels both have, those in about the same colour (3 x 3 averages);\n"
+		<< "table only / art only: as a share of the art's pixels. One-pixel edges are not counted.\n"
+		<< "Each set's parts are listed worst first (the lower of shape and colour).\n\n" << all.str();
 	Log(LOG_INFO) << "[VR] sheets: " << made << " sets in " << folder;
 	return folder;
 }

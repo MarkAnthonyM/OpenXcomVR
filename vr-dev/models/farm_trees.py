@@ -61,6 +61,29 @@ def paint_patch(g):
     g.k[:, :, 0] = np.where((X >= 0) & (X < 16) & (Z >= 0) & (Z < 16), PATCH, 0)
 
 
+def roots(g, cl, yoff, reach=6.0):
+    """Low roots where the art draws wood on the ground near the trunk (and the tree doesn't hide that
+    ground from the game's angle): one model voxel high (half a table voxel), two close to the trunk."""
+    H, W = cl.shape
+    pix, piy = pixel_of(g, yoff)
+    standing = (g.k > 0) & (np.arange(g.sz)[None, None, :] >= 3)
+    hidden = np.zeros((H, W), bool)
+    ok = standing & (pix >= 0) & (pix < W) & (piy >= 0) & (piy < H)
+    hidden[piy[ok], pix[ok]] = True
+    n = 0
+    for x in range(g.sx):
+        for y in range(g.sy):
+            X, Z = g.X[x, y, 1], g.Z[x, y, 1]
+            if not (0 <= X < 16 and 0 <= Z < 16): continue
+            d = math.hypot(X - AX, Z - AZ)
+            if d > reach: continue
+            px, py = int(math.floor(16 + X - Z)), int(math.floor(24 + (X + Z) / 2 + yoff))
+            if not (0 <= px < W and 0 <= py < H) or hidden[py, px] or cl[py, px] not in (WOOD, FRUIT): continue  # (a red-brown trunk reads as fruit)
+            if g.k[x, y, 1] == 0: g.k[x, y, 1] = WOOD; n += 1
+            if d <= 3.5 and g.k[x, y, 2] == 0: g.k[x, y, 2] = WOOD
+    print(f'  roots: {n} cells')
+
+
 def pixel_of(g, yoff):
     px, py = g.project(yoff)
     return np.floor(px).astype(int), np.floor(py).astype(int)
@@ -161,6 +184,7 @@ def fruit_tree(i, seed, crown_rows):
                 best = q
                 break
         if best: g.k[best] = FRUIT
+    roots(g, cl, yoff)
     paint_patch(g)
     return g
 
@@ -206,6 +230,7 @@ def dead_tree():
                 r = r0 + (0.3 - r0) * (j / (n - 1))
                 disc_line(g, prev, cur, max(0.3, r), WOOD, overwrite=False)
             prev = cur
+    roots(g, classes(idx, pal), yoff)
     paint_patch(g)
     return g
 

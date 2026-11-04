@@ -346,7 +346,7 @@ struct Board::Impl
 	void buildTile(const TileKey &k, Proto &p);
 	void addCard(const MapData *md, Proto &p);
 	void addRelief(const MapData *floor, int join, Proto &p);
-	void addModel(const VR::Model &m, const Surface *spr, int yoff, Proto &p);
+	void addModel(const VR::Model &m, const Surface *spr, int yoff, const Surface *floorSpr, Proto &p);
 	/// The part's hand-built model (VrModels.h), or null.
 	const VR::Model *modelOf(const MapData *md);
 	bool growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][SHAPE_H], int part, int &rowShift);
@@ -358,7 +358,7 @@ struct Board::Impl
 	/// game draws it, the table's shape from the game's angle, where they differ, the shape from behind.
 	struct Comparison
 	{
-		std::vector<uint32_t> art, table, diff, look;
+		std::vector<uint32_t> art, table, diff, look, above;
 		VR::Compare::Score score;
 		uint8_t grew = 0, stray = 0, model = 0;
 		bool card = false, empty = true;
@@ -442,8 +442,10 @@ struct Board::Impl
 	TerrainLabState *lab = nullptr; // the terrain lab's screen, while it shows its map
 	unsigned labGen = 0, styleGen = 0;
 	int labLevel = 0;                // the lab's level shown (no game camera there)
-	bool pinned = false;             // the lab's inspect panel stays on pinTile (trigger)
+	bool pinned = false;             // the lab's inspect panel stays on pinTile (trigger, or a fingertip's touch)
 	Position pinTile;
+	float fingerAge = 0.f;           // the lab: a fingertip is over labFingerTile (seconds left)
+	Position labFingerTile;
 	float tileSize = 0.055f;
 	float yaw = 0.f;
 	int viewLevel = 0;
@@ -1278,7 +1280,7 @@ const VR::Model *Board::Impl::modelOf(const MapData *md)
 /// it lands on (or the nearest one of its kind); a face it never sees takes the colour of the matching
 /// point on the other side of the model's axis; undersides are that colour darkened. The paint layer
 /// (z = 0) lies flat on the floor's top.
-void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, Proto &p)
+void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, const Surface *floorSpr, Proto &p)
 {
 	if (!spr) return;
 	const int W = spr->getWidth(), H = spr->getHeight();
@@ -1435,25 +1437,105 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, Pro
 			if (any) greedy(d.axis, d.sign, (float)k + (d.sign > 0 ? 1.f : 0.f), ua, va, nu, nv, false);
 		}
 	}
-	// the paint layer, flat on the floor
+	// the paint layer, flat on the floor (0.21.0-terrain.8): the ground as the sprite draws it (roots,
+	// shadows, sticks, a patch of another colour), less the tree. Ground the tree hides in the art (behind
+	// the trunk and crown seen from the flat game's angle) takes the nearest ground that shows. Only what
+	// differs from the floor's own colours is painted, so the floor shows round it; the paint's edge is
+	// ragged so it never reads as a square tile.
 	{
-		int nu = m.sx, nv = m.sy;
-		mask.assign((size_t)nu * nv, 0);
-		maskCol.assign((size_t)nu * nv, 0u);
-		bool any = false;
+		const int nu = m.sx, nv = m.sy;
+		// sprite pixels the standing tree covers (voxels a table voxel or more above the floor)
+		std::vector<uint8_t> hidden((size_t)W * H, 0);
+		for (int z = 3; z < m.sz; ++z)
+			for (int y = 0; y < m.sy; ++y)
+				for (int x = 0; x < m.sx; ++x)
+				{
+					if (!solid(x, y, z)) continue;
+					glm::vec3 P = toTable(x + 0.5f, y + 0.5f, z + 0.5f);
+					int px = (int)std::floor(16.f + P.x - P.z), py = (int)std::floor(24.f + (P.x + P.z) * 0.5f - P.y + yoff + 2.f);
+					if (px >= 0 && py >= 0 && px < W && py < H) hidden[(size_t)py * W + px] = 1;
+				}
+		// the floor's own colours: palette entries making up 2% or more of its sprite
+		std::vector<SDL_Color> floorCols;
+		if (floorSpr)
+		{
+			int count[256] = {0}, total = 0;
+			for (int y = 0; y < floorSpr->getHeight(); ++y)
+				for (int x = 0; x < floorSpr->getWidth(); ++x)
+					if (Uint8 c = floorSpr->getPixel(x, y)) { ++count[c]; ++total; }
+			for (int c = 1; c < 256; ++c) if (total && count[c] * 50 >= total) floorCols.push_back(pal[c]);
+		}
+		auto differs = [&](uint32_t c) -> bool
+		{
+			if (floorCols.empty()) return true;
+			int r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255, best = 1 << 30;
+			for (const SDL_Color &f : floorCols)
+				best = std::min(best, (r - f.r) * (r - f.r) + (g - f.g) * (g - f.g) + (b - f.b) * (b - f.b));
+			return best > 34 * 34;
+		};
+		// each cell's ground colour where the art shows it; the rest from the nearest that shows
+		std::vector<uint32_t> col((size_t)nu * nv, 0u);
+		std::vector<int> queue;
 		for (int y = 0; y < nv; ++y)
 			for (int x = 0; x < nu; ++x)
 			{
 				if (!m.at(x, y, 0)) continue;
-				size_t o = (size_t)y * nu + x;
-				mask[o] = 1;
-				any = true;
 				glm::vec3 P = toTable(x + 0.5f, y + 0.5f, 1.f); // ground: Y 2
-				float px = 16.f + P.x - P.z, py = 24.f + (P.x + P.z) * 0.5f + yoff;
-				uint32_t c = 0xFF305020u;
-				sample(px, py, VR::MK_PATCH, 8, c);
-				maskCol[o] = c;
+				int px = (int)std::floor(16.f + P.x - P.z), py = (int)std::floor(24.f + (P.x + P.z) * 0.5f + yoff);
+				if (px < 0 || py < 0 || px >= W || py >= H || hidden[(size_t)py * W + px]) continue;
+				Uint8 c = spr->getPixel(px, py);
+				if (!c) continue;
+				col[(size_t)y * nu + x] = rgba(pal[c]);
+				queue.push_back(y * nu + x);
 			}
+		for (size_t q = 0; q < queue.size(); ++q)
+		{
+			int x = queue[q] % nu, y = queue[q] / nu;
+			const int nb[4][2] = {{x + 1, y}, {x - 1, y}, {x, y + 1}, {x, y - 1}};
+			for (auto &n : nb)
+			{
+				if (n[0] < 0 || n[1] < 0 || n[0] >= nu || n[1] >= nv || !m.at(n[0], n[1], 0)) continue;
+				uint32_t &t = col[(size_t)n[1] * nu + n[0]];
+				if (t) continue;
+				t = col[(size_t)y * nu + x];
+				queue.push_back(n[1] * nu + n[0]);
+			}
+		}
+		// what to paint: what differs from the floor, with a ragged edge towards the tile's sides
+		std::vector<uint8_t> paint((size_t)nu * nv, 0);
+		int x0 = nu, y0 = nv, x1 = -1, y1 = -1;
+		for (int y = 0; y < nv; ++y)
+			for (int x = 0; x < nu; ++x)
+				if (m.at(x, y, 0)) { x0 = std::min(x0, x); y0 = std::min(y0, y); x1 = std::max(x1, x); y1 = std::max(y1, y); }
+		for (int y = 0; y < nv; ++y)
+			for (int x = 0; x < nu; ++x)
+			{
+				size_t o = (size_t)y * nu + x;
+				if (!col[o] || !differs(col[o])) continue;
+				int edge = std::min(std::min(x - x0, x1 - x), std::min(y - y0, y1 - y)); // cells from the side
+				uint32_t hsh = ((uint32_t)x * 73856093u) ^ ((uint32_t)y * 19349663u);
+				hsh *= 2654435761u;
+				float keep = edge >= 4 ? 1.f : 0.3f + 0.175f * edge;
+				if ((hsh >> 8) % 1000 < keep * 1000) paint[o] = 1;
+			}
+		// tidy: lone cells go, holes inside fill
+		std::vector<uint8_t> tidy = paint;
+		for (int y = 0; y < nv; ++y)
+			for (int x = 0; x < nu; ++x)
+			{
+				int n = 0;
+				for (int dy = -1; dy <= 1; ++dy)
+					for (int dx = -1; dx <= 1; ++dx)
+						if ((dx || dy) && x + dx >= 0 && y + dy >= 0 && x + dx < nu && y + dy < nv && paint[(size_t)(y + dy) * nu + x + dx]) ++n;
+				size_t o = (size_t)y * nu + x;
+				if (paint[o] && n < 2) tidy[o] = 0;
+				else if (!paint[o] && n >= 6 && col[o]) tidy[o] = 1;
+			}
+		mask.assign((size_t)nu * nv, 0);
+		maskCol.assign((size_t)nu * nv, 0u);
+		bool any = false;
+		for (size_t o = 0; o < mask.size(); ++o)
+			if (tidy[o]) { mask[o] = 1; maskCol[o] = col[o]; any = true; }
 		if (any) greedy(2, 1, 1.f, 0, 1, nu, nv, true);
 	}
 }
@@ -1516,7 +1598,10 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 	if (relief) addRelief(k.m[O_FLOOR], k.join, p);
 	if (modelled)
 	{
-		addModel(*modelled, src[O_OBJECT].spr, src[O_OBJECT].yoff, p);
+		const Surface *floorSpr = nullptr;
+		if (const MapData *f = k.m[O_FLOOR])
+			if (f->getDataset() && f->getDataset()->getSurfaceset()) floorSpr = static_cast<const SurfaceSet*>(f->getDataset()->getSurfaceset())->getFrame(f->getSprite(0));
+		addModel(*modelled, src[O_OBJECT].spr, src[O_OBJECT].yoff, floorSpr, p);
 		p.model |= (uint8_t)(1 << O_OBJECT);
 	}
 	if (!any) return;
@@ -3516,8 +3601,9 @@ void Board::Impl::drawLab(const Shader &sh, const glm::mat4 &M)
 		glDisable(GL_DEPTH_TEST);
 	}
 	// the inspect panel: beside and above the tile, turned to the head, about 24 cm wide whatever the zoom
-	bool show = pinned || (hoverValid && !hoverGlobe);
-	Position t = pinned ? pinTile : hoverTile;
+	// pinned first, then a fingertip over a tile, then the laser
+	bool show = pinned || fingerAge > 0.f || (hoverValid && !hoverGlobe);
+	Position t = pinned ? pinTile : fingerAge > 0.f ? labFingerTile : hoverTile;
 	if (show && t.x >= 0 && t.y >= 0 && t.z >= 0 && t.x < mx && t.y < my && t.z < mz)
 	{
 		uint64_t key = ((((uint64_t)t.z * 4096 + t.y) * 4096 + t.x) * 1024 + (lab->generation() & 1023)) * 1024 + (VR::partStyleGeneration() & 1023);
@@ -3626,12 +3712,199 @@ void Board::Impl::flatPicture(int x0, int y0, int z0, int x1, int y1, int z1, st
 	W = nw; H = nh;
 }
 
+// ================================================================== the lab's comparison with the art
+
+static const int CMP_W = 48, CMP_H = 80;  // a comparison picture
+static const int CMP_DX = 8, CMP_DY = 24; // where a tile's sprite (32 x 40) sits in it: room for crowns above
+static const char *const PART_KIND[] = {"FLOOR", "WEST WALL", "NORTH WALL", "OBJECT"};
+
+void Board::Impl::compareKey(const TileKey &k, bool scratchBuild, Comparison &c)
+{
+	Proto local;
+	const Proto *pp = &local;
+	if (scratchBuild)
+	{
+		if (scratch.px.empty() || scratch.full || scratch.y > ATLAS / 2) scratch.reset();
+		build = &scratch;
+		buildTile(k, local);
+		build = &atlas;
+	}
+	else pp = &tileProto(k);
+	const Atlas &at = scratchBuild ? scratch : atlas;
+	c.grew = pp->grew;
+	c.stray = pp->stray;
+	c.model = pp->model;
+	c.card = pp->card;
+	c.empty = pp->idx.empty();
+	// the art as the game draws the tile: floor, walls, object, each where the table lines it up
+	c.art.assign((size_t)CMP_W * CMP_H, 0u);
+	for (int part : {O_FLOOR, O_WESTWALL, O_NORTHWALL, O_OBJECT})
+	{
+		const MapData *md = k.m[part];
+		if (!md || !md->getDataset() || !md->getDataset()->getSurfaceset()) continue;
+		const Surface *spr = static_cast<const SurfaceSet*>(md->getDataset()->getSurfaceset())->getFrame(md->getSprite(0));
+		if (!spr) continue;
+		for (int y = 0; y < spr->getHeight(); ++y)
+			for (int x = 0; x < spr->getWidth(); ++x)
+			{
+				Uint8 v = spr->getPixel(x, y);
+				int X = x + CMP_DX, Y = y - pp->yoffs[part] + CMP_DY;
+				if (v && X >= 0 && Y >= 0 && X < CMP_W && Y < CMP_H) c.art[(size_t)Y * CMP_W + X] = rgba(pal[v]);
+			}
+	}
+	VR::Compare::Image img;
+	VR::Compare::render(pp->verts, pp->idx, at.px.data(), ATLAS, ATLAS, VR::Compare::isoView((float)CMP_DX, (float)CMP_DY), CMP_W, CMP_H, false, img);
+	c.score = VR::Compare::diff(img, c.art, Dash::BG, c.diff);
+	c.table.assign((size_t)CMP_W * CMP_H, Dash::BG);
+	for (size_t i = 0; i < c.table.size(); ++i) if (img.cover[i] >= 128) c.table[i] = img.px[i];
+	// from behind (the north-west, the sides the art never shows) and low
+	VR::Compare::render(pp->verts, pp->idx, at.px.data(), ATLAS, ATLAS, VR::Compare::lookView(225.f, 20.f, 1.8f, CMP_W * 0.5f, CMP_H - 12.f), CMP_W, CMP_H, true, img);
+	c.look.assign((size_t)CMP_W * CMP_H, Dash::BG);
+	for (size_t i = 0; i < c.look.size(); ++i) if (img.cover[i] >= 128) c.look[i] = img.px[i];
+	// from above (the ground under a crown, which the game's angle never shows)
+	VR::Compare::render(pp->verts, pp->idx, at.px.data(), ATLAS, ATLAS, VR::Compare::lookView(45.f, 78.f, 1.7f, CMP_W * 0.5f, CMP_H * 0.5f + 6.f), CMP_W, CMP_H, true, img);
+	c.above.assign((size_t)CMP_W * CMP_H, Dash::BG);
+	for (size_t i = 0; i < c.above.size(); ++i) if (img.cover[i] >= 128) c.above[i] = img.px[i];
+}
+
+/// The colour a score is written in: green from 85, amber from 70, red under.
+static uint32_t scoreColor(int shape) { return shape >= 85 ? Dash::GREEN : shape >= 70 ? Dash::AMBER : Dash::RED; }
+/// The lower of a comparison's shape and colour scores (what the sheets sort and colour by).
+static int worstScore(const VR::Compare::Score &s) { return std::min(s.shape(), s.colour()); }
+
+/// What the table did with a part, for the sheets and the comparison picture.
+static std::string didText(const Board::Impl::Comparison &c, int part, const MapData *md)
+{
+	if (c.model & (1 << part)) return "hand-built";
+	if (c.card) return "no voxels: cards";
+	if (part == O_FLOOR && VR::reliefSpec(md)) return VR::reliefMode() == VR::RELIEF_FLAT ? "relief (off)" : "relief";
+	if (c.grew & (1 << part)) return "crown added";
+	if (c.stray & (1 << part)) return "faces dropped";
+	return "";
+}
+
+/// The five pictures side by side at x, y with gap g: art, table, difference, behind, above.
+static const int CMP_PICS = 5;
+static void pasteFour(Dash::Canvas &cv, const Board::Impl::Comparison &c, int x, int y, int g)
+{
+	const std::vector<uint32_t> *pics[CMP_PICS] = {&c.art, &c.table, &c.diff, &c.look, &c.above};
+	for (int k = 0; k < CMP_PICS; ++k)
+	{
+		int x0 = x + k * (CMP_W + g);
+		cv.rect(x0, y, CMP_W, CMP_H, Dash::BG);
+		for (int j = 0; j < CMP_H; ++j)
+			for (int i = 0; i < CMP_W; ++i)
+			{
+				uint32_t v = (*pics[k])[(size_t)j * CMP_W + i];
+				if ((v >> 24) < 128) continue;
+				int X = x0 + i, Y = y + j;
+				if (X < cv.W && Y < cv.H) cv.px[(size_t)Y * cv.W + X] = v;
+			}
+		cv.frame(x0 - 1, y - 1, CMP_W + 2, CMP_H + 2, Dash::LINE);
+	}
+}
+
+static std::string scoreText(const VR::Compare::Score &s)
+{
+	std::ostringstream o;
+	o << "SHAPE " << s.shape() << "%  COLOUR " << s.colour() << "%  +" << s.tablePct() << "% TABLE ONLY  -" << s.artPct() << "% ART ONLY";
+	return o.str();
+}
+
+bool Board::Impl::comparePicture(const Position &pos, std::vector<uint32_t> &px, int &W, int &H)
+{
+	if (!battle || !game || !voxels) return false;
+	Tile *t = battle->getTile(pos);
+	if (!t) return false;
+	Comparison c;
+	compareKey(tileKey(t, pos.x, pos.y, pos.z), false, c);
+	const int g = 6;
+	W = CMP_PICS * CMP_W + (CMP_PICS - 1) * g + 12;
+	H = 20 + CMP_H + 34;
+	Dash::Canvas cv(game, px, W, H);
+	if (!cv.ok()) return false;
+	std::ostringstream title;
+	title << (lab ? lab->terrainName() + "  " + lab->pageKey() + "  " : std::string()) << "tile " << pos.x << "," << pos.y << "," << pos.z;
+	cv.text(6, 4, W - 12, title.str(), Dash::GOLD);
+	pasteFour(cv, c, 6, 16, g);
+	static const char *const HEAD[] = {"ART", "TABLE", "DIFF", "BEHIND", "ABOVE"};
+	for (int k = 0; k < CMP_PICS; ++k) cv.text(6 + k * (CMP_W + g), 17 + CMP_H, CMP_W, HEAD[k], Dash::DIM, false, 1);
+	cv.text(6, 28 + CMP_H, W - 12, scoreText(c.score), scoreColor(worstScore(c.score)));
+	cv.text(6, 38 + CMP_H, W - 12, "RED: TABLE ONLY  BLUE: ART ONLY  YELLOW: OTHER COLOUR  GREY: SAME", Dash::DIM);
+	return true;
+}
+
+bool Board::Impl::partSheet(const MapDataSet *ds, std::vector<uint32_t> &px, int &W, int &H, std::string &report)
+{
+	if (!ds || !game || !voxels) return false;
+	struct Cell { int id, kind; const MapData *md; Comparison c; };
+	std::vector<Cell> cells;
+	std::vector<std::string> skipped;
+	for (size_t i = 0; i < ds->getSize(); ++i)
+	{
+		const MapData *md = const_cast<MapDataSet*>(ds)->getObject(i);
+		if (!md) continue;
+		int kind = (int)md->getObjectType();
+		if (kind < 0 || kind >= O_MAX) { skipped.push_back(std::to_string(i) + " (type " + std::to_string(kind) + ")"); continue; }
+		Cell cell{(int)i, kind, md, {}};
+		TileKey k;
+		k.m[kind] = md;
+		compareKey(k, true, cell.c);
+		if (cell.c.empty && cell.c.score.art == 0) continue; // nothing drawn, nothing to draw
+		cells.push_back(std::move(cell));
+	}
+	const int g = 2, pad = 4, cols = 4;
+	const int cellW = CMP_PICS * CMP_W + (CMP_PICS - 1) * g + 2 * pad + 4, cellH = 11 + CMP_H + 24;
+	const int head = 46;
+	int rows = ((int)cells.size() + cols - 1) / cols;
+	W = cols * cellW + 8;
+	H = head + std::max(1, rows) * cellH + 8;
+	Dash::Canvas cv(game, px, W, H);
+	if (!cv.ok()) return false;
+	int sum = 0, low = 0;
+	int sumC = 0;
+	for (const Cell &cl : cells) { sum += cl.c.score.shape(); sumC += cl.c.score.colour(); if (worstScore(cl.c.score) < 70) ++low; }
+	std::ostringstream t1, t2;
+	t1 << ds->getName() << "  " << cells.size() << " parts  (" << OXCE_VR_PROTOTYPE_VERSION << ", relief " << (VR::reliefMode() == VR::RELIEF_STEPS ? "steps" : VR::reliefMode() == VR::RELIEF_SMOOTH ? "smooth" : "flat") << ")";
+	t2 << "average shape " << (cells.empty() ? 0 : sum / (int)cells.size()) << "%, colour " << (cells.empty() ? 0 : sumC / (int)cells.size()) << "%,  " << low << " under 70%"
+		<< (skipped.empty() ? std::string() : ",  left out (not a floor, wall or object):");
+	for (const std::string &s : skipped) t2 << " " << s;
+	cv.text(6, 4, W - 12, t1.str(), Dash::GOLD, true);
+	cv.text(6, 22, W - 12, t2.str(), Dash::TEXT);
+	cv.text(6, 33, W - 12, "ART | TABLE FROM THE GAME'S ANGLE | DIFF: RED TABLE ONLY, BLUE ART ONLY, YELLOW OTHER COLOUR, GREY SAME (DIM EDGES NOT COUNTED) | TABLE FROM BEHIND, LOW | FROM ABOVE", Dash::DIM);
+	std::vector<std::pair<int, std::string>> lines;
+	for (size_t n = 0; n < cells.size(); ++n)
+	{
+		const Cell &cl = cells[n];
+		int x = 4 + (int)(n % cols) * cellW, y = head + (int)(n / cols) * cellH;
+		cv.rect(x, y, cellW - 4, cellH - 4, Dash::C(14, 22, 46));
+		std::string did = didText(cl.c, cl.kind, cl.md);
+		cv.text(x + pad, y + 2, cellW - 2 * pad, ds->getName() + " " + std::to_string(cl.id) + "  " + PART_KIND[cl.kind], Dash::GOLD);
+		pasteFour(cv, cl.c, x + pad, y + 12, g);
+		const VR::Compare::Score &s = cl.c.score;
+		std::ostringstream sc;
+		sc << "SHAPE " << s.shape() << "%  COLOUR " << s.colour() << "%  +" << s.tablePct() << "% -" << s.artPct() << "%";
+		cv.text(x + pad, y + 14 + CMP_H, 170, sc.str(), scoreColor(worstScore(s)));
+		if (!did.empty()) cv.text(x + pad + 170, y + 14 + CMP_H, cellW - 2 * pad - 170, did, Dash::CYAN, false, 2);
+		std::ostringstream ln;
+		ln << ds->getName() << " " << cl.id << "\t" << PART_KIND[cl.kind] << "\tshape " << s.shape() << "%\tcolour " << s.colour() << "%\ttable only +" << s.tablePct()
+			<< "%\tart only -" << s.artPct() << "%" << (did.empty() ? "" : "\t" + did);
+		lines.push_back({worstScore(s), ln.str()});
+	}
+	std::stable_sort(lines.begin(), lines.end(), [](const std::pair<int, std::string> &a, const std::pair<int, std::string> &b) { return a.first < b.first; });
+	std::ostringstream rep;
+	rep << "== " << t1.str() << "\n" << t2.str() << "\n";
+	for (auto &l : lines) rep << l.second << "\n";
+	report = rep.str();
+	return true;
+}
+
 bool Board::Impl::inspectPicture(const Position &pos, std::vector<uint32_t> &px, int &W, int &H)
 {
 	if (!battle || !game) return false;
 	Tile *t = battle->getTile(pos);
 	if (!t) return false;
-	W = 320; H = 200;
+	W = 320; H = 300; // the comparison strip below (0.21.0-terrain.8)
 	Dash::Canvas cv(game, px, W, H);
 	if (!cv.ok()) return false;
 	static const char *const KIND[] = {"FLOOR", "WEST WALL", "NORTH WALL", "OBJECT"};
@@ -3694,8 +3967,13 @@ bool Board::Impl::inspectPicture(const Position &pos, std::vector<uint32_t> &px,
 		Comparison c;
 		compareKey(key, false, c);
 		std::ostringstream m;
-		m << "MATCH " << c.score.shape() << "%  +" << c.score.tablePct() << " -" << c.score.artPct();
-		cv.text(6, 160, 108, m.str(), scoreColor(c.score.shape()));
+		m << "SHAPE " << c.score.shape() << "%  COLOUR " << c.score.colour() << "%";
+		cv.text(6, 160, 108, m.str(), scoreColor(worstScore(c.score)));
+		// the comparison: art, table from the game's angle, difference, behind, above
+		const int g = 6, sx = (W - (CMP_PICS * CMP_W + (CMP_PICS - 1) * g)) / 2, sy = 196;
+		pasteFour(cv, c, sx, sy, g);
+		static const char *const HEAD[] = {"ART", "TABLE", "DIFF", "BEHIND", "ABOVE"};
+		for (int k = 0; k < CMP_PICS; ++k) cv.text(sx + k * (CMP_W + g), sy + CMP_H + 1, CMP_W, HEAD[k], Dash::DIM, false, 1);
 	}
 	// marked?
 	for (const LabMark &m : lab->marks())
@@ -3707,186 +3985,7 @@ bool Board::Impl::inspectPicture(const Position &pos, std::vector<uint32_t> &px,
 			cv.text(6, 179, 108, m.reasons, Dash::RED);
 			break;
 		}
-	cv.text(6, 188, 308, pinned ? "PINNED (trigger again to release)   A: MARK / UNMARK" : "TRIGGER: PIN   A: MARK / UNMARK", Dash::DIM);
-	return true;
-}
-
-// ================================================================== the lab's comparison with the art
-
-static const int CMP_W = 48, CMP_H = 80;  // a comparison picture
-static const int CMP_DX = 8, CMP_DY = 24; // where a tile's sprite (32 x 40) sits in it: room for crowns above
-static const char *const PART_KIND[] = {"FLOOR", "WEST WALL", "NORTH WALL", "OBJECT"};
-
-void Board::Impl::compareKey(const TileKey &k, bool scratchBuild, Comparison &c)
-{
-	Proto local;
-	const Proto *pp = &local;
-	if (scratchBuild)
-	{
-		if (scratch.px.empty() || scratch.full || scratch.y > ATLAS / 2) scratch.reset();
-		build = &scratch;
-		buildTile(k, local);
-		build = &atlas;
-	}
-	else pp = &tileProto(k);
-	const Atlas &at = scratchBuild ? scratch : atlas;
-	c.grew = pp->grew;
-	c.stray = pp->stray;
-	c.model = pp->model;
-	c.card = pp->card;
-	c.empty = pp->idx.empty();
-	// the art as the game draws the tile: floor, walls, object, each where the table lines it up
-	c.art.assign((size_t)CMP_W * CMP_H, 0u);
-	for (int part : {O_FLOOR, O_WESTWALL, O_NORTHWALL, O_OBJECT})
-	{
-		const MapData *md = k.m[part];
-		if (!md || !md->getDataset() || !md->getDataset()->getSurfaceset()) continue;
-		const Surface *spr = static_cast<const SurfaceSet*>(md->getDataset()->getSurfaceset())->getFrame(md->getSprite(0));
-		if (!spr) continue;
-		for (int y = 0; y < spr->getHeight(); ++y)
-			for (int x = 0; x < spr->getWidth(); ++x)
-			{
-				Uint8 v = spr->getPixel(x, y);
-				int X = x + CMP_DX, Y = y - pp->yoffs[part] + CMP_DY;
-				if (v && X >= 0 && Y >= 0 && X < CMP_W && Y < CMP_H) c.art[(size_t)Y * CMP_W + X] = rgba(pal[v]);
-			}
-	}
-	VR::Compare::Image img;
-	VR::Compare::render(pp->verts, pp->idx, at.px.data(), ATLAS, ATLAS, VR::Compare::isoView((float)CMP_DX, (float)CMP_DY), CMP_W, CMP_H, false, img);
-	c.score = VR::Compare::diff(img, c.art, Dash::BG, c.diff);
-	c.table.assign((size_t)CMP_W * CMP_H, Dash::BG);
-	for (size_t i = 0; i < c.table.size(); ++i) if (img.cover[i] >= 128) c.table[i] = img.px[i];
-	// from behind (the north-west, the sides the art never shows) and low
-	VR::Compare::render(pp->verts, pp->idx, at.px.data(), ATLAS, ATLAS, VR::Compare::lookView(225.f, 20.f, 1.8f, CMP_W * 0.5f, CMP_H - 12.f), CMP_W, CMP_H, true, img);
-	c.look.assign((size_t)CMP_W * CMP_H, Dash::BG);
-	for (size_t i = 0; i < c.look.size(); ++i) if (img.cover[i] >= 128) c.look[i] = img.px[i];
-}
-
-/// The colour a shape score is written in: green from 85, amber from 70, red under.
-static uint32_t scoreColor(int shape) { return shape >= 85 ? Dash::GREEN : shape >= 70 ? Dash::AMBER : Dash::RED; }
-
-/// What the table did with a part, for the sheets and the comparison picture.
-static std::string didText(const Board::Impl::Comparison &c, int part, const MapData *md)
-{
-	if (c.model & (1 << part)) return "hand-built";
-	if (c.card) return "no voxels: cards";
-	if (part == O_FLOOR && VR::reliefSpec(md)) return VR::reliefMode() == VR::RELIEF_FLAT ? "relief (off)" : "relief";
-	if (c.grew & (1 << part)) return "crown added";
-	if (c.stray & (1 << part)) return "faces dropped";
-	return "";
-}
-
-/// The four pictures side by side at x, y with gap g.
-static void pasteFour(Dash::Canvas &cv, const Board::Impl::Comparison &c, int x, int y, int g)
-{
-	const std::vector<uint32_t> *pics[4] = {&c.art, &c.table, &c.diff, &c.look};
-	for (int k = 0; k < 4; ++k)
-	{
-		int x0 = x + k * (CMP_W + g);
-		cv.rect(x0, y, CMP_W, CMP_H, Dash::BG);
-		for (int j = 0; j < CMP_H; ++j)
-			for (int i = 0; i < CMP_W; ++i)
-			{
-				uint32_t v = (*pics[k])[(size_t)j * CMP_W + i];
-				if ((v >> 24) < 128) continue;
-				int X = x0 + i, Y = y + j;
-				if (X < cv.W && Y < cv.H) cv.px[(size_t)Y * cv.W + X] = v;
-			}
-		cv.frame(x0 - 1, y - 1, CMP_W + 2, CMP_H + 2, Dash::LINE);
-	}
-}
-
-static std::string scoreText(const VR::Compare::Score &s)
-{
-	std::ostringstream o;
-	o << "SHAPE " << s.shape() << "%  +" << s.tablePct() << "% TABLE ONLY  -" << s.artPct() << "% ART ONLY";
-	return o.str();
-}
-
-bool Board::Impl::comparePicture(const Position &pos, std::vector<uint32_t> &px, int &W, int &H)
-{
-	if (!battle || !game || !voxels) return false;
-	Tile *t = battle->getTile(pos);
-	if (!t) return false;
-	Comparison c;
-	compareKey(tileKey(t, pos.x, pos.y, pos.z), false, c);
-	const int g = 6;
-	W = 4 * CMP_W + 3 * g + 12;
-	H = 20 + CMP_H + 34;
-	Dash::Canvas cv(game, px, W, H);
-	if (!cv.ok()) return false;
-	std::ostringstream title;
-	title << (lab ? lab->terrainName() + "  " + lab->pageKey() + "  " : std::string()) << "tile " << pos.x << "," << pos.y << "," << pos.z;
-	cv.text(6, 4, W - 12, title.str(), Dash::GOLD);
-	pasteFour(cv, c, 6, 16, g);
-	static const char *const HEAD[] = {"ART", "TABLE", "DIFF", "BEHIND"};
-	for (int k = 0; k < 4; ++k) cv.text(6 + k * (CMP_W + g), 17 + CMP_H, CMP_W, HEAD[k], Dash::DIM, false, 1);
-	cv.text(6, 28 + CMP_H, W - 12, scoreText(c.score), scoreColor(c.score.shape()));
-	cv.text(6, 38 + CMP_H, W - 12, "RED: TABLE ONLY  BLUE: ART ONLY  GREY: BOTH", Dash::DIM);
-	return true;
-}
-
-bool Board::Impl::partSheet(const MapDataSet *ds, std::vector<uint32_t> &px, int &W, int &H, std::string &report)
-{
-	if (!ds || !game || !voxels) return false;
-	struct Cell { int id, kind; const MapData *md; Comparison c; };
-	std::vector<Cell> cells;
-	std::vector<std::string> skipped;
-	for (size_t i = 0; i < ds->getSize(); ++i)
-	{
-		const MapData *md = const_cast<MapDataSet*>(ds)->getObject(i);
-		if (!md) continue;
-		int kind = (int)md->getObjectType();
-		if (kind < 0 || kind >= O_MAX) { skipped.push_back(std::to_string(i) + " (type " + std::to_string(kind) + ")"); continue; }
-		Cell cell{(int)i, kind, md, {}};
-		TileKey k;
-		k.m[kind] = md;
-		compareKey(k, true, cell.c);
-		if (cell.c.empty && cell.c.score.art == 0) continue; // nothing drawn, nothing to draw
-		cells.push_back(std::move(cell));
-	}
-	const int g = 2, pad = 4, cols = 4;
-	const int cellW = 4 * CMP_W + 3 * g + 2 * pad + 4, cellH = 11 + CMP_H + 24;
-	const int head = 46;
-	int rows = ((int)cells.size() + cols - 1) / cols;
-	W = cols * cellW + 8;
-	H = head + std::max(1, rows) * cellH + 8;
-	Dash::Canvas cv(game, px, W, H);
-	if (!cv.ok()) return false;
-	int sum = 0, low = 0;
-	for (const Cell &cl : cells) { sum += cl.c.score.shape(); if (cl.c.score.shape() < 70) ++low; }
-	std::ostringstream t1, t2;
-	t1 << ds->getName() << "  " << cells.size() << " parts  (" << OXCE_VR_PROTOTYPE_VERSION << ", relief " << (VR::reliefMode() == VR::RELIEF_STEPS ? "steps" : VR::reliefMode() == VR::RELIEF_SMOOTH ? "smooth" : "flat") << ")";
-	t2 << "average shape " << (cells.empty() ? 0 : sum / (int)cells.size()) << "%,  " << low << " under 70%"
-		<< (skipped.empty() ? std::string() : ",  left out (not a floor, wall or object):");
-	for (const std::string &s : skipped) t2 << " " << s;
-	cv.text(6, 4, W - 12, t1.str(), Dash::GOLD, true);
-	cv.text(6, 22, W - 12, t2.str(), Dash::TEXT);
-	cv.text(6, 33, W - 12, "ART | TABLE FROM THE GAME'S ANGLE | DIFF: RED TABLE ONLY, BLUE ART ONLY, GREY BOTH (DIM EDGES NOT COUNTED) | TABLE FROM BEHIND, LOW", Dash::DIM);
-	std::vector<std::pair<int, std::string>> lines;
-	for (size_t n = 0; n < cells.size(); ++n)
-	{
-		const Cell &cl = cells[n];
-		int x = 4 + (int)(n % cols) * cellW, y = head + (int)(n / cols) * cellH;
-		cv.rect(x, y, cellW - 4, cellH - 4, Dash::C(14, 22, 46));
-		std::string did = didText(cl.c, cl.kind, cl.md);
-		cv.text(x + pad, y + 2, cellW - 2 * pad, ds->getName() + " " + std::to_string(cl.id) + "  " + PART_KIND[cl.kind], Dash::GOLD);
-		pasteFour(cv, cl.c, x + pad, y + 12, g);
-		const VR::Compare::Score &s = cl.c.score;
-		std::ostringstream sc;
-		sc << "SHAPE " << s.shape() << "%   +" << s.tablePct() << "%  -" << s.artPct() << "%";
-		cv.text(x + pad, y + 14 + CMP_H, 120, sc.str(), scoreColor(s.shape()));
-		if (!did.empty()) cv.text(x + pad + 120, y + 14 + CMP_H, cellW - 2 * pad - 120, did, Dash::CYAN, false, 2);
-		std::ostringstream ln;
-		ln << ds->getName() << " " << cl.id << "\t" << PART_KIND[cl.kind] << "\tshape " << s.shape() << "%\ttable only +" << s.tablePct()
-			<< "%\tart only -" << s.artPct() << "%" << (did.empty() ? "" : "\t" + did);
-		lines.push_back({s.shape(), ln.str()});
-	}
-	std::stable_sort(lines.begin(), lines.end(), [](const std::pair<int, std::string> &a, const std::pair<int, std::string> &b) { return a.first < b.first; });
-	std::ostringstream rep;
-	rep << "== " << t1.str() << "\n" << t2.str() << "\n";
-	for (auto &l : lines) rep << l.second << "\n";
-	report = rep.str();
+	cv.text(6, 288, 308, pinned ? "PINNED (TOUCH IT OR TRIGGER AGAIN TO RELEASE)   A: MARK / UNMARK" : "TOUCH THE TILE OR TRIGGER: PIN   A: MARK / UNMARK", Dash::DIM);
 	return true;
 }
 
@@ -4273,6 +4372,34 @@ bool Board::partSheet(const MapDataSet *ds, std::vector<uint32_t> &px, int &w, i
 
 const void *Board::palette() const { return _p->pal; }
 
+bool Board::labActive() const { return _p->lab && _p->hasBattle; }
+
+void Board::labFinger(int x, int y, int z)
+{
+	Impl &p = *_p;
+	if (!p.lab || !p.hasBattle) return;
+	p.labFingerTile = Position(x, y, z);
+	p.fingerAge = 0.25f;
+}
+
+void Board::labTouch(int x, int y, int z)
+{
+	Impl &p = *_p;
+	if (!p.lab || !p.hasBattle) return;
+	Position t(x, y, z);
+	if (p.pinned && p.pinTile == t) p.pinned = false;
+	else { p.pinned = true; p.pinTile = t; }
+}
+
+bool Board::labFingerMark()
+{
+	Impl &p = *_p;
+	revalidate(p);
+	if (!p.lab || !p.hasBattle || p.fingerAge <= 0.f) return false;
+	p.lab->tileAction(p.labFingerTile.x, p.labFingerTile.y, p.labFingerTile.z);
+	return true;
+}
+
 bool Board::mapFootprint(glm::mat4 &worldToMap, glm::vec2 &size) const
 {
 	const Impl &p = *_p;
@@ -4363,6 +4490,7 @@ void Board::update(Game *game, float dt)
 	Impl &p = *_p;
 	p.game = game;
 	p.time += dt;
+	p.fingerAge = std::max(0.f, p.fingerAge - dt);
 	SavedGame *sg = game->getSavedGame();
 	SavedBattleGame *sb = sg ? sg->getSavedBattle() : nullptr;
 	// the battlescape screen must really be alive (the saved battle keeps a stale pointer after it closes)

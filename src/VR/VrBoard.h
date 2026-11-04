@@ -99,6 +99,14 @@ public:
 	bool mapFootprint(glm::mat4 &worldToMap, glm::vec2 &size) const;
 	/// The terrain lab's inspect panel of a tile (RGBA, w x h), for its mark screenshots.
 	bool inspectPicture(int x, int y, int z, std::vector<uint32_t> &px, int &w, int &h);
+	/// The terrain lab shows its map (0.21.0-terrain.8: fingertip inspection).
+	bool labActive() const;
+	/// The terrain lab: a fingertip is over this tile (its inspect panel shows; refresh every frame).
+	void labFinger(int x, int y, int z);
+	/// The terrain lab: a fingertip touched this tile: pin its panel, or release it if it was pinned.
+	void labTouch(int x, int y, int z);
+	/// The terrain lab: A while a fingertip is over a tile marks (or unmarks) that tile; false: no such tile.
+	bool labFingerMark();
 	/// The terrain lab: a tile's shape against its art (VrCompare.h): the art, the shape from the game's angle,
 	/// where they differ, the shape from behind, and the score.
 	bool comparePicture(int x, int y, int z, std::vector<uint32_t> &px, int &w, int &h);

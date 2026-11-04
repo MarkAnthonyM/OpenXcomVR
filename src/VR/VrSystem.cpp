@@ -997,7 +997,10 @@ static void updateHeadsetInput(float dt)
 	// right click only with the laser out (over the table the thumb rests on A to pinch):
 	// A on Index, the right stick click on Touch (A/B zoom there), X on Frame
 	const Button &rc = H[1].kind == CTRL_TOUCH ? H[1].stickClick : H[1].kind == CTRL_FRAME ? H[1].x : H[1].a;
-	if (rc.pressed && S->pointerHand == 1 && S->laserOn[1] && !scanning)
+	// the terrain lab: A while a fingertip is over a tile marks that tile (no laser needed)
+	const bool labMarked = rc.pressed && !scanning && S->board.labFingerMark();
+	if (labMarked) S->xr.haptic(1, 0.4f, 0.02f);
+	if (!labMarked && rc.pressed && S->pointerHand == 1 && S->laserOn[1] && !scanning)
 	{
 		if (S->pointerOnPanel) { pushButton(SDL_BUTTON_RIGHT, true); S->rightSent = true; }
 		else if (S->pointerOnBoard) S->board.click(SDL_BUTTON_RIGHT);

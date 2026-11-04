@@ -57,14 +57,19 @@ struct Score
 	int tableOnly = 0; // the table has, the art hasn't (not counting one-pixel edges)
 	int artOnly = 0;   // the art has, the table hasn't
 	int art = 0;       // pixels of art
+	int colourOff = 0; // pixels both have, in clearly different colours (3 x 3 averages)
 	/// Shared pixels over everything either has (edges left out), 0..100; 100 when both are empty.
 	int shape() const { int u = both + tableOnly + artOnly; return u ? (int)(100.0 * both / u + 0.5) : 100; }
 	int tablePct() const { return art ? (int)(100.0 * tableOnly / art + 0.5) : (tableOnly ? 100 : 0); }
 	int artPct() const { return art ? (int)(100.0 * artOnly / art + 0.5) : 0; }
+	/// Pixels both have in about the same colour, 0..100 (0.21.0-terrain.8: shape alone missed roots
+	/// painted over in grass colours).
+	int colour() const { return both ? (int)(100.0 * (both - colourOff) / both + 0.5) : 100; }
 };
 
 /// Compares a table picture with the art (RGBA, same size, alpha 0 = empty). diffPx: the art in grey,
-/// table-only pixels red, art-only pixels blue (one-pixel edges dim), nothing in the background colour bg.
+/// table-only pixels red, art-only pixels blue (one-pixel edges dim), shared pixels whose colours clearly
+/// differ (averaged over 3 x 3, so leaves picked a pixel or two away don't count) yellow, nothing in bg.
 Score diff(const Image &table, const std::vector<uint32_t> &art, uint32_t bg, std::vector<uint32_t> &diffPx);
 
 }

@@ -139,6 +139,18 @@ Score diff(const Image &table, const std::vector<uint32_t> &art, uint32_t bg, st
 			if (a && t)
 			{
 				++s.both;
+				// colours averaged over 3 x 3 (each side's own pixels)
+				float ca[3] = {0, 0, 0}, ct[3] = {0, 0, 0};
+				int na = 0, nt = 0;
+				for (int dy = -1; dy <= 1; ++dy)
+					for (int dx = -1; dx <= 1; ++dx)
+					{
+						if (A(x + dx, y + dy)) { uint32_t c = art[(size_t)(y + dy) * w + x + dx]; ca[0] += c & 255; ca[1] += (c >> 8) & 255; ca[2] += (c >> 16) & 255; ++na; }
+						if (T(x + dx, y + dy)) { uint32_t c = table.px[(size_t)(y + dy) * w + x + dx]; ct[0] += c & 255; ct[1] += (c >> 8) & 255; ct[2] += (c >> 16) & 255; ++nt; }
+					}
+				float d2 = 0.f;
+				for (int k = 0; k < 3; ++k) { float d = ca[k] / na - ct[k] / nt; d2 += d * d; }
+				if (d2 > 48.f * 48.f) { ++s.colourOff; o = 0xFF20D0F0u; continue; } // yellow
 				uint32_t c = art[(size_t)y * w + x];
 				uint32_t l = (((c & 255) * 3 + ((c >> 8) & 255) * 6 + ((c >> 16) & 255)) / 10) * 7 / 10 + 20;
 				o = l | (l << 8) | (l << 16) | 0xFF000000u;
