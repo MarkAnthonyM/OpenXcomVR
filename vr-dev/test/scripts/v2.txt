@@ -16,6 +16,7 @@ boardinfo
 waitidle 30000
 boardinfo
 wait 1500
+waitframes 40
 boardinfo
 shot shots/v2_walked.png
 quit

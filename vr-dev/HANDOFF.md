@@ -134,7 +134,7 @@ Script commands (one per line; numbers are optional with defaults):
 | `reveal`, `findset NAME`, `centertile x y` | the whole map explored (looking at terrain without fog); log where a terrain set's tiles are and centre the table on them (`findset UFO1`, `findset PLANE`); centre the table on a tile |
 | `nofloor`, `floorids [part]` | log ground tiles without a floor part; which parts (0 floor .. 3 object) the ground level uses, how often, one place each |
 | `closeup x y z name` | the terrain lab's two clean shots of a tile (`shots/<name>_view.png`, `_close.png`) |
-| `dumpart SET` | the lab's terrain set's sprites as palette indices (`shots/art/<SET>_<id>.png`), the parts list and the palette: input for `vr-dev/models/` |
+| `dumpart SET` | any terrain set's sprites (the lab's map or not: `UFO1`) as palette indices (`shots/art/<SET>_<id>.png`), the parts list and the palette: input for `vr-dev/models/` |
 | `comparepart SET id` | the lab's comparison picture of one part of any terrain set on its own (`shots/part_<SET>_<id>.png`) |
 | `compare x y z name`, `inspect x y z name`, `sheets [all\|TERRAIN]` | the lab's comparison picture of a tile (`shots/<name>_compare.png`); its inspect panel (`_art.png`); contact sheets (current terrain without an argument) |
 | `log text`, `quit` | |
@@ -152,7 +152,7 @@ raw s16 stereo at 22050 Hz, not in real time).
 
 On this slow machine (2 CPUs): run.sh stops a run after `VR_RUN_TIMEOUT`
 seconds (default 400; the tap test needs ~250). Known flaky: `bh` (even
-with its longer wait), and the first test after the machine or Xvfb
+with its longer wait), `h2` once in terrain.13, and the first test after the machine or Xvfb
 restarts (it can segfault; a rerun passes). If every test suddenly fails
 with things missing, Xvfb has died: run.sh restarts it on the next run.
 
@@ -179,10 +179,10 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   scanner -> 0.16.0 (0.20.1 fix: 2x2 units count once, test `bigscan`); select (taps) -> 0.17.0;
   shade (indoors rule) -> 0.18.0; fog -> 0.19.0; hidden (alien turn) -> 0.20.0; rain (weather sound)
   -> 0.21.0. Test `v2` failed on 0.16.1 (0.062 m off centre, check allows 0.06); passed on terrain.1; fails again
-  the same way on terrain.5 and .6 (checked: identical readout on both).
+  the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.12).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.13).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -341,6 +341,33 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     byte).
   - terrain.12 (owner, after his headset test: stays with 32 x 32 x 48): models16/, -vrModelRes, coarsen()
     and the generator's --res are gone. Model::perX / perZ and voxlib Grid(per) stay (2 = the 32 models).
+  - terrain.13 (owner: start the wheat and the small scout; apples as 4 voxels). Owner's choices: wheat dense
+    like the art, 3 versions mixed by tile position; scout a thin shell like the art; an apple a 2 x 2 square
+    facing out. farm_trees.py apple() (tree 9: 22 -> 88 fruit voxels; 12: 2 -> 8, its mirrored apples don't
+    find leaves). VrModels: kind 5 PLAIN (any pixel; the wheat's mid browns class as FRUIT, so WOOD voxels
+    skipped them and striped the field dark below / pale gold on top), versions `<key>-2.vox`.. (modelVariants;
+    TileKey::variant from a position hash in tileKey), `<key>.ref` ("VRF1", float baseY, uint32 count, then
+    part/column/row bytes per solid voxel in z, y, x order; 255 = own sprite) -> Model::ref / baseY; addModel
+    takes the part's MapData for the set; floors can be modelled (buildTile modelledFloor; bottom faces at
+    z 1 drawn when baseY != 0). Atlas: shelves by height class (4/8/12/16/then by 8), usedPercent() in
+    boardinfo; first wheat (9000 quads a tile, 1 model voxel stalks) filled the 2048 atlas in the farm save
+    and looped "atlas full; rebuilding". wheat.py: upright 2 x 2 stalks on 58% of table voxels, tops 8-12,
+    ears 2-3.5 nudged a voxel, thin tips: ~1700 quads a tile; CULTIVAT 4 shape 92% colour 100%; farm save
+    atlas 41% rows / 29% texels. small_scout.py: profile fitted to the composite (R 23, rim 4, top 23, rb 18,
+    e 1.4; IoU 0.984; `--fit`), shell 2 model voxels, underside layer z 1 + inside floor z 2, slices per
+    tile (UFO1 0-7 level 1), cap = UFO1 10 (floor on level 2) from level-1 height 16 with baseY -8, legs
+    16-19 from the sprites (top 14.1 out / 25 up, foot pad 20.3 out). Refs: outer voxels mirrored to the near
+    half (dx + dz -> -(dx + dz), same screen column) into the composite of hull + cap; inner/floor voxels to
+    the far half into the far pieces (W, N, NW + centre floor). UFO1A map bytes - 2 = UFO1 ids (BLANKS
+    first). dumpart now reaches any set the lab knows (findSet). Sheets vs terrain.9: only UFO1 and wheat
+    moved (UFO1 hull 45-72% -> 71-92% shape; legs 38-68 -> 95-100; cap 96 -> 52: the model holds the dome over
+    the centre tile, the cap's sprite only the light; isolated far/side slices show their inside, so colour
+    63-76% for 7 and 1). Not yet seen in the headset.
+    Cost: boardinfo now reports "terrain triangles" (all built chunks): `outside` 172k without the wheat
+    models, 305k with them (llvmpipe: ~0.9 -> ~0.8 s a frame). That pushed v3 over its timing (the table
+    advances at most 0.1 s a frame: VrSystem dt cap), so v3 and v2 wait 40 more frames before their last
+    readout; both pass now (v2's old 0.062 m failure was the same timing). Full run: h2 and bh failed once,
+    h2 passed alone (flaky, like bh).
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -515,8 +542,8 @@ Room and rendering
 - Items lying on the floor aren't shown on the table map; ground items taller
   than three cells are only in the screen's inventory. (Planned on the terrain branch.)
 - Terrain parts' animations (8 frames) aren't shown: the table builds frame 0. (Planned on the terrain branch.)
-- Craft and UFO hulls are their collision voxels; the small scout is close to a box. A hand-built scout
-  model is planned on the terrain branch (shortlist after the farm trees: Skyranger, small scout, wheat).
+- Craft and UFO hulls are their collision voxels (the small scout hand-built since terrain.13; shortlist
+  left: Skyranger).
 - Weather and the sun have only been judged in the desktop preview (no
   headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).

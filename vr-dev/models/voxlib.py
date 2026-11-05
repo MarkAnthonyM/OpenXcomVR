@@ -1,6 +1,7 @@
 """Helpers for the hand-built terrain models (see src/VR/VrModels.h).
 
-Models are shapes only: each voxel is a kind (1 wood, 2 leaves, 3 fruit, 4 ground patch), never a colour
+Models are shapes only: each voxel is a kind (1 wood, 2 leaves, 3 fruit, 4 ground patch, 5 plain: whatever
+the sprite draws there), never a colour
 from the game. The table colours them from the player's own sprites. The sprites used to design a model
 come from the preview's `dumpart SET` test op ($VR_RUN/shots/art/), which needs the player's X-COM data:
 they are read here, never written into the repo.
@@ -14,9 +15,9 @@ import os, struct
 import numpy as np
 from PIL import Image
 
-WOOD, LEAF, FRUIT, PATCH = 1, 2, 3, 4
+WOOD, LEAF, FRUIT, PATCH, PLAIN = 1, 2, 3, 4, 5
 # preview colours for MagicaVoxel (the table never uses them)
-PREVIEW = {WOOD: (110, 74, 40), LEAF: (60, 140, 50), FRUIT: (200, 40, 30), PATCH: (120, 170, 70)}
+PREVIEW = {WOOD: (110, 74, 40), LEAF: (60, 140, 50), FRUIT: (200, 40, 30), PATCH: (120, 170, 70), PLAIN: (190, 150, 70)}
 
 ART = os.path.join(os.environ.get('VRDEV', os.path.expanduser('~/vrdev')), 'run', 'shots', 'art')
 

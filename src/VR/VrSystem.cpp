@@ -1901,7 +1901,7 @@ static void runScript()
 		}
 		else if (c.op == "dumpart" && !c.args.empty())
 		{
-			// dumpart SET : each part's sprite of a terrain set of the lab's map as an 8-bit picture of palette
+			// dumpart SET : each part's sprite of a terrain set the lab knows as an 8-bit picture of palette
 			// indices (shots/art/<SET>_<id>.png, grey = index), the parts (art/<SET>.txt: id type sprite yoff) and
 			// the palette (art/palette.txt): the hand-built models are designed from these (vr-dev/models)
 			TerrainLabState *lab = nullptr;
@@ -1909,10 +1909,12 @@ static void runScript()
 				if (auto *l = dynamic_cast<TerrainLabState*>(st)) lab = l;
 			const SDL_Color *pal = static_cast<const SDL_Color*>(S->board.palette());
 			CrossPlatform::createFolder("shots/art");
-			if (lab && lab->battle())
-				for (MapDataSet *ds : *lab->battle()->getMapDataSets())
+			// any terrain set the lab knows (a UFO's or craft's too), not only the lab map's
+			std::vector<MapDataSet*> sets;
+			if (MapDataSet *one = lab ? lab->findSet(c.args[0]) : nullptr) sets.push_back(one);
+			if (!sets.empty())
+				for (MapDataSet *ds : sets)
 				{
-					if (ds->getName() != c.args[0]) continue;
 					std::ofstream list("shots/art/" + ds->getName() + ".txt");
 					for (size_t i = 0; i < ds->getSize(); ++i)
 					{

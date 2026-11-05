@@ -119,24 +119,43 @@ static uint32_t scoreColor(int shape); // the lab's comparison (below)
 struct Atlas
 {
 	std::vector<uint32_t> px;
-	int x = 0, y = 0, rowH = 0;
+	// shelves by height class (0.21.0-terrain.13): a face goes on a shelf of its height rounded up (4, 8,
+	// 12, 16, then by 8), so the hand-built models' tall thin stalk faces and their tiny ear faces don't share
+	// rows (one row as tall as its tallest face wasted most of the atlas with the wheat)
+	struct Shelf { int h, x, y; };
+	std::vector<Shelf> shelves;
+	int nextY = 0;
+	long texels = 0; // handed out
 	bool dirty = false, full = false;
 	VR::Texture tex;
 
 	void reset()
 	{
 		px.assign((size_t)ATLAS * ATLAS, 0u);
-		x = y = rowH = 0;
+		shelves.clear();
+		nextY = 0;
+		texels = 0;
 		dirty = true;
 		full = false;
 	}
+	int usedPercent() const { return (int)(texels * 100 / ((long)ATLAS * ATLAS)); }
 	bool alloc(int w, int h, int &ox, int &oy)
 	{
-		if (x + w > ATLAS) { x = 0; y += rowH; rowH = 0; }
-		if (y + h > ATLAS) { full = true; return false; }
-		ox = x; oy = y;
-		x += w;
-		rowH = std::max(rowH, h);
+		if (w > ATLAS || h > ATLAS) { full = true; return false; }
+		const int bh = h <= 4 ? 4 : h <= 8 ? 8 : h <= 12 ? 12 : h <= 16 ? 16 : (h + 7) / 8 * 8;
+		Shelf *s = nullptr;
+		for (Shelf &c : shelves)
+			if (c.h == bh && c.x + w <= ATLAS) { s = &c; break; }
+		if (!s)
+		{
+			if (nextY + bh > ATLAS) { full = true; return false; }
+			shelves.push_back({bh, 0, nextY});
+			nextY += bh;
+			s = &shelves.back();
+		}
+		ox = s->x; oy = s->y;
+		s->x += w;
+		texels += (long)w * h;
 		dirty = true;
 		return true;
 	}
@@ -176,6 +195,7 @@ struct Chunk
 	bool terrainKnown = false;
 	std::unique_ptr<Mesh> mesh;
 	bool empty = true;
+	size_t tris = 0; // triangles in its mesh (boardinfo)
 };
 
 struct UnitCard
@@ -336,9 +356,11 @@ struct Board::Impl
 		const MapData *m[O_MAX] = {nullptr, nullptr, nullptr, nullptr};
 		int join = 0; // floor relief carrying on into the neighbours (VR::reliefField)
 		int edges = 0; // sides (1 west, 2 east, 4 north, 8 south) where the floor's thickness shows (no floor beside)
+		int variant = 0; // which version of a hand-built object (VrModels: modelVariants), by the tile's position
 		bool operator<(const TileKey &o) const
 		{
 			if (join != o.join) return join < o.join;
+			if (variant != o.variant) return variant < o.variant;
 			if (edges != o.edges) return edges < o.edges;
 			return std::lexicographical_compare(m, m + O_MAX, o.m, o.m + O_MAX);
 		}
@@ -349,9 +371,11 @@ struct Board::Impl
 	void addCard(const MapData *md, Proto &p);
 	void addRelief(const MapData *floor, int join, Proto &p);
 	void addFloor(const Surface *spr, int yoff, uint32_t avg, bool relief, int edges, const uint8_t own[TILE_W][TILE_W][SHAPE_H], Proto &p);
-	void addModel(const VR::Model &m, const Surface *spr, int yoff, const Surface *floorSpr, Proto &p);
-	/// The part's hand-built model (VrModels.h), or null.
-	const VR::Model *modelOf(const MapData *md);
+	void addModel(const VR::Model &m, const Surface *spr, int yoff, const Surface *floorSpr, Proto &p, const MapData *md = nullptr);
+	/// The part's hand-built model (VrModels.h), or null; `variant` picks one of its versions (wraps round).
+	const VR::Model *modelOf(const MapData *md, int variant = 0);
+	/// How many versions of a hand-built model the part has (0: none).
+	int modelVariantsOf(const MapData *md);
 	bool growToArt(const MapData *md, const Surface *spr, int yoff, uint8_t own[TILE_W][TILE_W][SHAPE_H], int part, int &rowShift);
 	TileKey tileKey(Tile *t, int x, int y, int z);
 	/// The terrain lab's inspect panel for a tile: its parts as the game draws them, each on its own, and
@@ -1391,13 +1415,26 @@ void Board::Impl::addFloor(const Surface *spr, int yoff, uint32_t avg, bool reli
 ///    sprite is empty there the face isn't drawn (the art says nothing is there), except on floors;
 ///  - faces it never shows (west, north) take the colour of the opposite side of the same solid, straight
 ///    through it (a wall's far side looks like its near side), else the nearest colour in the sprite.
-const VR::Model *Board::Impl::modelOf(const MapData *md)
+const VR::Model *Board::Impl::modelOf(const MapData *md, int variant)
 {
 	MapDataSet *ds = md ? md->getDataset() : nullptr;
 	if (!ds) return nullptr;
 	for (size_t i = 0; i < ds->getSize(); ++i)
-		if (ds->getObject(i) == md) return VR::terrainModel(ds->getName(), (int)i);
+		if (ds->getObject(i) == md)
+		{
+			const int n = VR::modelVariants(ds->getName(), (int)i);
+			return n ? VR::terrainModel(ds->getName(), (int)i, variant % n) : nullptr;
+		}
 	return nullptr;
+}
+
+int Board::Impl::modelVariantsOf(const MapData *md)
+{
+	MapDataSet *ds = md ? md->getDataset() : nullptr;
+	if (!ds) return 0;
+	for (size_t i = 0; i < ds->getSize(); ++i)
+		if (ds->getObject(i) == md) return VR::modelVariants(ds->getName(), (int)i);
+	return 0;
 }
 
 /// A hand-built model (VrModels.h) for a part: its faces greedy-merged per slice, two model voxels per table
@@ -1405,7 +1442,7 @@ const VR::Model *Board::Impl::modelOf(const MapData *md)
 /// it lands on (or the nearest one of its kind); a face it never sees takes the colour of the matching
 /// point on the other side of the model's axis; undersides are that colour darkened. The paint layer
 /// (z = 0) lies flat on the floor's top.
-void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, const Surface *floorSpr, Proto &p)
+void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, const Surface *floorSpr, Proto &p, const MapData *md)
 {
 	if (!spr) return;
 	const int W = spr->getWidth(), H = spr->getHeight();
@@ -1418,7 +1455,21 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 			for (int x = 0; x < m.sx; ++x)
 				if (m.at(x, y, z)) { cx += x + 0.5; cy += y + 0.5; ++n; }
 	const float axX = n ? 8.f + ((float)(cx / n) - hx) / m.perX : 8.f, axZ = n ? 8.f + ((float)(cy / n) - hy) / m.perX : 8.f;
-	auto toTable = [&](float fx, float fy, float fz) { return glm::vec3(8.f + (fx - hx) / m.perX, (fz - 1.f) / m.perZ, 8.f + (fy - hy) / m.perX); }; // z 1 stands on the floor's top (height 0)
+	auto toTable = [&](float fx, float fy, float fz) { return glm::vec3(8.f + (fx - hx) / m.perX, (fz - 1.f) / m.perZ + m.baseY, 8.f + (fy - hy) / m.perX); }; // z 1 stands on the floor's top (height 0), or baseY
+	// colour references (VrModels.h: Model::ref): that pixel of that part of the set
+	MapDataSet *refSet = md ? md->getDataset() : nullptr;
+	auto refColour = [&](uint32_t r, uint32_t &out) -> bool
+	{
+		if (!refSet || !refSet->getSurfaceset()) return false;
+		const int part = (int)((r >> 16) & 255), row = (int)((r >> 8) & 255), col = (int)(r & 255);
+		if (part >= (int)refSet->getSize() || !refSet->getObject(part)) return false;
+		const Surface *rs = static_cast<const SurfaceSet*>(refSet->getSurfaceset())->getFrame(refSet->getObject(part)->getSprite(0));
+		if (!rs || col >= rs->getWidth() || row >= rs->getHeight()) return false;
+		Uint8 c = rs->getPixel(col, row);
+		if (!c) return false;
+		out = rgba(pal[c]);
+		return true;
+	};
 	auto classOf = [&](Uint8 c) -> int
 	{
 		const SDL_Color &k = pal[c];
@@ -1442,7 +1493,7 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 						Uint8 c = spr->getPixel(sx, sy);
 						if (!c) continue;
 						int cl = classOf(c);
-						if (pass == 0 && cl != want && !(want == VR::MK_FRUIT && cl == VR::MK_LEAF && r > 1)) continue;
+						if (pass == 0 && want != VR::MK_PLAIN && cl != want && !(want == VR::MK_FRUIT && cl == VR::MK_LEAF && r > 1)) continue;
 						out = rgba(pal[c]);
 						return true;
 					}
@@ -1551,13 +1602,21 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 					nb[d.axis] += d.sign;
 					size_t o = (size_t)v * nu + u;
 					bool f = solid(c[0], c[1], c[2]) && !solid(nb[0], nb[1], nb[2]);
-					if (f && d.axis == 2 && d.sign < 0 && k == 1) f = false; // stands on the floor
+					if (f && d.axis == 2 && d.sign < 0 && k == 1 && m.baseY == 0.f) f = false; // stands on the floor
 					mask[o] = f;
 					if (!f) continue;
 					any = true;
 					// one colour per voxel (from its centre), whichever face: faces of a stepped surface
 					// coloured from different sprite rows striped
-					maskCol[o] = colour(toTable(c[0] + 0.5f, c[1] + 0.5f, c[2] + 0.5f), d.axis, d.sign, m.at(c[0], c[1], c[2]));
+					const uint32_t r = m.ref.empty() ? 0u : m.ref[((size_t)c[2] * m.sy + c[1]) * m.sx + c[0]];
+					uint32_t rc;
+					if (r && refColour(r, rc))
+					{
+						if (d.axis == 2 && d.sign < 0) // undersides darker, as below
+							rc = ((rc & 255) * 6 / 10) | ((((rc >> 8) & 255) * 6 / 10) << 8) | ((((rc >> 16) & 255) * 6 / 10) << 16) | 0xFF000000u;
+						maskCol[o] = rc;
+					}
+					else maskCol[o] = colour(toTable(c[0] + 0.5f, c[1] + 0.5f, c[2] + 0.5f), d.axis, d.sign, m.at(c[0], c[1], c[2]));
 				}
 			if (any) greedy(d.axis, d.sign, (float)k + (d.sign > 0 ? 1.f : 0.f), ua, va, nu, nv, false);
 		}
@@ -1707,7 +1766,7 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 	};
 	static const int ORDER[O_MAX] = {O_WESTWALL, O_NORTHWALL, O_OBJECT, O_FLOOR};
 	bool any = false, floorSolid = false;
-	const VR::Model *modelled = nullptr;
+	const VR::Model *modelled = nullptr, *modelledFloor = nullptr;
 	for (int part : ORDER)
 	{
 		const MapData *md = k.m[part];
@@ -1721,7 +1780,9 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 		sc.avg = partInfo(md).avg;
 		if (!sc.avg) continue; // fully transparent sprite: nothing to show
 		if (part == O_OBJECT)
-			if (const VR::Model *mm = modelOf(md)) { modelled = mm; continue; } // hand-built: not its voxels
+			if (const VR::Model *mm = modelOf(md, k.variant)) { modelled = mm; continue; } // hand-built: not its voxels
+		if (part == O_FLOOR)
+			if (const VR::Model *mm = modelOf(md, k.variant)) { modelledFloor = mm; continue; } // the scout's cap (terrain.13)
 		int count = 0;
 		for (int z = 0; z < TILE_H; ++z)
 			for (int y = 0; y < TILE_W; ++y)
@@ -1819,8 +1880,13 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 		const Surface *floorSpr = nullptr;
 		if (const MapData *f = k.m[O_FLOOR])
 			if (f->getDataset() && f->getDataset()->getSurfaceset()) floorSpr = static_cast<const SurfaceSet*>(f->getDataset()->getSurfaceset())->getFrame(f->getSprite(0));
-		addModel(*modelled, src[O_OBJECT].spr, src[O_OBJECT].yoff, floorSpr, p);
+		addModel(*modelled, src[O_OBJECT].spr, src[O_OBJECT].yoff, floorSpr, p, k.m[O_OBJECT]);
 		p.model |= (uint8_t)(1 << O_OBJECT);
+	}
+	if (modelledFloor)
+	{
+		addModel(*modelledFloor, src[O_FLOOR].spr, src[O_FLOOR].yoff, nullptr, p, k.m[O_FLOOR]);
+		p.model |= (uint8_t)(1 << O_FLOOR);
 	}
 	if (floorSolid && src[O_FLOOR].spr) addFloor(src[O_FLOOR].spr, src[O_FLOOR].yoff, src[O_FLOOR].avg, relief, k.edges, own, p);
 	if (!any) return;
@@ -1993,6 +2059,18 @@ Board::Impl::TileKey Board::Impl::tileKey(Tile *t, int x, int y, int z)
 		if (t->isUfoDoorOpen(tp)) continue;
 		key.m[part] = d;
 	}
+	// a hand-built object with versions (the wheat): one picked by the tile's position, so a field of the
+	// same part doesn't repeat one shape tile after tile
+	if (key.m[O_OBJECT])
+	{
+		const int n = modelVariantsOf(key.m[O_OBJECT]);
+		if (n > 1)
+		{
+			uint32_t h = (uint32_t)x * 73856093u ^ (uint32_t)y * 19349663u ^ (uint32_t)z * 83492791u;
+			h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
+			key.variant = (int)(h % (uint32_t)n);
+		}
+	}
 	// where the floor's thickness shows: sides with no floor beside it (or the map's edge); on an upper level
 	// not over a wall of the level below on that side (the wall fills that space, and its face and the
 	// floor's would fall in the same place and flicker)
@@ -2131,6 +2209,7 @@ void Board::Impl::buildFog(int cx, int cy, Chunk &ch)
 			}
 		}
 	ch.empty = md.indices.empty();
+	ch.tris = md.indices.size() / 3;
 	if (!ch.mesh) ch.mesh.reset(new Mesh());
 	ch.mesh->upload(md);
 }
@@ -2191,6 +2270,7 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 			}
 		}
 	ch.empty = md.indices.empty();
+	ch.tris = md.indices.size() / 3;
 	if (!ch.mesh) ch.mesh.reset(new Mesh());
 	ch.mesh->upload(md);
 }
@@ -3965,7 +4045,7 @@ void Board::Impl::compareKey(const TileKey &k, bool scratchBuild, Comparison &c)
 	const Proto *pp = &local;
 	if (scratchBuild)
 	{
-		if (scratch.px.empty() || scratch.full || scratch.y > ATLAS / 2) scratch.reset();
+		if (scratch.px.empty() || scratch.full || scratch.nextY > ATLAS / 2) scratch.reset();
 		build = &scratch;
 		buildTile(k, local);
 		build = &atlas;
@@ -4688,8 +4768,11 @@ std::string Board::debugInfo() const
 			for (const MapData *md : kv.first.m)
 				if (md && md->getDataset() && names.size() < 40) names[md->getDataset()->getName()]++;
 		}
-		ss << " atlas " << (p.atlas.y + p.atlas.rowH) * 100 / ATLAS << "%" << (p.atlas.full ? " FULL" : "") << " tiles " << p.tileProtos.size() << " cards " << cardsN << " empty " << empty;
+		ss << " atlas " << p.atlas.nextY * 100 / ATLAS << "% of rows, " << p.atlas.usedPercent() << "% of texels" << (p.atlas.full ? " FULL" : "") << " tiles " << p.tileProtos.size() << " cards " << cardsN << " empty " << empty;
 		for (auto &kv : names) ss << " " << kv.first << ":" << kv.second;
+		size_t tris = 0;
+		for (const Chunk &c : p.chunks) tris += c.tris;
+		ss << " terrain triangles " << tris;
 	}
 	if (p.alienView || p.winOn) ss << " alienTurn " << p.alienView << " hidden " << p.hidden << " reveal " << p.reveal << " win " << p.win.x << "," << p.win.y << "," << p.win.z << "," << p.win.w;
 	if (p.battle && p.battle->getSelectedUnit())

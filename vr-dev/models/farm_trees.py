@@ -11,8 +11,8 @@ Design (per tree, from its sprite):
 - Fruit trees: a crown of leaf clumps round an ellipsoid sized from the art's outline, then fitted to the
   art seen from the game's angle: voxels landing on empty pixels go (gaps you can see through), crown
   pixels nothing covers get a clump near the ellipsoid. Branch-coloured pixels inside the crown get wood
-  near the trunk with the leaves in front of it taken away, and a branch back to the trunk. Apples where
-  the art has them, and as many again on the far side, mirrored through the trunk.
+  near the trunk with the leaves in front of it taken away, and a branch back to the trunk. Apples (2 x 2
+  voxels each, terrain.13) where the art has them, and as many again on the far side, mirrored through the trunk.
 - Dead tree: trunk and branches traced from the sprite by hand (screen polylines), each branch given a
   direction round the trunk so the tree spreads in 3D; twigs one model voxel thick (one sprite pixel).
 """
@@ -113,6 +113,23 @@ def roots(g, cl, yoff, reach=6.0, trunk_r=1.15, back=2):
     print(f'  roots: {len(tips)} drawn, {back if tips else 0} behind')
 
 
+def apple(g, a):
+    """One apple (0.21.0-terrain.13, owner): 4 model voxels, a 2 x 2 square facing away from the trunk
+    (about one sprite pixel, the size the art draws an apple), at the crown's surface voxel a."""
+    a = tuple(int(v) for v in a)
+    dx, dz = g.X[a] - AX, g.Z[a] - AZ
+    # the square lies across the direction it faces: east-west facing spans y (south) and z (up), else x and z
+    side = 1 if abs(dx) >= abs(dz) else 0
+    # grow away from the axis's middle so the apple stays on the surface: towards the tile's outside
+    t = (g.Z[a] - AZ) if side == 1 else (g.X[a] - AX)
+    st = 1 if t >= 0 else -1
+    up = 1 if a[2] < g.sz - 1 else -1
+    for i in (0, st):
+        for j in (0, up):
+            q = list(a); q[side] += i; q[2] += j
+            if 0 <= q[0] < g.sx and 0 <= q[1] < g.sy and 1 <= q[2] < g.sz: g.k[tuple(q)] = FRUIT
+
+
 def pixel_of(g, yoff):
     px, py = g.project(yoff)
     return np.floor(px).astype(int), np.floor(py).astype(int)
@@ -202,7 +219,7 @@ def fruit_tree(i, seed, crown_rows):
         if not ray.any(): continue
         cand = np.argwhere(ray)
         a = cand[int(np.argmax(depth[ray]))]
-        g.k[tuple(a)] = FRUIT
+        apple(g, a)
         X, Y, Z = g.X[tuple(a)], g.Y[tuple(a)], g.Z[tuple(a)]
         # mirrored: the outermost solid voxel along the line from the axis through the mirrored point
         mx, mz = 2 * AX - X, 2 * AZ - Z
@@ -212,7 +229,7 @@ def fruit_tree(i, seed, crown_rows):
             if all(0 <= q[n] < (SX, SY, SZ)[n] for n in range(3)) and g.k[q] == LEAF:
                 best = q
                 break
-        if best: g.k[best] = FRUIT
+        if best: apple(g, best)
     roots(g, cl, yoff)
     paint_patch(g)
     return g

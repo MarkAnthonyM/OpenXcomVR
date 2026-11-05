@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.12)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.13)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -492,7 +492,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrWeather.*` | The sky over an outdoor battle: the sun's direction at the site and its height and colour from the mission's darkness, the weather roll, rain / snow / dust particles stopping at roofs, mist, cloud drift, lightning and procedural thunder. |
 | `VrDebug.*` | The sky debug panel on the left wrist (weather branch): info and controls pages drawn with the dashboards' canvas, pressed with the right index finger. |
 | `VrLab.*` | The terrain lab (developer tool, `-vrTerrainLab`): a terrain's parts or map blocks on the table without a mission; also the relief mode switch. |
-| `VrModels.*` | Hand-built terrain models (`Resources/VR/models/<SET>_<id>.vox`): shapes only, coloured from the player's sprites. |
+| `VrModels.*` | Hand-built terrain models (`Resources/VR/models/<SET>_<id>.vox`, versions `-2`.., colour references `.ref`): shapes only, coloured from the player's sprites. |
 | `VrCompare.*` | The lab's comparison of the table's shapes with the art: a CPU renderer from the game's angle, the difference and its score (contact sheets, inspect panel). |
 | `VrRelief.*` | Relief for painted floor parts listed in `Resources/VR/terrain-relief.txt`: heights worked out from the painting. |
 | `VrDash.*` | The geoscape dashboards on the back-wall monitors, drawn with the game's fonts straight from the saved game. |
@@ -596,7 +596,34 @@ Key ideas:
   (the game's collision grid) was tried in 0.21.0-terrain.10-11 and dropped (0.21.0-terrain.12).
   The first models are the farm trees (CULTIVAT 9, 12 and 13), made by
   `vr-dev/models/farm_trees.py` from the sprites (dumped with the test op
-  `dumpart`).
+  `dumpart`); since 0.21.0-terrain.13 an apple is 2 x 2 voxels facing out
+  (about one sprite pixel, as the art draws it).
+  0.21.0-terrain.13 adds:
+  - a fifth kind, *plain*: whatever the sprite draws where the voxel lands,
+    of any colour (the wheat's dark browns would otherwise count as fruit);
+  - versions: `<SET>_<id>-2.vox`, `-3` ... beside the plain file; the table
+    picks one per tile by its position, so a field doesn't repeat one tile;
+  - `<SET>_<id>.ref` beside a model: per voxel, which pixel of which part of
+    the set it takes its colour from (references, never colours), and a base
+    height the model stands on (below the floor's top: a cap over a dome).
+    A model cut from a bigger shape takes its colours from wherever the art
+    shows that spot;
+  - floors can have models (the small scout's cap);
+  - the wheat (CULTIVAT 4, `wheat.py`): upright stalks one sprite pixel thick
+    with ears on top, dense like the art, waist high, three versions. Built
+    from few long faces on purpose: every wheat tile carries all its model's
+    faces (thin leaning stalks made 9000 a tile, these about 1700);
+  - the small scout (UFO1, `small_scout.py`): the whole saucer as one shape of
+    revolution fitted to the art put together as the map places it (98% of
+    the outline), a thin shell with a floor inside, cut along the tiles into
+    the eight hull pieces and the cap; the legs from the leg sprites. The far
+    side's outer hull takes the near side's pixels (mirrored across the view),
+    the inside the far pieces' (their sprites show the inner wall). A piece the
+    game destroys takes its slice with it. Its pieces score lower on the sheets
+    than the whole does: the artist cut the picture into tiles along screen
+    lines, not the tiles' columns (the cap's sprite is only the light on top).
+  The terrain atlas packs faces on shelves by height (the wheat's tall thin
+  faces wasted most of it).
 - **Comparing the table with the art** (`VrCompare.*`, terrain lab, 0.21.0-terrain.6):
   a small software renderer draws the table's shape of a part or tile from
   the flat game's own angle, where one voxel step is one pixel, so it lies

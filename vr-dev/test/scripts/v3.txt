@@ -23,6 +23,7 @@ waitidle 20000
 boardinfo
 shot shots/v3_impact.png
 wait 5000
+waitframes 40
 boardinfo
 shot shots/v3_c.png
 quit
