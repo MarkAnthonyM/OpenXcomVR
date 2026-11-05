@@ -51,13 +51,14 @@ def classes(idx, pal):
 
 
 class Grid:
-    def __init__(self, sx, sy, sz):
-        self.sx, self.sy, self.sz = sx, sy, sz
+    def __init__(self, sx, sy, sz, per=2):
+        """per: model voxels per table voxel (2: 32 across a tile; 1: the collision grid's 16)."""
+        self.sx, self.sy, self.sz, self.per = sx, sy, sz, per
         self.k = np.zeros((sx, sy, sz), np.uint8)
         # centres of every voxel in table units
-        x = (np.arange(sx) + 0.5 - sx / 2) * 0.5 + 8
-        y = (np.arange(sy) + 0.5 - sy / 2) * 0.5 + 8
-        z = (np.arange(sz) - 0.5) * 0.5       # z = 1 -> 0.25
+        x = (np.arange(sx) + 0.5 - sx / 2) / per + 8
+        y = (np.arange(sy) + 0.5 - sy / 2) / per + 8
+        z = (np.arange(sz) - 0.5) / per       # z = 1 -> half a voxel up
         self.X, self.Z, self.Y = np.meshgrid(x, y, z, indexing='ij')
 
     def project(self, yoff=0):
@@ -67,7 +68,8 @@ class Grid:
 
     def fine(self, X, Z, Y):
         """Model voxel of a table point."""
-        return (int(np.floor((X - 8) * 2 + self.sx / 2)), int(np.floor((Z - 8) * 2 + self.sy / 2)), int(np.floor(Y * 2 + 1)))
+        p = self.per
+        return (int(np.floor((X - 8) * p + self.sx / 2)), int(np.floor((Z - 8) * p + self.sy / 2)), int(np.floor(Y * p + 1)))
 
     def write_vox(self, path):
         pts = np.argwhere(self.k > 0)

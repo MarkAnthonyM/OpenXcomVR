@@ -21,9 +21,12 @@ import numpy as np
 from voxlib import *
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-OUT = os.path.join(REPO, 'bin', 'common', 'Resources', 'VR', 'models')
-SX = SY = 72   # 36 table voxels: a tile and 10 on each side for crowns
-SZ = 76        # up to table height 39.5 (shapes may rise 16 voxels into the level above)
+# `--res 16` builds them on the game's collision grid instead (one voxel per table voxel), into models16/,
+# which the table loads with -vrModelRes 16 (0.21.0-terrain.11; a comparison for the owner)
+PER = 1 if '--res' in sys.argv and sys.argv[sys.argv.index('--res') + 1] == '16' else 2
+OUT = os.path.join(REPO, 'bin', 'common', 'Resources', 'VR', 'models' if PER == 2 else 'models16')
+SX = SY = 36 * PER   # 36 table voxels: a tile and 10 on each side for crowns
+SZ = 38 * PER        # up to table height 37.5 (shapes may rise into the level above)
 AX = AZ = 11.0 # the trunk's axis (table units)
 VIEW = np.array([1.0, 1.0, 1.0]) / math.sqrt(3) # towards the flat game's eye (X, Y, Z)
 
@@ -37,7 +40,7 @@ def disc_line(g, a, b, r, kind, overwrite=True):
     d = np.linalg.norm(P - (a + t[..., None] * ab), axis=-1)
     m = (d <= r) & (g.Y >= 0.0)
     # and every voxel the centre line passes through, so a thin branch never breaks up on the grid
-    n = int(np.ceil(np.linalg.norm(ab) * 2 * 4)) + 1
+    n = int(np.ceil(np.linalg.norm(ab) * g.per * 4)) + 1
     for t in np.linspace(0, 1, n):
         q = g.fine(*(a + t * ab)[[0, 2, 1]])
         if all(0 <= q[j] < (g.sx, g.sy, g.sz)[j] for j in range(3)) and q[2] >= 1: m[q] = True
@@ -55,8 +58,8 @@ def trunk(g, top, r, flare):
 
 def paint_patch(g):
     """The ground patch: paint over the whole tile (the art covers its diamond)."""
-    x = (np.arange(SX) + 0.5 - SX / 2) * 0.5 + 8
-    y = (np.arange(SY) + 0.5 - SY / 2) * 0.5 + 8
+    x = (np.arange(SX) + 0.5 - SX / 2) / PER + 8
+    y = (np.arange(SY) + 0.5 - SY / 2) / PER + 8
     X, Z = np.meshgrid(x, y, indexing='ij')
     g.k[:, :, 0] = np.where((X >= 0) & (X < 16) & (Z >= 0) & (Z < 16), PATCH, 0)
 
@@ -69,7 +72,7 @@ def roots(g, cl, yoff, reach=6.0, trunk_r=1.15, back=2):
     underneath (the table's paint layer)."""
     H, W = cl.shape
     pix, piy = pixel_of(g, yoff)
-    standing = (g.k > 0) & (np.arange(g.sz)[None, None, :] >= 3)
+    standing = (g.k > 0) & (np.arange(g.sz)[None, None, :] >= 1 + g.per)
     hidden = np.zeros((H, W), bool)
     ok = standing & (pix >= 0) & (pix < W) & (piy >= 0) & (piy < H)
     hidden[piy[ok], pix[ok]] = True
@@ -140,7 +143,7 @@ def fruit_tree(i, seed, crown_rows):
     Yc = 24 + (AX + AZ) / 2 + yoff - yc
     print(f'CULTIVAT {i}: crown R {R:.1f} Rv {Rv:.1f} centre height {Yc:.1f}, bottom {Yc - Rv:.1f}')
 
-    g = Grid(SX, SY, SZ)
+    g = Grid(SX, SY, SZ, PER)
     rnd = random.Random(seed)
     # crown: ellipsoid (a little smaller) with leaf clumps over its surface
     f = ((g.X - AX) / R) ** 2 + ((g.Y - Yc) / Rv) ** 2 + ((g.Z - AZ) / R) ** 2
@@ -176,9 +179,9 @@ def fruit_tree(i, seed, crown_rows):
         fv = f[ray]
         j = int(np.argmin(np.abs(fv - 0.85)))
         a = cand[j]
-        for dx in (0, 1):
-            for dy in (0, 1):
-                for dz in (0, 1):
+        for dx in range(PER):
+            for dy in range(PER):
+                for dz in range(PER):
                     p = (min(a[0] + dx, SX - 1), min(a[1] + dy, SY - 1), min(a[2] + dz, SZ - 1))
                     if in_crown[p]: g.k[p] = LEAF
     # branches seen through the leaves: wood where the ray passes nearest the trunk, leaves before it go
@@ -233,7 +236,7 @@ DEAD_BRANCHES = [
 def dead_tree():
     pal = palette()
     idx, yoff = sprite('CULTIVAT', 13)
-    g = Grid(SX, SY, SZ)
+    g = Grid(SX, SY, SZ, PER)
     fork = 24 + AX + yoff - 22   # table height of sprite row 22 at the axis: Y = 24 + X0 + yoff - py
     trunk(g, fork + 0.5, 1.05, 0.6)
     placed = {}   # sprite point -> table point, so a twig grows from where its limb passes
@@ -266,7 +269,8 @@ def dead_tree():
 def main():
     os.makedirs(OUT, exist_ok=True)
     trees = {9: lambda: fruit_tree(9, 9, 28), 12: lambda: fruit_tree(12, 12, 28), 13: dead_tree}
-    which = [int(a) for a in sys.argv[1:]] or list(trees)
+    args = [a for i, a in enumerate(sys.argv[1:]) if a != '--res' and (i == 0 or sys.argv[i] != '--res')]
+    which = [int(a) for a in args] or list(trees)
     for i in which:
         g = trees[i]()
         path = os.path.join(OUT, f'CULTIVAT_{i}.vox')

@@ -81,7 +81,7 @@ bool parseVox(const std::vector<uint8_t> &b, Model &m)
 /// load. 16: one voxel per table voxel (the game's collision grid, 16 x 16 x 24 a tile); 24: 32 across but
 /// one per table voxel up (32 x 32 x 24, one voxel per sprite pixel both ways). A coarse voxel is wood if any
 /// of its fine ones is (twigs stay), fruit if any is, leaves if a third are.
-static void coarsen(Model &m)
+static int modelRes()
 {
 	static int res = -1;
 	if (res < 0)
@@ -95,6 +95,12 @@ static void coarsen(Model &m)
 			if (l == "-vrmodelres" || l == "vrmodelres") res = std::atoi(a[i + 1].c_str());
 		}
 	}
+	return res;
+}
+
+static void coarsen(Model &m)
+{
+	const int res = modelRes();
 	if (res != 16 && res != 24) return;
 	const int fx = res == 16 ? 2 : 1, fz = 2;
 	Model c;
@@ -129,7 +135,11 @@ const Model *terrainModel(const std::string &set, int id)
 	auto it = cache.find(key);
 	if (it != cache.end()) return it->second.get();
 	std::unique_ptr<Model> &slot = cache[key];
-	const std::string path = "Resources/VR/models/" + key + ".vox";
+	// -vrModelRes 16: the models built on the collision grid (models16/, one voxel per table voxel), where
+	// there is one (0.21.0-terrain.11); else the usual ones, made coarser
+	const std::string path16 = "Resources/VR/models16/" + key + ".vox";
+	const bool native16 = modelRes() == 16 && FileMap::fileExists(path16);
+	const std::string path = native16 ? path16 : "Resources/VR/models/" + key + ".vox";
 	if (!FileMap::fileExists(path)) return nullptr; // most parts have none (FileMap::at would stop the game)
 	const FileMap::FileRecord *rec = FileMap::at(path);
 	if (!rec) return nullptr;
@@ -139,7 +149,8 @@ const Model *terrainModel(const std::string &set, int id)
 	std::unique_ptr<Model> m(new Model);
 	if (!parseVox(bytes, *m)) { Log(LOG_WARNING) << "[VR] model " << path << ": not a MagicaVoxel file"; return nullptr; }
 	Log(LOG_INFO) << "[VR] model " << path << ": " << m->sx << "x" << m->sy << "x" << m->sz;
-	coarsen(*m);
+	if (native16) m->perX = m->perZ = 1.f;
+	else coarsen(*m);
 	slot = std::move(m);
 	return slot.get();
 }
