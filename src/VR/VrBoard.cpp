@@ -1417,8 +1417,8 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 		for (int y = 0; y < m.sy; ++y)
 			for (int x = 0; x < m.sx; ++x)
 				if (m.at(x, y, z)) { cx += x + 0.5; cy += y + 0.5; ++n; }
-	const float axX = n ? 8.f + ((float)(cx / n) - hx) * 0.5f : 8.f, axZ = n ? 8.f + ((float)(cy / n) - hy) * 0.5f : 8.f;
-	auto toTable = [&](float fx, float fy, float fz) { return glm::vec3(8.f + (fx - hx) * 0.5f, (fz - 1.f) * 0.5f, 8.f + (fy - hy) * 0.5f); }; // z 1 stands on the floor's top (height 0)
+	const float axX = n ? 8.f + ((float)(cx / n) - hx) / m.perX : 8.f, axZ = n ? 8.f + ((float)(cy / n) - hy) / m.perX : 8.f;
+	auto toTable = [&](float fx, float fy, float fz) { return glm::vec3(8.f + (fx - hx) / m.perX, (fz - 1.f) / m.perZ, 8.f + (fy - hy) / m.perX); }; // z 1 stands on the floor's top (height 0)
 	auto classOf = [&](Uint8 c) -> int
 	{
 		const SDL_Color &k = pal[c];
@@ -1571,7 +1571,7 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 		const int nu = m.sx, nv = m.sy;
 		// sprite pixels the standing tree covers (voxels a table voxel or more above the floor)
 		std::vector<uint8_t> hidden((size_t)W * H, 0);
-		for (int z = 3; z < m.sz; ++z)
+		for (int z = 1 + (int)m.perZ; z < m.sz; ++z) // a table voxel or more above the floor
 			for (int y = 0; y < m.sy; ++y)
 				for (int x = 0; x < m.sx; ++x)
 				{

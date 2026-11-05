@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.9).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.10).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -328,6 +328,12 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     height, hard-edged where a bed meets grass: for the owner to judge), FOREST 4/5 grass cover shows.
     Test op `comparepart SET id` (any part on its own, shots/part_<SET>_<id>.png). `bh` failed on both
     terrain.8 and .9 in this session (timing; it passed on terrain.8 earlier).
+  - terrain.10 (owner curious what the trees look like at 16 x 16 x 24): Model::perX / perZ (model voxels
+    per table voxel; addModel divides by them, the paint's occlusion starts 1 + perZ up); VrModels coarsen()
+    behind `-vrModelRes 16|24` (command line only). Shown to the owner from the preview: 32x32x24 almost the
+    same as 32x32x48; 16 chunky (leaf blocks, 2-pixel twigs and roots, apples as cubes) but matching the
+    rest of the table; game-angle scores alike (apple tree 99-100%, dead tree 98/98/96%). He'll compare in
+    the headset; the files stay at 32 until he decides.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a

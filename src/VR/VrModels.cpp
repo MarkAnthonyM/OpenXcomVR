@@ -4,6 +4,8 @@
 #include "VrModels.h"
 #include "../Engine/FileMap.h"
 #include "../Engine/Logger.h"
+#include "../Engine/CrossPlatform.h"
+#include <algorithm>
 #include <cstring>
 #include <iterator>
 #include <map>
@@ -75,6 +77,51 @@ bool parseVox(const std::vector<uint8_t> &b, Model &m)
 	return true;
 }
 
+/// -vrModelRes 16 or 24 on the command line (comparison only, not saved): the models made coarser when they
+/// load. 16: one voxel per table voxel (the game's collision grid, 16 x 16 x 24 a tile); 24: 32 across but
+/// one per table voxel up (32 x 32 x 24, one voxel per sprite pixel both ways). A coarse voxel is wood if any
+/// of its fine ones is (twigs stay), fruit if any is, leaves if a third are.
+static void coarsen(Model &m)
+{
+	static int res = -1;
+	if (res < 0)
+	{
+		res = 0;
+		const auto &a = CrossPlatform::getArgs();
+		for (size_t i = 0; i + 1 < a.size(); ++i)
+		{
+			std::string l = a[i];
+			std::transform(l.begin(), l.end(), l.begin(), ::tolower);
+			if (l == "-vrmodelres" || l == "vrmodelres") res = std::atoi(a[i + 1].c_str());
+		}
+	}
+	if (res != 16 && res != 24) return;
+	const int fx = res == 16 ? 2 : 1, fz = 2;
+	Model c;
+	c.sx = (m.sx + fx - 1) / fx; c.sy = (m.sy + fx - 1) / fx;
+	c.sz = 1 + (m.sz - 1 + fz - 1) / fz;
+	c.perX = m.perX / fx; c.perZ = m.perZ / fz;
+	c.kind.assign((size_t)c.sx * c.sy * c.sz, MK_EMPTY);
+	for (int z = 0; z < c.sz; ++z)
+		for (int y = 0; y < c.sy; ++y)
+			for (int x = 0; x < c.sx; ++x)
+			{
+				int n[5] = {0, 0, 0, 0, 0}, total = 0;
+				int z0 = z == 0 ? 0 : (z - 1) * fz + 1, z1 = z == 0 ? 0 : z * fz;
+				for (int zz = z0; zz <= z1; ++zz)
+					for (int yy = y * fx; yy < (y + 1) * fx; ++yy)
+						for (int xx = x * fx; xx < (x + 1) * fx; ++xx) { ++n[m.at(xx, yy, zz)]; ++total; }
+				uint8_t k = MK_EMPTY;
+				if (z == 0) k = n[MK_PATCH] ? MK_PATCH : MK_EMPTY;
+				else if (n[MK_WOOD]) k = MK_WOOD;
+				else if (n[MK_FRUIT]) k = MK_FRUIT;
+				else if (n[MK_LEAF] * 3 >= total) k = MK_LEAF;
+				c.kind[((size_t)z * c.sy + y) * c.sx + x] = k;
+			}
+	Log(LOG_INFO) << "[VR] model coarsened to " << res << ": " << c.sx << "x" << c.sy << "x" << c.sz;
+	m = c;
+}
+
 const Model *terrainModel(const std::string &set, int id)
 {
 	static std::map<std::string, std::unique_ptr<Model>> cache;
@@ -92,6 +139,7 @@ const Model *terrainModel(const std::string &set, int id)
 	std::unique_ptr<Model> m(new Model);
 	if (!parseVox(bytes, *m)) { Log(LOG_WARNING) << "[VR] model " << path << ": not a MagicaVoxel file"; return nullptr; }
 	Log(LOG_INFO) << "[VR] model " << path << ": " << m->sx << "x" << m->sy << "x" << m->sz;
+	coarsen(*m);
 	slot = std::move(m);
 	return slot.get();
 }

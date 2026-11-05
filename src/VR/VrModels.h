@@ -32,6 +32,7 @@ enum ModelKind : uint8_t { MK_EMPTY = 0, MK_WOOD = 1, MK_LEAF = 2, MK_FRUIT = 3,
 struct Model
 {
 	int sx = 0, sy = 0, sz = 0;
+	float perX = 2.f, perZ = 2.f; // model voxels per table voxel across (x, y) and up (z)
 	std::vector<uint8_t> kind; // sx * sy * sz, ModelKind
 	uint8_t at(int x, int y, int z) const
 	{
