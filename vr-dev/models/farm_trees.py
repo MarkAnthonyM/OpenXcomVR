@@ -21,10 +21,8 @@ import numpy as np
 from voxlib import *
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-# `--res 16` builds them on the game's collision grid instead (one voxel per table voxel), into models16/,
-# which the table loads with -vrModelRes 16 (0.21.0-terrain.11; a comparison for the owner)
-PER = 1 if '--res' in sys.argv and sys.argv[sys.argv.index('--res') + 1] == '16' else 2
-OUT = os.path.join(REPO, 'bin', 'common', 'Resources', 'VR', 'models' if PER == 2 else 'models16')
+PER = 2              # model voxels per table voxel (32 x 32 x 48 a tile; the owner tried 16 and kept 32)
+OUT = os.path.join(REPO, 'bin', 'common', 'Resources', 'VR', 'models')
 SX = SY = 36 * PER   # 36 table voxels: a tile and 10 on each side for crowns
 SZ = 38 * PER        # up to table height 37.5 (shapes may rise into the level above)
 AX = AZ = 11.0 # the trunk's axis (table units)
@@ -269,8 +267,7 @@ def dead_tree():
 def main():
     os.makedirs(OUT, exist_ok=True)
     trees = {9: lambda: fruit_tree(9, 9, 28), 12: lambda: fruit_tree(12, 12, 28), 13: dead_tree}
-    args = [a for i, a in enumerate(sys.argv[1:]) if a != '--res' and (i == 0 or sys.argv[i] != '--res')]
-    which = [int(a) for a in args] or list(trees)
+    which = [int(a) for a in sys.argv[1:]] or list(trees)
     for i in which:
         g = trees[i]()
         path = os.path.join(OUT, f'CULTIVAT_{i}.vox')

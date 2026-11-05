@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.11)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.12)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -592,16 +592,8 @@ Key ideas:
   and isn't painted either (the table casts real shadows). Each root the art
   draws on the ground near the trunk becomes one low, tapering root in the
   model, out to where the drawn root ends, with two more behind (0.21.0-terrain.9).
-  To compare resolutions (0.21.0-terrain.10), `-vrModelRes 16` on the command
-  line makes the models coarser when they load: one voxel per table voxel (the
-  game's collision grid, 16 x 16 x 24 a tile); `-vrModelRes 24` keeps 32 across
-  but one per table voxel up (32 x 32 x 24, one voxel per sprite pixel both
-  ways). It works in the lab and in missions, and is never saved. With 16, a
-  model built for that grid is used where there is one
-  (`Resources/VR/models16/`, the farm trees since 0.21.0-terrain.11, made by
-  `farm_trees.py --res 16`); otherwise, and for 24, the models are made coarser:
-  a coarse voxel is wood if any of its fine ones is (twigs stay), fruit if any
-  is, leaves if a third are.
+  Models are 32 x 32 x 48 voxels a tile (two per table voxel each way). 16 x 16 x 24
+  (the game's collision grid) was tried in 0.21.0-terrain.10-11 and dropped (0.21.0-terrain.12).
   The first models are the farm trees (CULTIVAT 9, 12 and 13), made by
   `vr-dev/models/farm_trees.py` from the sprites (dumped with the test op
   `dumpart`).
