@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.13)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.14)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -610,13 +610,18 @@ Key ideas:
     shows that spot;
   - floors can have models (the small scout's cap);
   - the wheat (CULTIVAT 4, `wheat.py`): upright stalks one sprite pixel thick
-    with ears on top, dense like the art, waist high, three versions. Built
-    from few long faces on purpose: every wheat tile carries all its model's
-    faces (thin leaning stalks made 9000 a tile, these about 1700);
+    with ears on top, dense like the art, waist high, three versions. Every
+    wheat tile carries all its model's faces: about 3,200 triangles a tile
+    against about 950 for the rule-built block, and the owner's frame rate
+    dropped steadily in the headset, so since 0.21.0-terrain.14 the wheat is
+    rule-built again (the generator stays for later; its files aren't shipped);
   - the small scout (UFO1, `small_scout.py`): the whole saucer as one shape of
     revolution fitted to the art put together as the map places it (98% of
     the outline), a thin shell with a floor inside, cut along the tiles into
-    the eight hull pieces and the cap; the legs from the leg sprites. The far
+    the eight hull pieces and the cap; the legs from the leg sprites, fitted
+    to them exactly since 0.21.0-terrain.14 (seen as the comparison draws
+    them, a voxel for each pixel the art draws, then the strut's own voxels
+    wherever they change no pixel, so the legs stay solid from other sides). The far
     side's outer hull takes the near side's pixels (mirrored across the view),
     the inside the far pieces' (their sprites show the inner wall). A piece the
     game destroys takes its slice with it. Its pieces score lower on the sheets

@@ -282,6 +282,112 @@ def leg(tx, ty):
     m &= g.Y >= 0
     m[:, :, 0] = False
     g.k[m] = PLAIN
+    return g, top, foot
+
+
+def rays(g, W, H, yoff, SS=4):
+    """The comparison's view (VrCompare: 4 x 4 samples a pixel, a pixel covered when half its samples meet
+    the shape): for every sample, the model voxels its ray passes through. Returns (sample's pixel index,
+    voxel's flat index) pairs, without repeats."""
+    py_, px_ = np.mgrid[0:H, 0:W]
+    pairs = []
+    for sj in range(SS):
+        for si in range(SS):
+            u = (px_ + (si + 0.5) / SS - 16).ravel()
+            base = (py_ + (sj + 0.5) / SS - 24 - yoff).ravel()
+            sid = (np.arange(H * W) * SS * SS + sj * SS + si)
+            for Y in np.arange(-0.5, g.sz / g.per + 0.5, 0.05):
+                v = 2 * (base + Y)
+                X, Z = (u + v) / 2, (v - u) / 2
+                i = np.floor((X - 8) * g.per + g.sx / 2).astype(int)
+                j = np.floor((Z - 8) * g.per + g.sy / 2).astype(int)
+                k = int(np.floor(Y * g.per + 1))
+                if not 1 <= k < g.sz: continue
+                ok = (i >= 0) & (i < g.sx) & (j >= 0) & (j < g.sy)
+                pairs.append(np.stack([sid[ok], (i[ok] * g.sy + j[ok]) * g.sz + k], 1))
+    pairs = np.unique(np.concatenate(pairs), axis=0)
+    return pairs
+
+
+def fit_leg(g, p, top, foot, SS=4):
+    """0.21.0-terrain.14 (owner: the legs should fit their art exactly), seen exactly as the comparison
+    draws them (rays()). Built up from the art rather than carved from the strut: for each pixel the art
+    draws, the voxel nearest the strut whose footprint falls mostly in that pixel; then, among the strut's
+    own voxels, every one that changes no pixel (hidden behind those, or reaching only a few samples into a
+    neighbour) goes back in, so the leg stays solid from other sides; then single voxels switched while
+    that leaves fewer pixels wrong."""
+    idx, yoff = sprite(SET, p)
+    art = (idx > 0).ravel()
+    H, W = idx.shape
+    NS = SS * SS
+    half = NS // 2
+    pairs = rays(g, W, H, yoff, SS)
+    nvox = g.sx * g.sy * g.sz
+    order = np.argsort(pairs[:, 1], kind='stable')
+    vs, ss = pairs[order, 1], pairs[order, 0]
+    starts = np.searchsorted(vs, np.arange(nvox + 1))
+    a_, b_ = np.array(top), np.array(foot)
+    P = np.stack([g.X.ravel(), g.Y.ravel(), g.Z.ravel()], 1)
+    ab = b_ - a_
+    t = np.clip(((P - a_) @ ab) / (ab @ ab), 0, 1)
+    dist = np.linalg.norm(P - (a_ + t[:, None] * ab), axis=1)
+    low = P[:, 1] < 2.5
+    dist[low] = np.minimum(dist[low], np.hypot(P[low, 0] - b_[0], P[low, 2] - b_[2]) * 0.4 + np.abs(P[low, 1] - 0.45))
+    shape0 = g.k.ravel().copy()
+    flat = np.zeros_like(shape0)
+    hits = np.zeros(H * W * NS, int)
+    pixcov = np.zeros(H * W, int)
+    def toggle(q, on):
+        sm = ss[starts[q]:starts[q + 1]]
+        before = hits[sm] > 0
+        hits[sm] += 1 if on else -1
+        ch = sm[before != (hits[sm] > 0)]
+        if len(ch): np.add.at(pixcov, ch // NS, 1 if on else -1)
+        flat[q] = PLAIN if on else 0
+    def status(px): return pixcov[px] >= half
+    def pix_wrong(px):
+        px = np.unique(px)
+        return int((status(px) != art[px]).sum())
+    def footprint(q):
+        sm = ss[starts[q]:starts[q + 1]]
+        px, n = np.unique(sm // NS, return_counts=True)
+        return px, n
+    # 1. a voxel for each pixel the art draws
+    cand_by_pix = {}
+    for q in np.nonzero((dist <= 3.5) & (starts[1:] > starts[:-1]))[0]:
+        px, n = footprint(q)
+        m = int(np.argmax(n))
+        if n[m] >= half: cand_by_pix.setdefault(int(px[m]), []).append(q)
+    for px in np.nonzero(art)[0]:
+        if status(px): continue
+        for q in sorted(cand_by_pix.get(int(px), ()), key=lambda q: dist[q]):
+            fp, n = footprint(q)
+            w0 = pix_wrong(fp)
+            toggle(q, True)
+            if pix_wrong(fp) < w0: break
+            toggle(q, False)
+    # 2. the strut's own voxels wherever they change nothing
+    for q in np.nonzero(shape0 & (flat == 0))[0]:
+        if starts[q + 1] == starts[q]: flat[q] = PLAIN; continue      # seen by no ray
+        fp, _ = footprint(q)
+        st = status(fp).copy()
+        toggle(q, True)
+        if (status(fp) != st).any(): toggle(q, False)
+    # 3. single switches while they help
+    near = np.nonzero((dist <= 3.5) & (starts[1:] > starts[:-1]))[0]
+    for rnd_ in range(10):
+        changed = 0
+        for q in near[np.argsort(dist[near])]:
+            fp, _ = footprint(q)
+            w0 = pix_wrong(fp)
+            on = not flat[q]
+            toggle(q, on)
+            if pix_wrong(fp) < w0: changed += 1
+            else: toggle(q, not on)
+        if not changed: break
+    g.k = flat.reshape(g.k.shape)
+    w = int((status(np.arange(H * W)) != art).sum())
+    print(f'  leg {p}: {w} pixels differ from the art ({int((g.k > 0).sum())} voxels)')
     return g
 
 
@@ -318,7 +424,8 @@ def main():
         write_piece(os.path.join(OUT, f'{SET}_{cap}'), kg, rg, CAP_BASE)
     for (tx, ty, tz), p in sorted(at.items()):
         if tz != 0: continue
-        g = leg(tx, ty)
+        g, top, foot = leg(tx, ty)
+        g = fit_leg(g, p, top, foot)
         path = os.path.join(OUT, f'{SET}_{p}.vox')
         g.write_vox(path)
         print(f'wrote {path}: {int((g.k > 0).sum())} voxels')

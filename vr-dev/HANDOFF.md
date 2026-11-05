@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.13).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.14).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -368,6 +368,22 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     advances at most 0.1 s a frame: VrSystem dt cap), so v3 and v2 wait 40 more frames before their last
     readout; both pass now (v2's old 0.062 m failure was the same timing). Full run: h2 and bh failed once,
     h2 passed alone (flaky, like bh).
+  - Owner on terrain.13: the wheat dropped the frame rate in the headset, steadily (not stutters): drawing
+    cost. Measured per wheat tile (temporary OXCE_VR_TRI_LOG in tileProto, not kept): hand-built 3120-3360
+    triangles, rule-built 946-954 (a block's flat sides merge into a few rectangles; each of ~140 stalks has
+    its own sides and top, the nudged ears and thin tips more); `outside` has ~58 wheat tiles. Cheaper
+    generator variants counted (faces a tile): now ~1800, feet on the grid ~1600, + straight ears without
+    tips ~590, + 40% fill ~450. Owner chose the rule-built wheat for now. He asked why UFO1 19 wasn't 100%:
+    the legs were simple shapes from a few measurements (piston too thin, a knee ring the art lacks, top and
+    pad a pixel high).
+  - terrain.14: CULTIVAT_4*.vox removed (wheat.py and the versions code stay); triangles in `outside` back
+    to 171,744. small_scout.py fit_leg(): rays() = every 4 x 4 sample's ray through the voxel grid (the
+    comparison's view: covered when 8 of 16 samples meet the shape); a voxel for each art pixel whose
+    footprint falls mostly in it (nearest the strut), then the strut's voxels that change no pixel's status,
+    then single switches. Carving the strut first could not get there (a voxel straddles half a pixel row:
+    no voxel's footprint lands exactly on one pixel, (i + j) - 2k is odd). Legs 16-19: 0 pixels differ in
+    the game's comparison (no red or blue at all), 100% / 100%. Sheets vs terrain.13: only those and wheat
+    (92 -> 90, rule-built).
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
