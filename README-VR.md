@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.14)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.15)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -618,10 +618,12 @@ Key ideas:
   - the small scout (UFO1, `small_scout.py`): the whole saucer as one shape of
     revolution fitted to the art put together as the map places it (98% of
     the outline), a thin shell with a floor inside, cut along the tiles into
-    the eight hull pieces and the cap; the legs from the leg sprites, fitted
-    to them exactly since 0.21.0-terrain.14 (seen as the comparison draws
-    them, a voxel for each pixel the art draws, then the strut's own voxels
-    wherever they change no pixel, so the legs stay solid from other sides). The far
+    the eight hull pieces and the cap; the legs are a strut, a piston and a
+    foot pad whose few sizes were searched against the four leg sprites
+    (0.21.0-terrain.15: 98-100% shape). An exact pixel-by-pixel fit
+    (0.21.0-terrain.14) matched the art from the game's angle and looked worse
+    in the headset, lumpy from every other side: for hard-edged pieces the
+    shapes stay clean and only their proportions follow the art. The far
     side's outer hull takes the near side's pixels (mirrored across the view),
     the inside the far pieces' (their sprites show the inner wall). A piece the
     game destroys takes its slice with it. Its pieces score lower on the sheets

@@ -250,39 +250,41 @@ def write_piece(path, kgrid, refgrid, base):
 
 LEG_TOP = (14.1, 25.0)   # out from the axis, up (level 0's floor)
 LEG_FOOT = (20.3, 0.0)
+# the leg's shape (table units), tuned against the four leg sprites by tune_legs() (--legs prints the search)
+LEG = dict(top=23.0, piston_r=1.2, piston=0.45, strut_r=0.55, pad_r=3.4, pad_h=0.9, cone_r=1.4)   # pad_h 0.7 matched 20 more pixels over the four legs but leaves a pad one model voxel thin
 
 
-def leg(tx, ty):
-    """One leg in its tile's model frame (level 0)."""
+def leg(tx, ty, shape=None):
+    """One leg in its tile's model frame (level 0): a strut from under the hull to a foot pad, thicker at the
+    top (the piston). Simple shapes on purpose: fitting voxels to the sprite pixel by pixel (terrain.14)
+    matched it exactly from the game's angle and made the leg lumpy from every other side."""
+    sh = dict(LEG, **(shape or {}))
     sx = sy = 16 * PER
     sz = 27 * PER + 1
     g = Grid(sx, sy, sz, PER)
-    # direction from the axis to this corner tile
     cxm, czm = tx * 16 + 8 - AX, ty * 16 + 8 - AZ
     n = math.hypot(cxm, czm)
     ux, uz = cxm / n, czm / n
     def at(r, y):   # table point in the tile's frame
         return (AX + ux * r - tx * 16, y, AZ + uz * r - ty * 16)
-    top = np.array(at(*LEG_TOP))
-    foot = np.array(at(LEG_FOOT[0], 1.0))
+    top = np.array(at(LEG_TOP[0], sh['top']))
+    foot = np.array(at(LEG_FOOT[0], sh['pad_h']))
     P = np.stack([g.X, g.Y, g.Z], -1)
     def capsule(a, b, ra, rb):
         ab = b - a
         t = np.clip(((P - a) @ ab) / (ab @ ab), 0, 1)
         d = np.linalg.norm(P - (a + t[..., None] * ab), axis=-1)
         return d <= ra + (rb - ra) * t
-    knee = top + 0.55 * (foot - top)
-    m = capsule(top, knee, 1.0, 0.9) | capsule(knee, foot, 0.65, 0.6)
-    m |= np.linalg.norm(P - knee, axis=-1) <= 1.15                         # the piston's end
-    # the foot pad: a disc on the ground, a little cone up to the strut
+    knee = top + sh['piston'] * (foot - top)
+    m = capsule(top, knee, sh['piston_r'], sh['piston_r']) | capsule(knee, foot, sh['strut_r'], sh['strut_r'])
     fx, fz = foot[0], foot[2]
     rp = np.hypot(g.X - fx, g.Z - fz)
-    m |= (rp <= 3.2) & (g.Y >= 0) & (g.Y <= 0.9)
-    m |= (rp <= 1.6 - 0.4 * (g.Y - 0.9)) & (g.Y > 0.9) & (g.Y <= 2.5)
+    m |= (rp <= sh['pad_r']) & (g.Y >= 0) & (g.Y <= sh['pad_h'])
+    m |= (rp <= sh['cone_r'] - 0.4 * (g.Y - sh['pad_h'])) & (g.Y > sh['pad_h']) & (g.Y <= sh['pad_h'] + 1.6)
     m &= g.Y >= 0
     m[:, :, 0] = False
     g.k[m] = PLAIN
-    return g, top, foot
+    return g
 
 
 def rays(g, W, H, yoff, SS=4):
@@ -309,86 +311,34 @@ def rays(g, W, H, yoff, SS=4):
     return pairs
 
 
-def fit_leg(g, p, top, foot, SS=4):
-    """0.21.0-terrain.14 (owner: the legs should fit their art exactly), seen exactly as the comparison
-    draws them (rays()). Built up from the art rather than carved from the strut: for each pixel the art
-    draws, the voxel nearest the strut whose footprint falls mostly in that pixel; then, among the strut's
-    own voxels, every one that changes no pixel (hidden behind those, or reaching only a few samples into a
-    neighbour) goes back in, so the leg stays solid from other sides; then single voxels switched while
-    that leaves fewer pixels wrong."""
+def wrong_pixels(g, p, SS=4, cache={}):
+    """Pixels where the leg, seen exactly as the comparison draws it (rays()), differs from its sprite."""
     idx, yoff = sprite(SET, p)
-    art = (idx > 0).ravel()
     H, W = idx.shape
-    NS = SS * SS
-    half = NS // 2
-    pairs = rays(g, W, H, yoff, SS)
-    nvox = g.sx * g.sy * g.sz
-    order = np.argsort(pairs[:, 1], kind='stable')
-    vs, ss = pairs[order, 1], pairs[order, 0]
-    starts = np.searchsorted(vs, np.arange(nvox + 1))
-    a_, b_ = np.array(top), np.array(foot)
-    P = np.stack([g.X.ravel(), g.Y.ravel(), g.Z.ravel()], 1)
-    ab = b_ - a_
-    t = np.clip(((P - a_) @ ab) / (ab @ ab), 0, 1)
-    dist = np.linalg.norm(P - (a_ + t[:, None] * ab), axis=1)
-    low = P[:, 1] < 2.5
-    dist[low] = np.minimum(dist[low], np.hypot(P[low, 0] - b_[0], P[low, 2] - b_[2]) * 0.4 + np.abs(P[low, 1] - 0.45))
-    shape0 = g.k.ravel().copy()
-    flat = np.zeros_like(shape0)
-    hits = np.zeros(H * W * NS, int)
-    pixcov = np.zeros(H * W, int)
-    def toggle(q, on):
-        sm = ss[starts[q]:starts[q + 1]]
-        before = hits[sm] > 0
-        hits[sm] += 1 if on else -1
-        ch = sm[before != (hits[sm] > 0)]
-        if len(ch): np.add.at(pixcov, ch // NS, 1 if on else -1)
-        flat[q] = PLAIN if on else 0
-    def status(px): return pixcov[px] >= half
-    def pix_wrong(px):
-        px = np.unique(px)
-        return int((status(px) != art[px]).sum())
-    def footprint(q):
-        sm = ss[starts[q]:starts[q + 1]]
-        px, n = np.unique(sm // NS, return_counts=True)
-        return px, n
-    # 1. a voxel for each pixel the art draws
-    cand_by_pix = {}
-    for q in np.nonzero((dist <= 3.5) & (starts[1:] > starts[:-1]))[0]:
-        px, n = footprint(q)
-        m = int(np.argmax(n))
-        if n[m] >= half: cand_by_pix.setdefault(int(px[m]), []).append(q)
-    for px in np.nonzero(art)[0]:
-        if status(px): continue
-        for q in sorted(cand_by_pix.get(int(px), ()), key=lambda q: dist[q]):
-            fp, n = footprint(q)
-            w0 = pix_wrong(fp)
-            toggle(q, True)
-            if pix_wrong(fp) < w0: break
-            toggle(q, False)
-    # 2. the strut's own voxels wherever they change nothing
-    for q in np.nonzero(shape0 & (flat == 0))[0]:
-        if starts[q + 1] == starts[q]: flat[q] = PLAIN; continue      # seen by no ray
-        fp, _ = footprint(q)
-        st = status(fp).copy()
-        toggle(q, True)
-        if (status(fp) != st).any(): toggle(q, False)
-    # 3. single switches while they help
-    near = np.nonzero((dist <= 3.5) & (starts[1:] > starts[:-1]))[0]
-    for rnd_ in range(10):
-        changed = 0
-        for q in near[np.argsort(dist[near])]:
-            fp, _ = footprint(q)
-            w0 = pix_wrong(fp)
-            on = not flat[q]
-            toggle(q, on)
-            if pix_wrong(fp) < w0: changed += 1
-            else: toggle(q, not on)
-        if not changed: break
-    g.k = flat.reshape(g.k.shape)
-    w = int((status(np.arange(H * W)) != art).sum())
-    print(f'  leg {p}: {w} pixels differ from the art ({int((g.k > 0).sum())} voxels)')
-    return g
+    key = (p, g.k.shape)
+    if key not in cache: cache[key] = rays(g, W, H, yoff, SS)
+    pairs = cache[key]
+    solid = (g.k.ravel()[pairs[:, 1]] > 0).astype(int)
+    hit = np.bincount(pairs[:, 0], weights=solid, minlength=H * W * SS * SS) > 0
+    cov = hit.reshape(H * W, SS * SS).sum(1) >= SS * SS // 2
+    return int((cov != (idx > 0).ravel()).sum())
+
+
+def tune_legs(legs):
+    """The leg's few shape numbers (LEG), searched one at a time against all four leg sprites together, so
+    the shape gets the art's proportions (piston width and length, heights) but stays clean."""
+    def total(shape): return sum(wrong_pixels(leg(tx, ty, shape), p) for (tx, ty), p in legs)
+    best = dict(LEG); score = total(best)
+    print(f'legs: {score} pixels differ with {best}')
+    steps = dict(top=(22.5, 23, 23.5, 24, 24.5, 25), piston_r=(1.0, 1.2, 1.3, 1.4, 1.5, 1.6), piston=(0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6),
+                 strut_r=(0.45, 0.5, 0.55, 0.6, 0.65, 0.7), pad_r=(2.8, 3.0, 3.2, 3.4, 3.6, 3.8), pad_h=(0.3, 0.4, 0.5, 0.7, 0.9), cone_r=(1.0, 1.2, 1.4, 1.6))
+    for _ in range(3):
+        for k, vals in steps.items():
+            for v in vals:
+                cand = dict(best, **{k: v}); sc = total(cand)
+                if sc < score: best, score = cand, sc
+    print(f'legs: {score} pixels differ with {best}')
+    return best
 
 
 def main():
@@ -422,10 +372,11 @@ def main():
         kg[:, :, 1:] = np.where(sub, PLAIN, 0)
         rg = {(x - ox, y - oy, z - k0 + 1): v for (x, y, z), v in ref.items() if ox <= x < ox + T and oy <= y < oy + T and z >= k0}
         write_piece(os.path.join(OUT, f'{SET}_{cap}'), kg, rg, CAP_BASE)
-    for (tx, ty, tz), p in sorted(at.items()):
-        if tz != 0: continue
-        g, top, foot = leg(tx, ty)
-        g = fit_leg(g, p, top, foot)
+    legs = [((tx, ty), p) for (tx, ty, tz), p in sorted(at.items()) if tz == 0]
+    if '--legs' in sys.argv: tune_legs(legs)
+    for (tx, ty), p in legs:
+        g = leg(tx, ty)
+        print(f'  leg {p}: {wrong_pixels(g, p)} pixels differ from its sprite')
         path = os.path.join(OUT, f'{SET}_{p}.vox')
         g.write_vox(path)
         print(f'wrote {path}: {int((g.k > 0).sum())} voxels')

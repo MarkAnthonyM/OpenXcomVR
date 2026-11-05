@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.14).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.15).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -384,6 +384,26 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     no voxel's footprint lands exactly on one pixel, (i + j) - 2k is odd). Legs 16-19: 0 pixels differ in
     the game's comparison (no red or blue at all), 100% / 100%. Sheets vs terrain.13: only those and wheat
     (92 -> 90, rule-built).
+  - Owner on terrain.14: the exact-fit legs looked worse in the headset than terrain.13's. Seen from four
+    sides (offline render): a lumpy strut, the piston no longer round, stray voxels round the pad. The fit
+    only sees the game's angle; a voxel straddles half a pixel, so each one-pixel detail becomes a bump or
+    notch; the art's dark edge pixels and shading become shape. Lesson (owner agreed): don't chase hand-built
+    hard-edged pieces to 100%; use the score to catch real mistakes (proportions, placement, a part the art
+    lacks), fix those in the shape's parameters, stop when what's left is pixel noise, judge in the headset.
+    Organic pieces (crowns) take more fitting. terrain.15: small_scout.py leg(shape) with LEG = top 23,
+    piston_r 1.2 (the art's 4-pixel piston), piston 0.45, strut_r 0.55, no knee ring, pad_r 3.4, pad_h 0.9,
+    cone_r 1.4; `--legs` searches those one at a time against the four sprites (wrong_pixels(): the
+    comparison's 4 x 4 sampling via rays()). Pixels wrong (four legs): terrain.13 129, untuned 116, searched
+    66 with pad_h 0.7; 86 with 0.9 kept (0.7 leaves the pad one model voxel thin). Game comparison: 16/17/18
+    100%, 19 98% shape, colour 99-100%. fit_leg() removed.
+  - Explorer for the owner (not in the repo; built from his data in the session, sent as a file, never
+    published: it holds the game's art): the scout's 15 sprites assembled in the game's draw order (Map.cpp
+    drawTerrain: z, then x, then y), spread apart, build steps, the table's model rendered from the game's
+    angle beside it, piece colours, both cuts mapped onto the saucer from above. Finding while making it: I
+    had told the owner the artist cut the saucer "along lines on the screen" (strips above each diamond);
+    wrong. Mapped back onto the saucer, the art's pieces roughly follow the 3 x 3 tiles with hand-drawn,
+    wandering edges (south and east reach diagonally in toward the middle); each sprite is bounded by its
+    32 x 40 frame and nearer tiles draw over farther ones, nothing more.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
