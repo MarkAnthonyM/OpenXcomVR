@@ -6,8 +6,9 @@ come from the preview's `dumpart SET` test op ($VR_RUN/shots/art/), which needs 
 they are read here, never written into the repo.
 
 Frames: model voxel (x, y, z), x east, y south, z up, two per table voxel, the model's x/y centre on the
-tile's centre; z = 0 is paint on the floor, z >= 1 solid from the floor's top (table height 2).
-Sprite pixel of a point (table units X east, Y up, Z south): px = 16 + X - Z, py = 24 + (X + Z) / 2 - Y + yoff + 2.
+tile's centre; z = 0 is paint on the floor, z >= 1 solid from the floor's top (table height 0 since
+0.21.0-terrain.9, where the art's height 0 is too).
+Sprite pixel of a point (table units X east, Y up, Z south): px = 16 + X - Z, py = 24 + (X + Z) / 2 - Y + yoff.
 """
 import os, struct
 import numpy as np
@@ -56,17 +57,17 @@ class Grid:
         # centres of every voxel in table units
         x = (np.arange(sx) + 0.5 - sx / 2) * 0.5 + 8
         y = (np.arange(sy) + 0.5 - sy / 2) * 0.5 + 8
-        z = 2 + (np.arange(sz) - 0.5) * 0.5   # z = 1 -> 2.25
+        z = (np.arange(sz) - 0.5) * 0.5       # z = 1 -> 0.25
         self.X, self.Z, self.Y = np.meshgrid(x, y, z, indexing='ij')
 
     def project(self, yoff=0):
         px = 16 + self.X - self.Z
-        py = 24 + (self.X + self.Z) / 2 - self.Y + yoff + 2
+        py = 24 + (self.X + self.Z) / 2 - self.Y + yoff
         return px, py
 
     def fine(self, X, Z, Y):
         """Model voxel of a table point."""
-        return (int(np.floor((X - 8) * 2 + self.sx / 2)), int(np.floor((Z - 8) * 2 + self.sy / 2)), int(np.floor((Y - 2) * 2 + 1)))
+        return (int(np.floor((X - 8) * 2 + self.sx / 2)), int(np.floor((Z - 8) * 2 + self.sy / 2)), int(np.floor(Y * 2 + 1)))
 
     def write_vox(self, path):
         pts = np.argwhere(self.k > 0)

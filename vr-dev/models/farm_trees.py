@@ -35,7 +35,7 @@ def disc_line(g, a, b, r, kind, overwrite=True):
     ab = b - a
     t = np.clip(((P - a) @ ab) / max(1e-9, ab @ ab), 0, 1)
     d = np.linalg.norm(P - (a + t[..., None] * ab), axis=-1)
-    m = (d <= r) & (g.Y >= 2.0)
+    m = (d <= r) & (g.Y >= 0.0)
     # and every voxel the centre line passes through, so a thin branch never breaks up on the grid
     n = int(np.ceil(np.linalg.norm(ab) * 2 * 4)) + 1
     for t in np.linspace(0, 1, n):
@@ -48,9 +48,9 @@ def disc_line(g, a, b, r, kind, overwrite=True):
 def trunk(g, top, r, flare):
     """A vertical trunk at the axis from the floor to height `top`, roots flaring over the bottom voxels."""
     rr = np.hypot(g.X - AX, g.Z - AZ)
-    h = g.Y - 2.0
-    rad = r + flare * np.clip(1 - h / 3.0, 0, 1) ** 2
-    g.k[(rr <= rad) & (g.Y >= 2) & (g.Y <= top)] = WOOD
+    h = g.Y
+    rad = r + flare * np.clip(1 - h / 2.0, 0, 1) ** 2
+    g.k[(rr <= rad) & (g.Y >= 0) & (g.Y <= top)] = WOOD
 
 
 def paint_patch(g):
@@ -61,27 +61,55 @@ def paint_patch(g):
     g.k[:, :, 0] = np.where((X >= 0) & (X < 16) & (Z >= 0) & (Z < 16), PATCH, 0)
 
 
-def roots(g, cl, yoff, reach=6.0):
-    """Low roots where the art draws wood on the ground near the trunk (and the tree doesn't hide that
-    ground from the game's angle): one model voxel high (half a table voxel), two close to the trunk."""
+def roots(g, cl, yoff, reach=6.0, trunk_r=1.15, back=2):
+    """Roots as the art draws them (0.21.0-terrain.9): each separate root drawn on the ground near the
+    trunk (wood, or red-brown, pixels the standing tree doesn't hide from the game's angle) becomes one low
+    root from the trunk out to where that drawn root ends, tapering; `back` more go behind, mirrored round
+    the trunk from the drawn ones (the art can't show those). The drawn roots stay painted on the ground
+    underneath (the table's paint layer)."""
     H, W = cl.shape
     pix, piy = pixel_of(g, yoff)
     standing = (g.k > 0) & (np.arange(g.sz)[None, None, :] >= 3)
     hidden = np.zeros((H, W), bool)
     ok = standing & (pix >= 0) & (pix < W) & (piy >= 0) & (piy < H)
     hidden[piy[ok], pix[ok]] = True
-    n = 0
-    for x in range(g.sx):
-        for y in range(g.sy):
-            X, Z = g.X[x, y, 1], g.Z[x, y, 1]
-            if not (0 <= X < 16 and 0 <= Z < 16): continue
+    # the drawn roots: visible ground pixels near the trunk, and where on the ground each one is
+    where = {}
+    for py in range(H):
+        for px in range(W):
+            if hidden[py, px] or cl[py, px] not in (WOOD, FRUIT): continue
+            u, v = px + 0.5 - 16, 2 * (py + 0.5 - 24 - yoff)   # X - Z, X + Z on the ground
+            X, Z = (u + v) / 2, (v - u) / 2
             d = math.hypot(X - AX, Z - AZ)
-            if d > reach: continue
-            px, py = int(math.floor(16 + X - Z)), int(math.floor(24 + (X + Z) / 2 + yoff))
-            if not (0 <= px < W and 0 <= py < H) or hidden[py, px] or cl[py, px] not in (WOOD, FRUIT): continue  # (a red-brown trunk reads as fruit)
-            if g.k[x, y, 1] == 0: g.k[x, y, 1] = WOOD; n += 1
-            if d <= 3.5 and g.k[x, y, 2] == 0: g.k[x, y, 2] = WOOD
-    print(f'  roots: {n} cells')
+            if not (0 <= X < 16 and 0 <= Z < 16) or d > reach or d < trunk_r * 0.8: continue
+            where[(px, py)] = (X, Z, d)
+    # separate roots: the drawn pixels grouped by their direction from the trunk (they join at its foot);
+    # each group's farthest pixel is where its root ends
+    pts = sorted((math.atan2(Z - AZ, X - AX), d) for X, Z, d in where.values() if d >= trunk_r + 0.5)
+    groups = []
+    for a, d in pts:
+        if groups and a - groups[-1][-1][0] <= math.radians(25): groups[-1].append((a, d))
+        else: groups.append([(a, d)])
+    if len(groups) > 1 and (groups[0][0][0] + 2 * math.pi) - groups[-1][-1][0] <= math.radians(25):
+        groups[0] = groups.pop() + groups[0]   # the group that wraps round
+    tips = []
+    for grp in groups:
+        if len(grp) < 2: continue
+        tips.append(max(grp, key=lambda t: t[1]))
+    def root(az, length):
+        cx, sz_ = math.cos(az), math.sin(az)
+        base = (AX + cx * trunk_r * 0.7, 0.9, AZ + sz_ * trunk_r * 0.7)
+        mid = (AX + cx * (trunk_r + (length - trunk_r) * 0.45), 0.45, AZ + sz_ * (trunk_r + (length - trunk_r) * 0.45))
+        tip = (AX + cx * length, 0.1, AZ + sz_ * length)
+        disc_line(g, base, mid, 0.55, WOOD, overwrite=False)
+        disc_line(g, mid, tip, 0.32, WOOD, overwrite=False)
+    for az, d in tips: root(az, d)
+    if tips and back:
+        mean = math.atan2(sum(math.sin(a) for a, _ in tips), sum(math.cos(a) for a, _ in tips))
+        length = 0.8 * sum(d for _, d in tips) / len(tips)
+        for k in range(back):
+            root(mean + math.pi + math.radians(35) * (1 if k % 2 else -1), length)
+    print(f'  roots: {len(tips)} drawn, {back if tips else 0} behind')
 
 
 def pixel_of(g, yoff):
@@ -109,7 +137,7 @@ def fruit_tree(i, seed, crown_rows):
     Hh = (yb - yt + 1) / 2
     Rv = math.sqrt(max(Hh * Hh - R * R / 2, (0.7 * R) ** 2))
     yc = (yt + yb + 1) / 2
-    Yc = 24 + (AX + AZ) / 2 + yoff + 2 - yc
+    Yc = 24 + (AX + AZ) / 2 + yoff - yc
     print(f'CULTIVAT {i}: crown R {R:.1f} Rv {Rv:.1f} centre height {Yc:.1f}, bottom {Yc - Rv:.1f}')
 
     g = Grid(SX, SY, SZ)
@@ -123,10 +151,10 @@ def fruit_tree(i, seed, crown_rows):
         c = (AX + R * 0.86 * s * math.cos(v), Yc + Rv * 0.86 * u, AZ + R * 0.86 * s * math.sin(v))
         rc = rnd.uniform(1.6, 3.0)
         body |= (g.X - c[0]) ** 2 + (g.Y - c[1]) ** 2 + (g.Z - c[2]) ** 2 <= rc * rc
-    body &= g.Y >= 2.5
+    body &= g.Y >= 0.5
     g.k[body] = LEAF
     # trunk up into the crown, roots flaring
-    trunk(g, Yc, 1.15, 1.6)
+    trunk(g, Yc, 1.15, 0.5)
     # fit to the art from the game's angle
     pix, piy = pixel_of(g, yoff)
     ok = (pix >= 0) & (pix < W) & (piy >= 0) & (piy < H)
@@ -165,7 +193,7 @@ def fruit_tree(i, seed, crown_rows):
         g.k[ray & (depth > depth[tuple(a)]) & (g.k == LEAF)] = 0
         g.k[tuple(a)] = WOOD
         # a branch back to the trunk, a little lower
-        disc_line(g, (AX, max(2.5, Y - 3.0), AZ), (X, Y, Z), 0.45, WOOD, overwrite=False)
+        disc_line(g, (AX, max(0.5, Y - 3.0), AZ), (X, Y, Z), 0.45, WOOD, overwrite=False)
     # apples on the near side where the art has them, and as many again mirrored round the trunk
     solid = g.k > 0
     for y, x in zip(*np.nonzero(fruit & crown)):
@@ -206,8 +234,8 @@ def dead_tree():
     pal = palette()
     idx, yoff = sprite('CULTIVAT', 13)
     g = Grid(SX, SY, SZ)
-    fork = 37 - 22 + yoff   # table height of sprite row 22 at the axis: Y = 24 + X0 + 2 - py
-    trunk(g, fork + 0.5, 1.05, 1.9)
+    fork = 24 + AX + yoff - 22   # table height of sprite row 22 at the axis: Y = 24 + X0 + yoff - py
+    trunk(g, fork + 0.5, 1.05, 0.6)
     placed = {}   # sprite point -> table point, so a twig grows from where its limb passes
     for pts, az, r0 in DEAD_BRANCHES:
         th = math.radians(az)
@@ -223,14 +251,14 @@ def dead_tree():
         for j, (px, py) in enumerate(pts):
             if abs(k) > 0.2: d = min(6.0, max(d, (px + 0.5 - bpx) / k))  # limbs reach at most 6 out
             X, Z = bx + d * cx, bz + d * sz_
-            Y = 24 + (X + Z) / 2 + yoff + 2 - (py + 0.5)
+            Y = 24 + (X + Z) / 2 + yoff - (py + 0.5)
             cur = placed[(px, py)] if j == 0 and (px, py) in placed else (X, Y, Z)
             placed.setdefault((px, py), cur)
             if prev is not None:
                 r = r0 + (0.3 - r0) * (j / (n - 1))
                 disc_line(g, prev, cur, max(0.3, r), WOOD, overwrite=False)
             prev = cur
-    roots(g, classes(idx, pal), yoff)
+    roots(g, classes(idx, pal), yoff, trunk_r=1.05)
     paint_patch(g)
     return g
 

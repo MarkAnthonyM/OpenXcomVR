@@ -72,6 +72,8 @@ namespace OpenXcom
 namespace VR
 {
 
+static bool savePicture(const std::string &path, const std::vector<uint32_t> &px, int w, int h, int K, const char *what);
+
 static const Uint8 SYNTH_TAG = 0xB7; // "which" value marking events we injected
 
 struct Panel
@@ -1929,6 +1931,18 @@ static void runScript()
 					for (int i = 0; i < 256; ++i) pf << (int)pal[i].r << " " << (int)pal[i].g << " " << (int)pal[i].b << "\n";
 					Log(LOG_INFO) << "[VR] dumpart " << ds->getName() << ": " << ds->getSize() << " parts";
 				}
+		}
+		else if (c.op == "comparepart" && c.args.size() >= 2)
+		{
+			// comparepart SET id : one part of any terrain set on its own (shots/part_<SET>_<id>.png)
+			TerrainLabState *lab = nullptr;
+			for (OpenXcom::State *st : S->game->getStates())
+				if (auto *l = dynamic_cast<TerrainLabState*>(st)) lab = l;
+			MapDataSet *ds = lab ? lab->findSet(c.args[0]) : nullptr;
+			std::vector<uint32_t> px;
+			int w = 0, h = 0;
+			if (ds && S->board.partPicture(ds, (int)num(1, 0), px, w, h)) savePicture("shots/part_" + c.args[0] + "_" + c.args[1] + ".png", px, w, h, 3, "part picture");
+			else Log(LOG_INFO) << "[VR] comparepart: no " << c.args[0] << " " << c.args[1];
 		}
 		else if (c.op == "sheets")
 		{

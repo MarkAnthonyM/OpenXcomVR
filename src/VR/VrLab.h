@@ -119,6 +119,8 @@ public:
 	/// per set and scores.txt (worst first), in <user folder>/terrain-lab/sheets/<date_time>/. which: "" the
 	/// current terrain, "all" every terrain, else a terrain's name. Returns the folder ("" if nothing made).
 	std::string makeSheets(const std::string &which);
+	/// A terrain set of any terrain, loaded (test op comparepart); null if none has that name.
+	MapDataSet *findSet(const std::string &name);
 
 private:
 	struct Entry { std::string label; RuleTerrain *rule; };

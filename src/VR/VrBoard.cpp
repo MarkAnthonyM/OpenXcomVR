@@ -335,9 +335,11 @@ struct Board::Impl
 	{
 		const MapData *m[O_MAX] = {nullptr, nullptr, nullptr, nullptr};
 		int join = 0; // floor relief carrying on into the neighbours (VR::reliefField)
+		int edges = 0; // sides (1 west, 2 east, 4 north, 8 south) where the floor's thickness shows (no floor beside)
 		bool operator<(const TileKey &o) const
 		{
 			if (join != o.join) return join < o.join;
+			if (edges != o.edges) return edges < o.edges;
 			return std::lexicographical_compare(m, m + O_MAX, o.m, o.m + O_MAX);
 		}
 	};
@@ -346,6 +348,7 @@ struct Board::Impl
 	void buildTile(const TileKey &k, Proto &p);
 	void addCard(const MapData *md, Proto &p);
 	void addRelief(const MapData *floor, int join, Proto &p);
+	void addFloor(const Surface *spr, int yoff, uint32_t avg, bool relief, int edges, const uint8_t own[TILE_W][TILE_W][SHAPE_H], Proto &p);
 	void addModel(const VR::Model &m, const Surface *spr, int yoff, const Surface *floorSpr, Proto &p);
 	/// The part's hand-built model (VrModels.h), or null.
 	const VR::Model *modelOf(const MapData *md);
@@ -367,6 +370,8 @@ struct Board::Impl
 	/// table's own cached shape.
 	void compareKey(const TileKey &k, bool scratchBuild, Comparison &c);
 	bool comparePicture(const Position &pos, std::vector<uint32_t> &px, int &W, int &H);
+	bool partPicture(const MapDataSet *ds, int id, std::vector<uint32_t> &px, int &W, int &H);
+	bool comparisonPicture(const Comparison &c, const std::string &title, std::vector<uint32_t> &px, int &W, int &H);
 	bool partSheet(const MapDataSet *ds, std::vector<uint32_t> &px, int &W, int &H, std::string &report);
 	uint64_t inspectKey = ~0ull;
 	/// Per part: its sprite's average colour (minimap, fallbacks) and how high it reaches (rain).
@@ -565,8 +570,12 @@ struct Board::Impl
 		return glm::translate(glm::mat4(1.f), {(mapRect.x + mapRect.z) * 0.5f, surfaceY(), (mapRect.y + mapRect.w) * 0.5f})
 			* glm::rotate(glm::mat4(1.f), yaw, {0, 1, 0})
 			* glm::scale(glm::mat4(1.f), glm::vec3(k))
-			* glm::translate(glm::mat4(1.f), {-focus.x, 0.f, -focus.z});
+			* glm::translate(glm::mat4(1.f), {-focus.x, FLOOR_LIFT, -focus.z});
 	}
+	/// The map stands 2 voxels up (0.21.0-terrain.9): floors are surfaces at height 0 with their 2-voxel
+	/// thickness hanging below, so the ground floor's top and edges sit where the old slab's did, and walls,
+	/// objects, units and the game's own positions (shots, picks) all stand on it, being lifted alike.
+	static constexpr float FLOOR_LIFT = 2.f;
 	glm::vec4 clipRect() const { return mapRect; }
 	glm::mat4 globeMatrix() const
 	{
@@ -693,7 +702,7 @@ const Board::Impl::PartInfo &Board::Impl::partInfo(const MapData *md)
 			if (idx < voxels->size() && (*voxels)[idx]) { top = z; break; }
 		}
 	}
-	pi.top = top >= 0 ? (float)(top + 1) : (n ? 32.f + md->getYOffset() : 0.f);
+	pi.top = md->getObjectType() == O_FLOOR ? 0.f : top >= 0 ? (float)(top + 1) : (n ? 32.f + md->getYOffset() : 0.f); // a floor's top is the ground (0.21.0-terrain.9)
 	return pi;
 }
 
@@ -759,7 +768,7 @@ void Board::Impl::addRelief(const MapData *floor, int join, Proto &p)
 		for (int i = -1; i <= N; ++i)
 			build->put(ax + 1 + i, ay + 1 + j, F.tex[glm::clamp(j, 0, N - 1)][glm::clamp(i, 0, N - 1)]);
 	auto uv = [&](float i, float j) { return glm::vec2((ax + 1 + i) / (float)ATLAS, (ay + 1 + j) / (float)ATLAS); };
-	const float BASE = 2.f, CELL = (float)TILE_W / N;
+	const float BASE = 0.f, CELL = (float)TILE_W / N; // the floor's top (0.21.0-terrain.9: at height 0)
 	const glm::vec4 white(1.f);
 	auto quad = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d, glm::vec3 n, glm::vec2 ta, glm::vec2 tb, glm::vec2 tc, glm::vec2 td)
 	{
@@ -870,6 +879,10 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 		px = (int)std::floor(16.f + (x - y));
 		py = (int)std::floor(24.f + (x + y) * 0.5f - z + yoff);
 	};
+	bool lowOnly = true; // the collision is only the bottom 2 layers
+	for (int z = 2; z < TILE_H && lowOnly; ++z)
+		for (int y = 0; y < TILE_W && lowOnly; ++y)
+			for (int x = 0; x < TILE_W; ++x) if (loftSolid(x, y, z)) { lowOnly = false; break; }
 	// how much of the art the collision voxels already cover; the axis is the middle of their footprint
 	std::vector<uint8_t> covered((size_t)W * H, 0);
 	float ax = 0.f, ay = 0.f;
@@ -878,7 +891,10 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 		for (int y = 0; y < TILE_W; ++y)
 			for (int x = 0; x < TILE_W; ++x)
 			{
-				if (!loftSolid(x, y, z)) continue;
+				// (for a part that is only its bottom 2 layers, a copy of the floor's slab in its collision,
+				// those don't count as covering the art: low grass or a bush is built from its art)
+				// (what the part keeps: its slab copy is already gone from own[], see buildTile)
+				if (own[x][y][z] != part + 1 || (z < 2 && lowOnly)) continue;
 				if (z >= 2) { ax += x + 0.5f; ay += y + 0.5f; ++nfoot; }
 				int px, py;
 				proj(x + 0.5f, y + 0.5f, z + 1.f, px, py);
@@ -1007,13 +1023,13 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 		}
 		return any;
 	};
-	// slices from z 2 up, as high as the art goes (a tree's crown rises above its level)
+	// slices from the ground (z 0, the floor's top since 0.21.0-terrain.9) up, as high as the art goes (a tree's crown rises above its level)
 	struct Fit { std::vector<float> rad; int top = -1; float iou = 0.f; std::vector<uint8_t> mask; };
 	auto fitWith = [&](float cap) -> Fit
 	{
 		Fit f;
 		f.rad.assign(SHAPE_H, 0.f);
-		for (int z = 2; z < SHAPE_H; ++z)
+		for (int z = 0; z < SHAPE_H; ++z)
 		{
 			float row = gv - (z + 0.5f);
 			if (row < 0.f) break;
@@ -1021,7 +1037,7 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 				if (fits(rad, row)) { f.rad[z] = rad; break; }
 		}
 		// a gap between slices (a trunk hidden for a row or two) takes the narrower of its neighbours
-		for (int z = 3; z < SHAPE_H - 1; ++z)
+		for (int z = 1; z < SHAPE_H - 1; ++z)
 		{
 			if (f.rad[z] > 0.f || f.rad[z - 1] <= 0.f) continue;
 			int z2 = z;
@@ -1035,7 +1051,7 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 		f.mask.assign((size_t)W * H, 0);
 		std::vector<int> gained(SHAPE_H, 0);
 		int total = 0, uni = 0;
-		for (int z = 2; z < SHAPE_H; ++z)
+		for (int z = 0; z < SHAPE_H; ++z)
 		{
 			if (f.rad[z] <= 0.f) continue;
 			float row = gv - (z + 0.5f);
@@ -1056,7 +1072,7 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 		if (!uni || !artCount) return f;
 		f.iou = (float)total / (float)(uni + artCount - total);
 		int keep = total, top = SHAPE_H - 1;
-		while (top >= 2 && (f.rad[top] <= 0.f || keep - gained[top] >= total - std::max(3, total / 150)))
+		while (top >= 0 && (f.rad[top] <= 0.f || keep - gained[top] >= total - std::max(3, total / 150)))
 		{
 			keep -= gained[top];
 			f.rad[top] = 0.f;
@@ -1074,18 +1090,18 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 	// flat-topped crown covers the same rows), and the art's crowns are drawn round. From where the crown
 	// reaches most of its width, half an ellipsoid as wide as the crown, high enough that its outline
 	// reaches the art's top near the axis.
-	if (!boxy && best.top >= 2)
+	if (!boxy && best.top >= 0)
 	{
 		float rm = 0.f;
-		for (int z = 2; z <= best.top; ++z) rm = std::max(rm, best.rad[z]);
+		for (int z = 0; z <= best.top; ++z) rm = std::max(rm, best.rad[z]);
 		int zb = -1;
-		for (int z = 2; z <= best.top && zb < 0; ++z) if (best.rad[z] >= 0.6f * rm) zb = z;
+		for (int z = 0; z <= best.top && zb < 0; ++z) if (best.rad[z] >= 0.6f * rm) zb = z;
 		int artTop = -1;
 		for (int y = 0; y < H && artTop < 0; ++y)
 			for (int x = (int)std::floor(axisPx - 2.f); x <= (int)std::floor(axisPx + 2.f); ++x)
 				if (x >= 0 && x < W && art[(size_t)y * W + x]) { artTop = y; break; }
 		float D = gv - zb - artTop;
-		if (rm >= 3.f && zb >= 2 && artTop >= 0 && D > rm)
+		if (rm >= 3.f && zb >= 0 && artTop >= 0 && D > rm)
 		{
 			float c = (D * D - rm * rm * 0.5f) / (2.f * D), zc = zb + c;
 			if (c > 2.f)
@@ -1102,7 +1118,7 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 	}
 	// a block whose top band in the art is ragged (a crop field's ears): stalks stand on a lower top
 	bool ragged = false;
-	if (boxy && best.top >= 2)
+	if (boxy && best.top >= 0)
 	{
 		int band = 0, filled = 0;
 		for (int x = 0; x < W; ++x)
@@ -1118,14 +1134,14 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 	// a height from the hand-checked list (terrain-relief.txt, "tall"): the slices squeezed or stretched
 	if (float want = VR::shapeHeight(md))
 	{
-		int newTop = std::max(2, std::min(SHAPE_H - 1, (int)std::lround(want) - 1));
-		if (best.top >= 2 && newTop != best.top)
+		int newTop = std::max(0, std::min(SHAPE_H - 1, (int)std::lround(want) - 1));
+		if (best.top >= 0 && newTop != best.top)
 		{
 			std::vector<float> r(SHAPE_H, 0.f);
-			for (int z = 2; z <= newTop; ++z)
+			for (int z = 0; z <= newTop; ++z)
 			{
-				float src = newTop == 2 ? 2.f : 2.f + (z - 2) * (float)(best.top - 2) / (float)(newTop - 2);
-				r[z] = best.rad[std::max(2, std::min(best.top, (int)std::lround(src)))];
+				float src = newTop == 0 ? 0.f : z * (float)best.top / (float)newTop;
+				r[z] = best.rad[std::max(0, std::min(best.top, (int)std::lround(src)))];
 			}
 			best.rad = r;
 			best.top = newTop;
@@ -1147,7 +1163,7 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 		  << md->getSprite(0) << ": " << (boxy ? "square" : "round") << " iou " << best.iou << " (round " << round.iou
 		  << ", square " << square.iou << ") collision " << (100 * cov / opaque) << "% top " << best.top
 		  << (patch ? " patch" : "") << " stalks " << stalkH << "/" << stalkFill << " trunk colours " << trunkCols.size() << " radii";
-		for (int z = 2; z <= best.top; ++z) o << " " << best.rad[z];
+		for (int z = 0; z <= best.top; ++z) o << " " << best.rad[z];
 		Log(LOG_INFO) << o.str();
 	}
 	// natural terrain only: craft, UFO and base parts keep their collision with the old rule's additions
@@ -1160,14 +1176,14 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 		if (craftSets.count(n)) natural = false;
 	}
 	bool added = false;
-	if (natural && best.top >= 2 && best.iou >= 0.6f)
+	if (natural && best.top >= 0 && best.iou >= 0.6f)
 	{
-		// the shape replaces the collision (the floor keeps its slab)
+		// the shape replaces the collision, from the ground (the floor's top) up
 		for (int z = 0; z < SHAPE_H; ++z)
 			for (int y = 0; y < TILE_W; ++y)
 				for (int x = 0; x < TILE_W; ++x)
 					if (own[x][y][z] == part + 1) own[x][y][z] = 0;
-		for (int z = 2; z <= best.top; ++z)
+		for (int z = 0; z <= best.top; ++z)
 		{
 			float rad = best.rad[z];
 			if (rad <= 0.f) continue;
@@ -1185,8 +1201,8 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 				for (int x = 0; x < TILE_W; ++x)
 				{
 					int zt = -1;
-					for (int z = SHAPE_H - 1; z >= 2; --z) if (own[x][y][z] == part + 1) { zt = z; break; }
-					if (zt < 2) continue;
+					for (int z = SHAPE_H - 1; z >= 0; --z) if (own[x][y][z] == part + 1) { zt = z; break; }
+					if (zt < 0) continue;
 					uint32_t hsh = (uint32_t)(x * 73856093u) ^ (uint32_t)(y * 19349663u) ^ (uint32_t)(md->getSprite(0) * 83492791u);
 					hsh ^= hsh >> 13; hsh *= 0x5bd1e995u; hsh ^= hsh >> 15;
 					if ((hsh & 1023) / 1024.f >= stalkFill) continue;
@@ -1199,7 +1215,7 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 		if (!boxy && patch)
 		{
 			std::map<int, std::vector<std::array<int, 3>>> rays; // sprite pixel -> the part's voxels drawn there
-			for (int z = 2; z < SHAPE_H; ++z)
+			for (int z = 0; z < SHAPE_H; ++z)
 				for (int y = 0; y < TILE_W; ++y)
 					for (int x = 0; x < TILE_W; ++x)
 					{
@@ -1258,6 +1274,115 @@ bool Board::Impl::growToArt(const MapData *md, const Surface *spr, int yoff, uin
 	return added;
 }
 
+/// A floor (0.21.0-terrain.9): its top a surface at height 0, where walls, objects and units stand and the
+/// art draws the ground, coloured from its sprite as the flat game shows it (left out under the walls' and
+/// objects' feet, and where relief replaces it). Its 2-voxel thickness hangs below that, drawn only on the
+/// sides `edges` says have no floor beside them (the map's edge, a hole, the edge of an upper floor).
+void Board::Impl::addFloor(const Surface *spr, int yoff, uint32_t avg, bool relief, int edges, const uint8_t own[TILE_W][TILE_W][SHAPE_H], Proto &p)
+{
+	const int W = spr->getWidth(), H = spr->getHeight();
+	// the colour of the floor's top over cell (x, y): its sprite pixel, or the nearest one
+	uint32_t top[TILE_W][TILE_W];
+	for (int y = 0; y < TILE_W; ++y)
+		for (int x = 0; x < TILE_W; ++x)
+		{
+			int px = (int)std::floor(16.f + (x - y)), py = (int)std::floor(24.f + (x + y + 1) * 0.5f + yoff);
+			uint32_t c = avg;
+			bool found = false;
+			for (int r = 0; r <= 6 && !found; ++r)
+				for (int dy = -r; dy <= r && !found; ++dy)
+					for (int dx = -r; dx <= r && !found; ++dx)
+					{
+						if (std::max(std::abs(dx), std::abs(dy)) != r) continue;
+						int sx = px + dx, sy = py + dy;
+						if (sx < 0 || sy < 0 || sx >= W || sy >= H) continue;
+						if (Uint8 v = spr->getPixel(sx, sy)) { c = rgba(pal[v]); found = true; }
+					}
+			top[y][x] = c;
+		}
+	// a floor whose art fills only part of the tile (a hull's edge, half a deck): only where the art is
+	bool cellArt[TILE_W][TILE_W];
+	int withArt = 0;
+	for (int y = 0; y < TILE_W; ++y)
+		for (int x = 0; x < TILE_W; ++x)
+		{
+			int px = (int)std::floor(16.f + (x - y)), py = (int)std::floor(24.f + (x + y + 1) * 0.5f + yoff);
+			bool a = false;
+			for (int dy = -1; dy <= 1 && !a; ++dy)
+				for (int dx = -1; dx <= 1 && !a; ++dx)
+				{
+					int sx = px + dx, sy = py + dy;
+					a = sx >= 0 && sy >= 0 && sx < W && sy < H && spr->getPixel(sx, sy);
+				}
+			cellArt[y][x] = a;
+			withArt += a;
+		}
+	const bool partial = withArt * 10 < TILE_W * TILE_W * 9;
+	auto open = [&](int x, int y) { return !own[x][y][0] && (!partial || cellArt[y][x]); };
+	auto quad = [&](const glm::vec3 c[4], const glm::vec3 &n, const std::vector<uint32_t> &tex, int w, int h)
+	{
+		int ax, ay;
+		if (!build->alloc(w + 2, h + 2, ax, ay)) return;
+		for (int j = -1; j <= h; ++j)
+			for (int i = -1; i <= w; ++i)
+				build->put(ax + 1 + i, ay + 1 + j, tex[(size_t)glm::clamp(j, 0, h - 1) * w + glm::clamp(i, 0, w - 1)]);
+		float tu0 = (ax + 1) / (float)ATLAS, tv0 = (ay + 1) / (float)ATLAS, tu1 = (ax + 1 + w) / (float)ATLAS, tv1 = (ay + 1 + h) / (float)ATLAS;
+		const glm::vec4 white(1.f);
+		uint32_t b = (uint32_t)p.verts.size();
+		p.verts.push_back({c[0], n, {tu0, tv0}, white, MAT_BOARD});
+		p.verts.push_back({c[1], n, {tu1, tv0}, white, MAT_BOARD});
+		p.verts.push_back({c[2], n, {tu1, tv1}, white, MAT_BOARD});
+		p.verts.push_back({c[3], n, {tu0, tv1}, white, MAT_BOARD});
+		p.idx.insert(p.idx.end(), {b, b + 1, b + 2, b, b + 2, b + 3});
+	};
+	// the top, merged into rectangles of open cells (not under a wall's or object's foot)
+	if (!relief)
+	{
+		bool used[TILE_W][TILE_W] = {};
+		for (int v = 0; v < TILE_W; ++v)
+			for (int u = 0; u < TILE_W; ++u)
+			{
+				if (used[v][u] || !open(u, v)) continue;
+				int w = 1;
+				while (u + w < TILE_W && !used[v][u + w] && open(u + w, v)) ++w;
+				int h = 1;
+				for (bool ok = true; v + h < TILE_W && ok;)
+				{
+					for (int i = 0; i < w; ++i)
+						if (used[v + h][u + i] || !open(u + i, v + h)) { ok = false; break; }
+					if (ok) ++h;
+				}
+				std::vector<uint32_t> tex((size_t)w * h);
+				for (int j = 0; j < h; ++j)
+					for (int i = 0; i < w; ++i) { used[v + j][u + i] = true; tex[(size_t)j * w + i] = top[v + j][u + i]; }
+				const glm::vec3 c[4] = {{(float)u, 0.f, (float)v}, {(float)(u + w), 0.f, (float)v}, {(float)(u + w), 0.f, (float)(v + h)}, {(float)u, 0.f, (float)(v + h)}};
+				quad(c, glm::vec3(0, 1, 0), tex, w, h);
+			}
+	}
+	// the thickness, hanging below on the open sides: the top's colours along that side, darker
+	auto shadeC = [](uint32_t c, float f) -> uint32_t
+	{
+		uint32_t r = (uint32_t)((c & 255) * f), g = (uint32_t)(((c >> 8) & 255) * f), b = (uint32_t)(((c >> 16) & 255) * f);
+		return r | (g << 8) | (b << 16) | 0xFF000000u;
+	};
+	const float T = (float)TILE_W, D = -2.f;
+	for (int side = 0; side < 4; ++side)
+	{
+		if (!(edges & (1 << side))) continue;
+		std::vector<uint32_t> tex((size_t)TILE_W * 2);
+		for (int i = 0; i < TILE_W; ++i)
+		{
+			uint32_t c = side == 0 ? top[i][0] : side == 1 ? top[i][TILE_W - 1] : side == 2 ? top[0][i] : top[TILE_W - 1][i];
+			tex[i] = shadeC(c, 0.78f);
+			tex[TILE_W + i] = shadeC(c, 0.62f);
+		}
+		if (side == 0) { const glm::vec3 c[4] = {{0, 0, 0}, {0, 0, T}, {0, D, T}, {0, D, 0}}; quad(c, glm::vec3(-1, 0, 0), tex, TILE_W, 2); }
+		else if (side == 1) { const glm::vec3 c[4] = {{T, 0, 0}, {T, 0, T}, {T, D, T}, {T, D, 0}}; quad(c, glm::vec3(1, 0, 0), tex, TILE_W, 2); }
+		else if (side == 2) { const glm::vec3 c[4] = {{0, 0, 0}, {T, 0, 0}, {T, D, 0}, {0, D, 0}}; quad(c, glm::vec3(0, 0, -1), tex, TILE_W, 2); }
+		else { const glm::vec3 c[4] = {{0, 0, T}, {T, 0, T}, {T, D, T}, {0, D, T}}; quad(c, glm::vec3(0, 0, 1), tex, TILE_W, 2); }
+	}
+}
+
 /// One tile's parts built together as one shape (terrain round, 0.21.0-terrain):
 ///  - every voxel has one owner, so a face exists only once (two parts' faces in the same place
 ///    flickered): walls, then the object, and the floor owns the bottom slab (its 2 voxel layers),
@@ -1293,7 +1418,7 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 			for (int x = 0; x < m.sx; ++x)
 				if (m.at(x, y, z)) { cx += x + 0.5; cy += y + 0.5; ++n; }
 	const float axX = n ? 8.f + ((float)(cx / n) - hx) * 0.5f : 8.f, axZ = n ? 8.f + ((float)(cy / n) - hy) * 0.5f : 8.f;
-	auto toTable = [&](float fx, float fy, float fz) { return glm::vec3(8.f + (fx - hx) * 0.5f, 2.f + (fz - 1.f) * 0.5f, 8.f + (fy - hy) * 0.5f); };
+	auto toTable = [&](float fx, float fy, float fz) { return glm::vec3(8.f + (fx - hx) * 0.5f, (fz - 1.f) * 0.5f, 8.f + (fy - hy) * 0.5f); }; // z 1 stands on the floor's top (height 0)
 	auto classOf = [&](Uint8 c) -> int
 	{
 		const SDL_Color &k = pal[c];
@@ -1328,7 +1453,7 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 		bool under = axis == 2 && sign < 0;
 		bool shown = sign > 0;
 		if (!shown && !under) { P.x = 2.f * axX - P.x; P.z = 2.f * axZ - P.z; } // the other side of the axis
-		float px = 16.f + P.x - P.z, py = 24.f + (P.x + P.z) * 0.5f - P.y + yoff + 2.f;
+		float px = 16.f + P.x - P.z, py = 24.f + (P.x + P.z) * 0.5f - P.y + yoff;
 		if (kind == VR::MK_LEAF)
 		{
 			// leaves: a pixel up to two away, picked per voxel, so the art's rows don't streak across the
@@ -1368,7 +1493,7 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 			float cc[3];
 			cc[axis] = plane; cc[ua] = uu; cc[va] = vv;
 			glm::vec3 t = toTable(cc[0], cc[1], cc[2]);
-			if (paint) t.y = 2.05f; // flat on the floor's top
+			if (paint) t.y = 0.05f; // flat on the floor's top
 			return t;
 		};
 		float nn[3] = {0, 0, 0};
@@ -1452,7 +1577,7 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 				{
 					if (!solid(x, y, z)) continue;
 					glm::vec3 P = toTable(x + 0.5f, y + 0.5f, z + 0.5f);
-					int px = (int)std::floor(16.f + P.x - P.z), py = (int)std::floor(24.f + (P.x + P.z) * 0.5f - P.y + yoff + 2.f);
+					int px = (int)std::floor(16.f + P.x - P.z), py = (int)std::floor(24.f + (P.x + P.z) * 0.5f - P.y + yoff);
 					if (px >= 0 && py >= 0 && px < W && py < H) hidden[(size_t)py * W + px] = 1;
 				}
 		// the floor's own colours: palette entries making up 2% or more of its sprite
@@ -1465,27 +1590,52 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 					if (Uint8 c = floorSpr->getPixel(x, y)) { ++count[c]; ++total; }
 			for (int c = 1; c < 256; ++c) if (total && count[c] * 50 >= total) floorCols.push_back(pal[c]);
 		}
+		// hue (degrees) and value of a colour
+		auto hv = [](int r, int g, int b, float &h, int &v)
+		{
+			int mx = std::max({r, g, b}), mn = std::min({r, g, b});
+			v = mx;
+			if (mx == mn) { h = -1.f; return; }
+			float d = (float)(mx - mn);
+			h = mx == r ? 60.f * std::fmod((g - b) / d + 6.f, 6.f) : mx == g ? 60.f * ((b - r) / d + 2.f) : 60.f * ((r - g) / d + 4.f);
+		};
 		auto differs = [&](uint32_t c) -> bool
 		{
 			if (floorCols.empty()) return true;
 			int r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255, best = 1 << 30;
 			for (const SDL_Color &f : floorCols)
 				best = std::min(best, (r - f.r) * (r - f.r) + (g - f.g) * (g - f.g) + (b - f.b) * (b - f.b));
-			return best > 34 * 34;
+			if (best <= 34 * 34) return false;
+			// a darker shade of the floor's own hue is a shadow the artist drew (under a crown): the table casts
+			// real shadows, so it isn't painted (0.21.0-terrain.9)
+			float h; int v;
+			hv(r, g, b, h, v);
+			if (h >= 0.f)
+				for (const SDL_Color &f : floorCols)
+				{
+					float fh; int fv;
+					hv(f.r, f.g, f.b, fh, fv);
+					float dh = std::fabs(h - fh);
+					dh = std::min(dh, 360.f - dh);
+					if (fh >= 0.f && dh < 25.f && v < fv) return false;
+				}
+			return true;
 		};
 		// each cell's ground colour where the art shows it; the rest from the nearest that shows
 		std::vector<uint32_t> col((size_t)nu * nv, 0u);
+		std::vector<uint8_t> shows((size_t)nu * nv, 0); // the art shows this ground (not hidden by the tree)
 		std::vector<int> queue;
 		for (int y = 0; y < nv; ++y)
 			for (int x = 0; x < nu; ++x)
 			{
 				if (!m.at(x, y, 0)) continue;
-				glm::vec3 P = toTable(x + 0.5f, y + 0.5f, 1.f); // ground: Y 2
+				glm::vec3 P = toTable(x + 0.5f, y + 0.5f, 1.f); // ground: Y 0
 				int px = (int)std::floor(16.f + P.x - P.z), py = (int)std::floor(24.f + (P.x + P.z) * 0.5f + yoff);
 				if (px < 0 || py < 0 || px >= W || py >= H || hidden[(size_t)py * W + px]) continue;
 				Uint8 c = spr->getPixel(px, py);
 				if (!c) continue;
 				col[(size_t)y * nu + x] = rgba(pal[c]);
+				shows[(size_t)y * nu + x] = 1;
 				queue.push_back(y * nu + x);
 			}
 		for (size_t q = 0; q < queue.size(); ++q)
@@ -1511,7 +1661,9 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 			for (int x = 0; x < nu; ++x)
 			{
 				size_t o = (size_t)y * nu + x;
-				if (!col[o] || !differs(col[o])) continue;
+				// ground the tree hides in the art isn't painted (0.21.0-terrain.9: one nearby pixel's colour spread
+				// over it made a dark blob); only a gap inside a painted patch is filled (below)
+				if (!shows[o] || !col[o] || !differs(col[o])) continue;
 				int edge = std::min(std::min(x - x0, x1 - x), std::min(y - y0, y1 - y)); // cells from the side
 				uint32_t hsh = ((uint32_t)x * 73856093u) ^ ((uint32_t)y * 19349663u);
 				hsh *= 2654435761u;
@@ -1554,7 +1706,7 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 		return idx < voxels->size() && ((*voxels)[idx] & (1 << (15 - x)));
 	};
 	static const int ORDER[O_MAX] = {O_WESTWALL, O_NORTHWALL, O_OBJECT, O_FLOOR};
-	bool any = false;
+	bool any = false, floorSolid = false;
 	const VR::Model *modelled = nullptr;
 	for (int part : ORDER)
 	{
@@ -1577,11 +1729,77 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 				{
 					if (!loftSolid(md, x, y, z)) continue;
 					++count;
+					if (part == O_FLOOR && z < 2) continue; // the floor is a surface at height 0 (addFloor)
 					uint8_t &o = own[x][y][z];
-					if (part == O_FLOOR ? (z < 2 || !o) : !o) o = (uint8_t)(part + 1);
+					if (!o) o = (uint8_t)(part + 1);
 				}
 		if (count == 0) { addCard(md, p); continue; }
+		if (part == O_FLOOR)
+		{
+			// a raised floor (a deck, a ramp): what rises above the slab stays voxels, standing from the
+			// ground in the columns that go on up; the rest is the surface
+			floorSolid = true;
+			bool raised = false;
+			for (int z = 2; z < SHAPE_H && !raised; ++z)
+				for (int y = 0; y < TILE_W && !raised; ++y)
+					for (int x = 0; x < TILE_W; ++x) if (own[x][y][z] == part + 1) { raised = true; break; }
+			if (!raised) continue;
+			any = true;
+			for (int y = 0; y < TILE_W; ++y)
+				for (int x = 0; x < TILE_W; ++x)
+					if ((own[x][y][2] == part + 1 || own[x][y][3] == part + 1) && loftSolid(md, x, y, 0))
+						for (int z = 0; z < 2; ++z) if (!own[x][y][z]) own[x][y][z] = (uint8_t)(part + 1);
+			continue;
+		}
 		any = true;
+		// most walls and objects repeat the floor's 2-voxel slab at the bottom of their collision: that copy
+		// goes, the part's own foot stays (its columns that go on up); a part that is only that slab keeps it
+		{
+			bool above = false;
+			int low = 0; // columns solid in both bottom layers
+			for (int z = 0; z < SHAPE_H; ++z)
+				for (int y = 0; y < TILE_W; ++y)
+					for (int x = 0; x < TILE_W; ++x)
+						if (own[x][y][z] == part + 1 && z >= 2) above = true;
+			for (int y = 0; y < TILE_W; ++y)
+				for (int x = 0; x < TILE_W; ++x)
+					if (own[x][y][0] == part + 1 && own[x][y][1] == part + 1) ++low;
+			// only a layer over (nearly) the whole tile is the floor's copy; a smaller low shape is the
+			// part's own (rubble, a step)
+			if (low * 10 < TILE_W * TILE_W * 9) above = false;
+			// and only if the art doesn't come down to the ground along the tile's front edges (a sand mound
+			// or a crop field does; a wall only along its own line): sample the layer's south and east sides
+			if (above && sc.spr)
+			{
+				int hits = 0, n = 0;
+				auto artAt = [&](float fx, float fy, float fz) -> bool
+				{
+					int px = (int)std::floor(16.f + fx - fy), py = (int)std::floor(24.f + (fx + fy) * 0.5f - fz + sc.yoff);
+					for (int dy = -1; dy <= 1; ++dy)
+						for (int dx = -1; dx <= 1; ++dx)
+						{
+							int qx = px + dx, qy = py + dy;
+							if (qx >= 0 && qy >= 0 && qx < sc.spr->getWidth() && qy < sc.spr->getHeight() && sc.spr->getPixel(qx, qy)) return true;
+						}
+					return false;
+				};
+				for (int i = 0; i < TILE_W; ++i)
+				{
+					n += 2;
+					hits += artAt(i + 0.5f, (float)TILE_W, 1.f);  // south side
+					hits += artAt((float)TILE_W, i + 0.5f, 1.f);  // east side
+				}
+				if (hits * 10 >= n * 7) above = false; // the art stands on the ground there: the part's own
+			}
+			for (int z = 0; z < 2; ++z)
+				for (int y = 0; y < TILE_W; ++y)
+					for (int x = 0; x < TILE_W; ++x)
+					{
+						uint8_t &o = own[x][y][z];
+						if (o != part + 1) continue;
+						if (above && own[x][y][2] != part + 1 && own[x][y][3] != part + 1) o = 0; // (a part with nothing above keeps it all)
+					}
+		}
 		int rowShift = 0;
 		if (part == O_OBJECT && growToArt(md, sc.spr, sc.yoff, own, part, rowShift))
 		{
@@ -1589,10 +1807,10 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 			sc.yoff += rowShift; // the shape was raised: its faces take the art's rows the same way
 		}
 	}
-	// where each part's art lies over the shape seen from the flat game's angle (the lab's comparison): a
-	// floor's top is 2 voxels up but its art is drawn at height 0
+	// where each part's art lies over the shape seen from the flat game's angle (the lab's comparison): art
+	// height 0 is table height 0 for every part (0.21.0-terrain.9: the floor's top is there too)
 	for (int part = 0; part < O_MAX; ++part)
-		if (k.m[part]) p.yoffs[part] = (int8_t)((src[part].spr ? src[part].yoff : k.m[part]->getYOffset()) + (part == O_FLOOR || (part == O_OBJECT && modelled) ? 2 : 0));
+		if (k.m[part]) p.yoffs[part] = (int8_t)(src[part].spr ? src[part].yoff : k.m[part]->getYOffset());
 	// painted rocks, mounds and holes on a listed floor (VrRelief.h)
 	bool relief = k.m[O_FLOOR] && src[O_FLOOR].spr && VR::reliefMode() != VR::RELIEF_FLAT && VR::reliefSpec(k.m[O_FLOOR]);
 	if (relief) addRelief(k.m[O_FLOOR], k.join, p);
@@ -1604,6 +1822,7 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 		addModel(*modelled, src[O_OBJECT].spr, src[O_OBJECT].yoff, floorSpr, p);
 		p.model |= (uint8_t)(1 << O_OBJECT);
 	}
+	if (floorSolid && src[O_FLOOR].spr) addFloor(src[O_FLOOR].spr, src[O_FLOOR].yoff, src[O_FLOOR].avg, relief, k.edges, own, p);
 	if (!any) return;
 	auto S = [&](int x, int y, int z) -> int
 	{
@@ -1774,6 +1993,28 @@ Board::Impl::TileKey Board::Impl::tileKey(Tile *t, int x, int y, int z)
 		if (t->isUfoDoorOpen(tp)) continue;
 		key.m[part] = d;
 	}
+	// where the floor's thickness shows: sides with no floor beside it (or the map's edge); on an upper level
+	// not over a wall of the level below on that side (the wall fills that space, and its face and the
+	// floor's would fall in the same place and flicker)
+	if (key.m[O_FLOOR])
+	{
+		auto floorAt = [&](int qx, int qy) -> bool
+		{
+			if (qx < 0 || qy < 0 || qx >= mx || qy >= my) return false;
+			Tile *n = battle->getTile(Position(qx, qy, z));
+			return n && n->getMapData(O_FLOOR);
+		};
+		auto wallBelow = [&](int qx, int qy, TilePart wall) -> bool
+		{
+			if (z == 0 || qx < 0 || qy < 0 || qx >= mx || qy >= my) return false;
+			Tile *b = battle->getTile(Position(qx, qy, z - 1));
+			return b && b->getMapData(wall);
+		};
+		if (!floorAt(x - 1, y) && !wallBelow(x, y, O_WESTWALL)) key.edges |= 1;
+		if (!floorAt(x + 1, y) && !wallBelow(x + 1, y, O_WESTWALL)) key.edges |= 2;
+		if (!floorAt(x, y - 1) && !wallBelow(x, y, O_NORTHWALL)) key.edges |= 4;
+		if (!floorAt(x, y + 1) && !wallBelow(x, y + 1, O_NORTHWALL)) key.edges |= 8;
+	}
 	if (key.m[O_FLOOR] && VR::reliefMode() != VR::RELIEF_FLAT)
 		if (const VR::ReliefSpec *rs = VR::reliefSpec(key.m[O_FLOOR]))
 		{
@@ -1911,7 +2152,7 @@ void Board::Impl::buildChunk(int cx, int cy, int z, Chunk &ch)
 				{
 					float u0 = fogX / (float)ATLAS, v0 = fogY / (float)ATLAS, u1 = (fogX + 16) / (float)ATLAS, v1 = (fogY + 16) / (float)ATLAS;
 					const float sb = 0.02f; // the void: near black, day and night
-					md.addQuad(off + glm::vec3(0, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, TILE_W), off + glm::vec3(TILE_W, 0.5f, 0), off + glm::vec3(0, 0.5f, 0), glm::vec4(sb, sb, sb, 1.f), MAT_BOARD, {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0});
+					md.addQuad(off + glm::vec3(0, -1.5f, TILE_W), off + glm::vec3(TILE_W, -1.5f, TILE_W), off + glm::vec3(TILE_W, -1.5f, 0), off + glm::vec3(0, -1.5f, 0), glm::vec4(sb, sb, sb, 1.f), MAT_BOARD, {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0});
 				}
 				// walls already seen from outside stay standing (the flat map shows them too)
 				TileKey wk;
@@ -3274,7 +3515,7 @@ void Board::Impl::drawWire(const Shader &sh, const glm::mat4 &M, const glm::vec3
 void Board::Impl::drawTicks(const Shader &sh, const glm::mat4 &M, const Position &t, const glm::vec4 &col) const
 {
 	const GLboolean blend = glIsEnabled(GL_BLEND), depth = glIsEnabled(GL_DEPTH_TEST);
-	glm::vec3 at(t.x * TILE_W, t.z * TILE_H + 2.f, t.y * TILE_W);
+	glm::vec3 at(t.x * TILE_W, t.z * TILE_H + 0.1f, t.y * TILE_W); // on the floor's top
 	sh.set("uMode", 2);
 	sh.set("uModel", M * glm::translate(glm::mat4(1.f), at));
 	glDisable(GL_DEPTH_TEST);
@@ -3818,19 +4059,38 @@ bool Board::Impl::comparePicture(const Position &pos, std::vector<uint32_t> &px,
 	if (!t) return false;
 	Comparison c;
 	compareKey(tileKey(t, pos.x, pos.y, pos.z), false, c);
-	const int g = 6;
-	W = CMP_PICS * CMP_W + (CMP_PICS - 1) * g + 12;
-	H = 20 + CMP_H + 34;
-	Dash::Canvas cv(game, px, W, H);
-	if (!cv.ok()) return false;
 	std::ostringstream title;
 	title << (lab ? lab->terrainName() + "  " + lab->pageKey() + "  " : std::string()) << "tile " << pos.x << "," << pos.y << "," << pos.z;
-	cv.text(6, 4, W - 12, title.str(), Dash::GOLD);
+	return comparisonPicture(c, title.str(), px, W, H);
+}
+
+bool Board::Impl::partPicture(const MapDataSet *ds, int id, std::vector<uint32_t> &px, int &W, int &H)
+{
+	if (!ds || !game || !voxels || id < 0 || id >= (int)ds->getSize()) return false;
+	const MapData *md = const_cast<MapDataSet*>(ds)->getObject(id);
+	int kind = md ? (int)md->getObjectType() : -1;
+	if (kind < 0 || kind >= O_MAX) return false;
+	TileKey k;
+	k.m[kind] = md;
+	Comparison c;
+	compareKey(k, true, c);
+	return comparisonPicture(c, ds->getName() + " " + std::to_string(id) + "  " + PART_KIND[kind], px, W, H);
+}
+
+bool Board::Impl::comparisonPicture(const Comparison &c, const std::string &titleText, std::vector<uint32_t> &px, int &W, int &H)
+{
+	const int g = 6;
+	W = CMP_PICS * CMP_W + (CMP_PICS - 1) * g + 12;
+	H = 20 + CMP_H + 43;
+	Dash::Canvas cv(game, px, W, H);
+	if (!cv.ok()) return false;
+	cv.text(6, 4, W - 12, titleText, Dash::GOLD);
 	pasteFour(cv, c, 6, 16, g);
 	static const char *const HEAD[] = {"ART", "TABLE", "DIFF", "BEHIND", "ABOVE"};
 	for (int k = 0; k < CMP_PICS; ++k) cv.text(6 + k * (CMP_W + g), 17 + CMP_H, CMP_W, HEAD[k], Dash::DIM, false, 1);
 	cv.text(6, 28 + CMP_H, W - 12, scoreText(c.score), scoreColor(worstScore(c.score)));
-	cv.text(6, 38 + CMP_H, W - 12, "RED: TABLE ONLY  BLUE: ART ONLY  YELLOW: OTHER COLOUR  GREY: SAME", Dash::DIM);
+	cv.text(6, 38 + CMP_H, W - 12, "RED: TABLE ONLY  BLUE: ART ONLY", Dash::DIM);
+	cv.text(6, 47 + CMP_H, W - 12, "YELLOW: OTHER COLOUR  GREY: SAME", Dash::DIM);
 	return true;
 }
 
@@ -4365,6 +4625,8 @@ bool Board::comparePicture(int x, int y, int z, std::vector<uint32_t> &px, int &
 	return p.comparePicture(Position(x, y, z), px, w, h);
 }
 
+bool Board::partPicture(const MapDataSet *ds, int id, std::vector<uint32_t> &px, int &w, int &h) { return _p->partPicture(ds, id, px, w, h); }
+
 bool Board::partSheet(const MapDataSet *ds, std::vector<uint32_t> &px, int &w, int &h, std::string &report)
 {
 	return _p->partSheet(ds, px, w, h, report);
@@ -4844,7 +5106,7 @@ void Board::Impl::drawSkyMarker(const Shader &sh)
 	float k = tileSize / TILE_W;
 	glm::mat4 inv = glm::inverse(M);
 	// on the map's ground level, drawn over the terrain so it never hides behind walls
-	glm::vec3 C((mapRect.x + mapRect.z) * 0.5f, glm::vec3(M * glm::vec4(0.f, 2.f, 0.f, 1.f)).y, (mapRect.y + mapRect.w) * 0.5f);
+	glm::vec3 C((mapRect.x + mapRect.z) * 0.5f, glm::vec3(M * glm::vec4(0.f, 0.f, 0.f, 1.f)).y, (mapRect.y + mapRect.w) * 0.5f);
 	float R = std::min(0.4f, std::min(mapRect.z - mapRect.x, mapRect.w - mapRect.y) * 0.45f);
 	// map directions (x east, z south) turned with the map
 	auto world = [&](const glm::vec3 &mapDir) { glm::vec3 w = glm::vec3(M * glm::vec4(mapDir, 0.f)); return glm::length(w) > 1e-6f ? glm::normalize(w) : w; };

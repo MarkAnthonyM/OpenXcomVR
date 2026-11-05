@@ -812,6 +812,14 @@ std::string TerrainLabState::makeSheets(const std::string &which)
 	return folder;
 }
 
+MapDataSet *TerrainLabState::findSet(const std::string &name)
+{
+	for (const Entry &e : _terrains)
+		for (MapDataSet *ds : *e.rule->getMapDataSets())
+			if (ds->getName() == name) { ds->loadData(_game->getMod()->getMCDPatch(ds->getName())); return ds; }
+	return nullptr;
+}
+
 void TerrainLabState::btnQuitClick(Action *) { _game->quit(); }
 
 // ------------------------------------------------------------------ the mark window

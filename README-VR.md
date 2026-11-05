@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.8)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.9)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -502,9 +502,14 @@ Key ideas:
 
 - **Terrain from line-of-fire voxels.** Every terrain part already has a
   16×16×24 voxel shape (`LOFTEMPS`, via `MapData::getLoftID`). A tile's parts
-  (floor, walls, object) are built together as one shape (`buildTile`), so each
-  face exists once: the floor owns the bottom 2-voxel slab that most walls and
-  objects repeat (two parts' faces in the same place flickered). Faces the flat
+  (walls, object) are built together as one shape (`buildTile`), so each face
+  exists once. Floors (0.21.0-terrain.9) are surfaces at height 0, the ground
+  walls, objects, units and the art all use, with their 2-voxel thickness
+  hanging below, drawn only on sides with no floor beside them (the map's edge,
+  a hole, the edge of an upper floor not over a wall of the level below); the
+  whole map stands 2 voxels up so the ground floor's top and edges sit where the
+  old slab's did. Walls and objects keep their own foot but not the copy of the
+  floor's slab most of them repeat in their collision. Faces the flat
   view shows (top, east, south) are colored by projecting them back into the
   owner's isometric sprite (`px = 16 + x − y`, `py = 24 + (x + y)/2 − z +
   yOffset`); where that sprite is empty the face is left out if the part's
@@ -580,11 +585,13 @@ Key ideas:
   y south, z up; the model's centre is the tile's; models may overhang the
   tile. Display only: collision and line of fire keep the part's own voxels.
   The paint (0.21.0-terrain.8) is the ground as the sprite draws it (roots,
-  shadows, sticks) less the tree: ground the tree hides in the art takes the
-  nearest ground that shows, and only what differs from the tile's floor is
-  painted, with a ragged edge, so the floor's own grass shows round it. Where
-  the art draws roots on the ground near the trunk, the model has low root
-  voxels.
+  sticks) less the tree: ground the tree hides in the art isn't painted (only
+  a gap inside a painted patch is filled), and only what differs from the
+  tile's floor is painted, with a ragged edge, so the floor's own grass shows
+  round it; a darker shade of the floor's own hue is a shadow the artist drew
+  and isn't painted either (the table casts real shadows). Each root the art
+  draws on the ground near the trunk becomes one low, tapering root in the
+  model, out to where the drawn root ends, with two more behind (0.21.0-terrain.9).
   The first models are the farm trees (CULTIVAT 9, 12 and 13), made by
   `vr-dev/models/farm_trees.py` from the sprites (dumped with the test op
   `dumpart`).

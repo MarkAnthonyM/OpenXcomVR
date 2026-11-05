@@ -135,6 +135,7 @@ Script commands (one per line; numbers are optional with defaults):
 | `nofloor`, `floorids [part]` | log ground tiles without a floor part; which parts (0 floor .. 3 object) the ground level uses, how often, one place each |
 | `closeup x y z name` | the terrain lab's two clean shots of a tile (`shots/<name>_view.png`, `_close.png`) |
 | `dumpart SET` | the lab's terrain set's sprites as palette indices (`shots/art/<SET>_<id>.png`), the parts list and the palette: input for `vr-dev/models/` |
+| `comparepart SET id` | the lab's comparison picture of one part of any terrain set on its own (`shots/part_<SET>_<id>.png`) |
 | `compare x y z name`, `inspect x y z name`, `sheets [all\|TERRAIN]` | the lab's comparison picture of a tile (`shots/<name>_compare.png`); its inspect panel (`_art.png`); contact sheets (current terrain without an argument) |
 | `log text`, `quit` | |
 
@@ -181,13 +182,13 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.8).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.9).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
   hand-built model first (the other ships decided after it); bodies as short voxel lumps, small items as
   flat pictures with a faint outline.
-  Findings: floors are all the same 2-voxel slab, rocks/craters only painted inside the diamond; most
+  Findings: floors are all the same 2-voxel slab (drawn as a surface at height 0 since terrain.9), rocks/craters only painted inside the diamond; most
   objects and walls repeat the floor's bottom slab (the flicker: two coplanar faces); POLAR 60-62 are tiny
   ice bits on a 4x4-voxel block (the grey "missing" squares); the small scout's collision is near a cube.
   - terrain.1: the terrain lab (VrLab, `-vrTerrainLab [TERRAIN]`: the table binds the lab's own
@@ -291,6 +292,42 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     branch (pointing fingertip within 10 cm of a tile's floor -> Board::labFinger, 0.25 s; touch-down
     -> labTouch toggles the pin); VrSystem routes A to Board::labFingerMark first (no laser needed). Panel
     320 x 300: scores line, the five pictures along the bottom.
+  - Owner on terrain.8: fingertip inspection "feels good"; roots still don't match the art; tree 12's grass
+    needs fixing; and why do table tiles on the sheets have a bottom layer of grass the art doesn't (his
+    inspect panel of CULTIVAT 4)? That layer is the floor's 2-voxel slab: the floor's top was at height 2
+    while walls, objects, units, shots and finger picks use 0, so every wall/object lost the art's bottom
+    2 rows (64 of the wheat's 737 pixels) inside the slab. Owner chose thin floors at height 0 but kept
+    the visible thickness (hanging below). terrain.9: Board::Impl::addFloor (top at 0 over cells no foot
+    covers, coloured as before; skirts -2..0 on TileKey::edges sides: no floor beside at the same level,
+    and on z > 0 not over a wall of the level below on that side); buildTile no longer puts floors in
+    own[]; walls/objects own z 0-1 except the slab copy (columns not going on up at z 2-3; a part with
+    nothing above keeps z 0-1 unless it covers 90%+ of the tile); growToArt slices from z 0; relief BASE
+    0; the void quad at -1.5; ticks, sky marker, partInfo floor top (rain) at 0; models' frame (z 1 on
+    Y 0, paint 0.05) and every part's yoffs = its yoff (no +2 anywhere). boardMatrix translates the map
+    up FLOOR_LIFT = 2 voxels so the ground floor's top/edges stay where the old slab's were and
+    everything on the map moves alike. Visible differences: the wheat and every wall/object reach the
+    ground; the soldiers' faction base discs and the grass-tuft cards show (they were inside the slab);
+    nothing else moved (barn, roofs from the upper level, map edges checked against terrain.8). Roots:
+    roots() groups the drawn root pixels by direction from the trunk (they join at its foot), one
+    tapering capsule root per group to its farthest pixel (Y 0.9 -> 0.1, r 0.55 -> 0.32) + 2 mirrored
+    behind; trunk flare 0.5 (fruit) / 0.6 (dead). Tree 9: 4 roots, 13: 5, 12: none (its art has none).
+    Paint: ground the tree hides is never painted (only holes filled), and a colour that is a darker
+    shade (hue within 25 degrees, lower value) of a floor colour is a drawn shadow, not painted (tree
+    12's blob was the crown's (0, 24, 0) underside). The generator works in the new frame (same files).
+    Slab-copy rule as it ended up (all sets' sheets compared part by part with terrain.8: 282 up, 17
+    down by at most 18, mean shape 81.7 -> 83.9%): a wall/object's bottom 2 layers are the floor's copy
+    only if they cover 90%+ of the tile, the part has voxels above, and its art does not come down to
+    the ground along the tile's south and east sides (70%+ of 32 samples; sand mounds and crop fields
+    do); then columns not going on up lose them. Otherwise the part keeps its low layers (rubble, a part
+    that is only a slab). growToArt's "collision already covers the art" check counts only what the part
+    keeps, and leaves out the bottom 2 layers when the part has nothing above (low grass/bushes are built
+    from their art); the old additive rule (craft/UFO/base) still starts at z 2. Raised floors keep their
+    part above the slab as voxels (floor-owned, from the ground in columns going on up); a floor whose art
+    covers under 90% of the tile (a hull edge, half a deck) has its surface only where its art is. New:
+    the soldiers' field in `outside` shows its flower beds (CULTIVAT 5 etc.: raised beds at the art's
+    height, hard-edged where a bed meets grass: for the owner to judge), FOREST 4/5 grass cover shows.
+    Test op `comparepart SET id` (any part on its own, shots/part_<SET>_<id>.png). `bh` failed on both
+    terrain.8 and .9 in this session (timing; it passed on terrain.8 earlier).
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
