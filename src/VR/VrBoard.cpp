@@ -1797,7 +1797,7 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 	};
 	static const int ORDER[O_MAX] = {O_WESTWALL, O_NORTHWALL, O_OBJECT, O_FLOOR};
 	bool any = false, floorSolid = false;
-	const VR::Model *modelled = nullptr, *modelledFloor = nullptr;
+	const VR::Model *modelled[O_MAX] = {}; // hand-built parts (any slot since terrain.18: the Skyranger's fin and nose are walls)
 	for (int part : ORDER)
 	{
 		const MapData *md = k.m[part];
@@ -1810,10 +1810,7 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 		sc.floor = md->getObjectType() == O_FLOOR;
 		sc.avg = partInfo(md).avg;
 		if (!sc.avg) continue; // fully transparent sprite: nothing to show
-		if (part == O_OBJECT)
-			if (const VR::Model *mm = modelOf(md, k.variant)) { modelled = mm; continue; } // hand-built: not its voxels
-		if (part == O_FLOOR)
-			if (const VR::Model *mm = modelOf(md, k.variant)) { modelledFloor = mm; continue; } // the scout's cap (terrain.13)
+		if (const VR::Model *mm = modelOf(md, k.variant)) { modelled[part] = mm; continue; } // hand-built: not its voxels
 		int count = 0;
 		for (int z = 0; z < TILE_H; ++z)
 			for (int y = 0; y < TILE_W; ++y)
@@ -1906,18 +1903,16 @@ void Board::Impl::buildTile(const TileKey &k, Proto &p)
 	// painted rocks, mounds and holes on a listed floor (VrRelief.h)
 	bool relief = k.m[O_FLOOR] && src[O_FLOOR].spr && VR::reliefMode() != VR::RELIEF_FLAT && VR::reliefSpec(k.m[O_FLOOR]);
 	if (relief) addRelief(k.m[O_FLOOR], k.join, p);
-	if (modelled)
+	for (int part : ORDER)
 	{
+		if (!modelled[part]) continue;
+		// an object's model paints the ground under it from the floor's art (the farm trees, terrain.8)
 		const Surface *floorSpr = nullptr;
-		if (const MapData *f = k.m[O_FLOOR])
-			if (f->getDataset() && f->getDataset()->getSurfaceset()) floorSpr = static_cast<const SurfaceSet*>(f->getDataset()->getSurfaceset())->getFrame(f->getSprite(0));
-		addModel(*modelled, src[O_OBJECT].spr, src[O_OBJECT].yoff, floorSpr, p, k.m[O_OBJECT]);
-		p.model |= (uint8_t)(1 << O_OBJECT);
-	}
-	if (modelledFloor)
-	{
-		addModel(*modelledFloor, src[O_FLOOR].spr, src[O_FLOOR].yoff, nullptr, p, k.m[O_FLOOR]);
-		p.model |= (uint8_t)(1 << O_FLOOR);
+		if (part == O_OBJECT)
+			if (const MapData *f = k.m[O_FLOOR])
+				if (f->getDataset() && f->getDataset()->getSurfaceset()) floorSpr = static_cast<const SurfaceSet*>(f->getDataset()->getSurfaceset())->getFrame(f->getSprite(0));
+		addModel(*modelled[part], src[part].spr, src[part].yoff, floorSpr, p, k.m[part]);
+		p.model |= (uint8_t)(1 << part);
 	}
 	if (floorSolid && src[O_FLOOR].spr) addFloor(src[O_FLOOR].spr, src[O_FLOOR].yoff, src[O_FLOOR].avg, relief, k.edges, own, p);
 	if (!any) return;

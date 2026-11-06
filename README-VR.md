@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.17)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.18)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -637,6 +637,22 @@ Key ideas:
     same way: an even lavender piston, a darker rod and a foot pad in the
     hull's grey, all four alike, with a piston and rod about equally thick on
     every layer (no ridges or kinks up the slanted leg).
+  - the Skyranger (PLANE, `skyranger.py`, 0.21.0-terrain.18: the outside):
+    built whole from clean shapes fitted to the art put together as the map
+    places it (96% of its outline), then cut along the map's tiles and
+    levels into the parts that hold each piece. A rounded fuselage, one
+    table voxel thick and purple inside, narrowing to the cockpit and a
+    yellow nose cone; a raised canopy; swept wings with red tips and panel
+    lines (the front wings are the game's own copy of the main wings' outer
+    pieces); two fins with a red light and the "V" emblem; engine pods with
+    an intake, an orange stripe and a plain blue nozzle; four-wheel main
+    gear, a nose gear with a brace; the ramp as a grating to the ground; the
+    X-COM roundel on both sides. Where the map has no part (under the roof
+    at the rear) the craft is open: a doorway above the ramp. A part the map
+    uses in several places (the roof pieces, the walls along the cabin, the
+    pods, the wing tips) is one model, so those pieces are the same shape
+    wherever they repeat. Since this build any part (floor, wall, object)
+    can have a model. The inside's ribs come next.
   - lights in models: `.ref` version 2 adds a light flag per voxel and the
     lights' colour (Model::light): materials 10-13 in the board's shader,
     driven by `uAnimFrame` (the battle's animation frame; the lab goes by the

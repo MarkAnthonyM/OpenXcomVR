@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.17).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.18).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -448,6 +448,38 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     the four legs 86 -> 84. Tried and dropped: a fixed footprint stamped per layer (perfectly even, but the
     slanted leg became a stack of offset blocks). Sheets: legs shape 98-100% as before, colour 55-74%
     (expected: no painted shading). Hull files unchanged. Not yet seen in the headset.
+  - terrain.18 (owner: the Skyranger next; chose the outside first and the inside's ribs (real, standing
+    out a voxel) in the following build, markings on both sides, nozzles plain blue, not glowing).
+    `vr-dev/models/skyranger.py` (after `dumpart PLANE` in the lab): PLANE.MAP 10 x 20 x 3, nose south
+    (+Z); map bytes - 2 = PLANE ids; nothing in PLANE.MCD animates. The craft is built whole on one grid
+    (map X 0-160, Z 96-304, Y 0-80, 2 cells a table voxel; Craft.comp = component, .area = colour area),
+    then cut: holds() says which components a part may hold (level 0 gear/ramp; level 1 pods, else the
+    fuselage/cone/canopy, floors none: the game's floors stay; level 2 wings, fins, else the roof), bands()
+    its heights (a level-1 part holds up to the top where level 2 has no fuselage piece: the arch's
+    shoulders, the nose). A part used in several places gets one model: its most common shape (ties: its
+    first place); differences are printed (only the rear roof row: the end's top, and the front wings
+    poking 1 table voxel into the fuselage at roof height, hidden). Fitted (common silhouettes, shared /
+    union against the art of those parts): fuselage section w 28, floor 24, top 52, e 2.5, bottom rounding
+    24 (85% of the middle); constant Z 112-256 (forced: the game repeats roof pieces 60/61 rows 7-15),
+    nose zt 298, p 1.5, q 2, tip height 28, tip half-width 4 (90%); wing plate Y 48-49, trailing edge Z 112,
+    leading edge Z = 126.5 + 0.754 X, tip at X 0 (the art mapped onto its plane); fins plates at X 64-65 and
+    95-96, Z 112-142 at the roof, top Y 72 back to Z 131 (mapped onto their planes); pods centred in their
+    tiles (forced: both pods use parts 41/42) X 40/120, Y 32-48, chamfer 2, Z 116-170, intake leaning 4
+    forward at the top (89%; off-centre fits were worse); main gear X 56/104, Z 152, wheels r 4.5 w 2 at X
+    +-3, Z +-5 (the art's overlap, spaced to touch), nose gear X 72/88, Z 250, a brace back 9; canopy
+    ellipsoid Z 274, Y 41, radii 11/8/17 (64% of the art's glass pixels, the rest its frame bars); yellow
+    from Z 294 plus a cone to Z 303 (60% of the art's yellow); ramp from (Z 144, Y 24) to (Z 96, Y 0).
+    Colours by area from the palette (AREAS), shading left out: hull 246/245/247 (the middle of the art's
+    240-252 ramp), inside 230/231, pods 243/242/244, red 34/35, stripe 149/150, nozzle 132/131/133, etc.
+    The wings' panel lines from the art mapped onto the wing plane (one along the span at Z 123.5, two
+    across); the darkest pixels near the root there are the fuselage's painted shadow, left out. Markings
+    mirrored to the other side (owner): roundel (Z 246, Y 37, r 4.5; a red cross), the fins' "V" and
+    stripe on their outer faces. Whole craft against the assembled art: 96% shape. Sheets: PLANE mean
+    shape 82.8 -> 84.9%; the cockpit pieces 48-53 score 14-33% in isolation (their sprites draw consoles
+    and glass inside, the model's cut gives them the shell), the composite is what counts there.
+    VrBoard buildTile: any part slot can have a model now (modelled[O_MAX]; the left fin and a nose piece
+    are walls); an object's model still paints the ground from the floor's art. Cost: `outside` with
+    `reveal` 809k -> 857k terrain triangles (+48k, one craft). Not yet seen in the headset.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -655,8 +687,8 @@ Room and rendering
 - Items lying on the floor aren't shown on the table map; ground items taller
   than three cells are only in the screen's inventory. (Planned on the terrain branch.)
 - Terrain parts' animations (8 frames) aren't shown: the table builds frame 0. (Planned on the terrain branch.)
-- Craft and UFO hulls are their collision voxels (the small scout hand-built since terrain.13; shortlist
-  left: Skyranger).
+- Craft and UFO hulls are their collision voxels, except the small scout (hand-built since terrain.13) and
+  the Skyranger's outside (terrain.18; its inside, ribs and cockpit, next).
 - Weather and the sun have only been judged in the desktop preview (no
   headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).
