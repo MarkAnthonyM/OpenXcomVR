@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.16).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.17).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -438,6 +438,16 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     shapes about as before (hull 72-93%), colour 5-89%: expected, the art's painted shading is gone. Preview:
     in the farm save the rim's specks change between frames; at shade 15 the hull is dark, the lights lit.
     Not yet seen in the headset.
+  - terrain.17 (owner: look at the legs again with the hand-built notes in mind): the legs were the scout's
+    last part still coloured pixel by pixel from their own sprites (the art's shading: a lit stripe and a
+    dark side on the piston, a dark cap, a lit pad edge, each leg different). leg_colours(): areas by height,
+    piston 227/228 above the knee, rod 231/230, pad (y <= pad_h) the hull's 244/243/245; written as `.ref`
+    (VRF2, no lights). Read from the sprites: piston ramp 226 lit .. 231 dark, rod 229 .. 234, pad 240-249
+    (the hull's greys); the piston's dark top sits under the hull, left out. LEG piston_r 1.2 -> 1.3, strut_r
+    0.55 -> 0.5: voxels a layer piston 21-24 (was 16-21: ridges), rod 3-4 (was 3-5: kinks); pixels wrong over
+    the four legs 86 -> 84. Tried and dropped: a fixed footprint stamped per layer (perfectly even, but the
+    slanted leg became a stack of offset blocks). Sheets: legs shape 98-100% as before, colour 55-74%
+    (expected: no painted shading). Hull files unchanged. Not yet seen in the headset.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -454,7 +464,9 @@ out better the first time)
    edge, is usually repeated: the scout's "!!" faces all four diagonals (the art shows three, two of them
    slanted). Make repeats identical and evenly placed.
 2. Shape: clean parametric shapes (a surface of revolution, struts, discs) whose few sizes are searched
-   against the art's outline from the game's angle. Never fit voxel by voxel for hard-edged pieces: the
+   against the art's outline from the game's angle. Among sizes that match about as well, pick the one that
+   keeps a part equally thick on every voxel layer (count voxels per layer): a slanted cylinder's radius
+   can make it swing (ridges, kinks). Stamping a fixed footprint per layer is worse (offset blocks). Never fit voxel by voxel for hard-edged pieces: the
    exact-fit legs (terrain.14) matched every pixel and looked lumpy from every other side. Give designed
    features their real form (a flat top under the light, a rim at a fixed height), and stop when what's
    left is pixel noise. Organic pieces (tree crowns) can take more fitting.

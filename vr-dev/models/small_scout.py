@@ -23,7 +23,8 @@ Design:
   that take turns with the game's terrain frames, the cap's light pulsing, the lift (part 9) flipping;
   they glow on their own surface only.
 - Legs: a strut from under the hull (14 out from the axis, 25 up) to a foot pad on the ground (20 out),
-  as the leg sprites put them; thicker above (the piston), coloured from their own sprites as usual.
+  as the leg sprites put them; thicker above (the piston). Since terrain.17 coloured by part like the hull
+  (leg_colours(): the piston's and the rod's lavenders, the pad the hull's grey), all four alike.
 """
 import math, os, struct, sys
 import numpy as np
@@ -213,6 +214,11 @@ AREAS = {
     'mark': [(5, 100)],                               # light grey: the art's bars are its lightest greys there
     'inside': [(227, 70), (228, 30)],
     'floor': [(198, 70), (197, 30)],
+    # the legs (terrain.17): the middle of the art's shading ramps (piston 226 lit .. 231 dark, rod 229 .. 234),
+    # the foot pad the hull's greys as the art draws it
+    'piston': [(227, 70), (228, 30)],
+    'rod': [(231, 70), (230, 30)],
+    'pad': [(244, 50), (243, 25), (245, 25)],
 }
 RIM_LIGHT = 224          # the rim lights' colour
 RIM_BAND = (1.0, 5.0, 20.8)       # height from, to; from radius
@@ -315,8 +321,10 @@ def write_piece(path, kgrid, refgrid, base, lightgrid=None):
 
 LEG_TOP = (14.1, 25.0)   # out from the axis, up (level 0's floor)
 LEG_FOOT = (20.3, 0.0)
-# the leg's shape (table units), tuned against the four leg sprites by tune_legs() (--legs prints the search)
-LEG = dict(top=23.0, piston_r=1.2, piston=0.45, strut_r=0.55, pad_r=3.4, pad_h=0.9, cone_r=1.4)   # pad_h 0.7 matched 20 more pixels over the four legs but leaves a pad one model voxel thin
+# the leg's shape (table units), tuned against the four leg sprites by tune_legs() (--legs prints the search).
+# terrain.17: piston_r 1.2 -> 1.3 and strut_r 0.55 -> 0.5 keep each part about as thick on every model layer
+# (piston 21-24 voxels a layer, was 16-21: ridges; rod 3-4, was 3-5: kinks), for the same match to the art
+LEG = dict(top=23.0, piston_r=1.3, piston=0.45, strut_r=0.5, pad_r=3.4, pad_h=0.9, cone_r=1.4)   # pad_h 0.7 matched 20 more pixels over the four legs but leaves a pad one model voxel thin
 
 
 def leg(tx, ty, shape=None):
@@ -350,6 +358,19 @@ def leg(tx, ty, shape=None):
     m[:, :, 0] = False
     g.k[m] = PLAIN
     return g
+
+
+def leg_colours(g, shape=None):
+    """Per solid voxel of a leg: its part's colour (piston above the knee, the pad's layers, the rod and its
+    foot between), no lights."""
+    sh = dict(LEG, **(shape or {}))
+    knee = sh['top'] - sh['piston'] * (sh['top'] - sh['pad_h'])
+    ref = {}
+    for (i, j, k) in zip(*np.nonzero(g.k)):
+        y = (k - 0.5) / PER
+        area = 'pad' if y <= sh['pad_h'] else ('piston' if y >= knee else 'rod')
+        ref[(int(i), int(j), int(k))] = speckle(area, i, j, k)
+    return ref
 
 
 def rays(g, W, H, yoff, SS=4):
@@ -457,9 +478,7 @@ def main():
     for (tx, ty), p in legs:
         g = leg(tx, ty)
         print(f'  leg {p}: {wrong_pixels(g, p)} pixels differ from its sprite')
-        path = os.path.join(OUT, f'{SET}_{p}.vox')
-        g.write_vox(path)
-        print(f'wrote {path}: {int((g.k > 0).sum())} voxels')
+        write_piece(os.path.join(OUT, f'{SET}_{p}'), g.k, leg_colours(g), 0.0)
 
 
 if __name__ == '__main__':

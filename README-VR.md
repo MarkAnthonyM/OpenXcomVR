@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.16)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.17)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -633,7 +633,10 @@ Key ideas:
     two sets taking turns, the cap's light pulsing, the lift flipping bright
     and dark. They glow at night on their own surfaces only: they light
     nothing round them, and unexplored tiles aren't drawn, so they never give
-    a hidden scout away.
+    a hidden scout away. Since 0.21.0-terrain.17 the legs are coloured the
+    same way: an even lavender piston, a darker rod and a foot pad in the
+    hull's grey, all four alike, with a piston and rod about equally thick on
+    every layer (no ridges or kinks up the slanted leg).
   - lights in models: `.ref` version 2 adds a light flag per voxel and the
     lights' colour (Model::light): materials 10-13 in the board's shader,
     driven by `uAnimFrame` (the battle's animation frame; the lab goes by the
