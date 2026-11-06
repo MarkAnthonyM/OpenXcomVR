@@ -52,6 +52,7 @@ void render(const std::vector<Vertex> &verts, const std::vector<uint32_t> &idx, 
 	for (size_t t = 0; t + 2 < idx.size(); t += 3)
 	{
 		const Vertex *v[3] = {&verts[idx[t]], &verts[idx[t + 1]], &verts[idx[t + 2]]};
+		if (v[0]->material > 10.5f && v[0]->material < 11.5f) continue; // a light shown on odd frames (the art is frame 0)
 		float X[3], Y[3], Z[3];
 		for (int k = 0; k < 3; ++k)
 		{

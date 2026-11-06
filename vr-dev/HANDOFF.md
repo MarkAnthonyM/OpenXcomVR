@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.15).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.16).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -404,6 +404,40 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     wrong. Mapped back onto the saucer, the art's pieces roughly follow the 3 x 3 tiles with hand-drawn,
     wandering edges (south and east reach diagonally in toward the middle); each sprite is bounded by its
     32 x 40 frame and nearer tiles draw over farther ones, nothing more.
+  - Owner on terrain.15 (headset): close, but (1) grey voxels spill into the blue rim, (2) the pink top comes
+    to a point (the art's is flat) with grey crossing its edge, (3) the "!!" marks should be even, aligned and
+    on all four sides, (4) drop the art's light-left/dark-right shading? (agreed: the table lights it; painted
+    shading doubles up and stays on the art's left whichever way the table turns; the mirrored far side
+    carried it too). Causes: per-voxel colours from the pixel each voxel lands on, half a pixel off the art's
+    grid, on 1-2 pixel features; the profile's superellipse top. The art's side marks (slanted, higher, at the
+    left and right) are the same "!!" seen from the side: one ring of marks, four diagonals (the art shows 3).
+    He chose: an even grey with a light speckle; rim lights like the flat game; cap pulse and lift flip like
+    the game; glow at night on their own surfaces only (he asked whether glow gives the UFO away in the fog:
+    no, unexplored tiles aren't drawn at all; only light thrown on explored ground nearby could).
+    Animation (decoded UFO1.PCK/TAB/MCD; the game steps terrain frames every 100 ms, BattlescapeState
+    DEFAULT_ANIM_SPEED, Tile::animate): near hull pieces 3-7 swap two sprites each frame (the rim's specks
+    in two interleaved sets: lights running round); cap 10: frames 9, 10, 11, 10 (purple x 0.88/0.76/0.89,
+    0.83/0.67/0.84 of the first); lift 9: 8, 8, 17, 17 (dark frames x 0.74/0.46/0.71). The far pieces 0-2 and
+    the legs don't animate.
+  - terrain.16: profile with a flat top (radius() rc: R 23, rim 3.5, top 21, rb 18, e 1.4, rc 4.5; IoU 0.987).
+    colours(): areas by place on the shape, each from palette entries by reference (pixel_with(): a pixel of
+    that colour in a UFO1 sprite): hull 244/243/245 speckle (hash), rim band 115/114 (1-5 up, radius 20.8+),
+    20 rim lights (224) at 45 + 18 k degrees, 2.5-4.1 up, half-width 0.55, sets A (even k) / B (odd), collar
+    241/240 (top - 3.5 up, radius <= 7), light 194 (centre 193, radius <= 2) pulsing (radius <= 5), marks 5
+    (light grey) at 45/135/225/315 degrees, bars +-0.75..2.15 along the rim at radius 10.6-12.6, dots
+    13.3-14.0 (measured: assembled picture rows 81-85 mapped onto the shape), inside 227/228, inside floor
+    198/197, underside the hull's (the table darkens it). Lift: UFO1_9 model (floor part, used at level 0
+    and level 1's middle): a plate one model voxel thick, baseY -0.5 (flush), its own sprite's pixels,
+    flipping. `.ref` "VRF2": header + the lights' colour (part, column, row, 0), 4 bytes a voxel (part,
+    column, row, light). Board: mask values per face kind (greedy merges like faces only), MAT_GLOW_PULSE /
+    FLIP for lit voxels, a layer 0.04 out for rim lights A/B (MAT_GLOW_A/B) over the band's own colour;
+    shader: materials 10-13 output the texture x uPulse/uFlip x uTint, unlit, never darkened; A shows on even
+    frames, B on odd (discarded otherwise); Board::draw sets uAnimFrame from SavedBattleGame::getAnimFrame()
+    (lab: SDL_GetTicks()/100), uPulse/uFlip constants measured above (UFO1's; another animated model with
+    other patterns would need them per pattern). VrCompare skips material 11 (frame 0 = the art). Sheets:
+    shapes about as before (hull 72-93%), colour 5-89%: expected, the art's painted shading is gone. Preview:
+    in the farm save the rim's specks change between frames; at shade 15 the hull is dark, the lights lit.
+    Not yet seen in the headset.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a

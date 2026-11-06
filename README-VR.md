@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.15)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.16)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -623,7 +623,22 @@ Key ideas:
     (0.21.0-terrain.15: 98-100% shape). An exact pixel-by-pixel fit
     (0.21.0-terrain.14) matched the art from the game's angle and looked worse
     in the headset, lumpy from every other side: for hard-edged pieces the
-    shapes stay clean and only their proportions follow the art. The far
+    shapes stay clean and only their proportions follow the art.
+    Since 0.21.0-terrain.16 the saucer has a flat top (the art's light sits on
+    it) and even colours per area from the art's palette: a lightly speckled
+    grey hull, a clean blue rim band, a lighter collar, the purple light, the
+    `!!` marks on all four diagonals; no painted light-left, dark-right
+    shading (the table's sun and sky shade it). Its lights animate in step
+    with the flat game's terrain frames (100 ms each): the rim's 20 lights in
+    two sets taking turns, the cap's light pulsing, the lift flipping bright
+    and dark. They glow at night on their own surfaces only: they light
+    nothing round them, and unexplored tiles aren't drawn, so they never give
+    a hidden scout away.
+  - lights in models: `.ref` version 2 adds a light flag per voxel and the
+    lights' colour (Model::light): materials 10-13 in the board's shader,
+    driven by `uAnimFrame` (the battle's animation frame; the lab goes by the
+    clock), `uPulse` and `uFlip` (the scout's cap and lift, measured from
+    their frames). The comparison pictures leave out the odd-frame lights. The far
     side's outer hull takes the near side's pixels (mirrored across the view),
     the inside the far pieces' (their sprites show the inner wall). A piece the
     game destroys takes its slice with it. Its pieces score lower on the sheets

@@ -18,11 +18,10 @@ Design:
   inside floor). It is cut along the tiles into the eight ring pieces; the dome over the centre tile goes
   to the cap (level 2), lowered to stand 8 table voxels below that level's floor (Model::baseY). The centre
   tile itself keeps the game's floor (part 9, the lift). When the game destroys a piece, its slice goes.
-- Colours: the outer hull's far side isn't in any sprite, so every outer voxel takes the pixel the art
-  shows at the same spot turned to the near side (mirrored through the plane across the view: same screen
-  column and height), from the pieces put together. The inside takes its pixel from the far pieces'
-  sprites (which show the inner wall: from the game's angle you look into them), turned to the far side;
-  the inside floor likewise; the underside from the near side's bottom rim.
+- Colours (terrain.16, owner): even colours per area from the art's palette (see colours()), no painted
+  shading: the table's sun and sky shade it. Lights (".ref" version 2): the rim's 20 lights in two sets
+  that take turns with the game's terrain frames, the cap's light pulsing, the lift (part 9) flipping;
+  they glow on their own surface only.
 - Legs: a strut from under the hull (14 out from the axis, 25 up) to a foot pad on the ground (20 out),
   as the leg sprites put them; thicker above (the piston), coloured from their own sprites as usual.
 """
@@ -37,13 +36,14 @@ PER = 2
 SET = 'UFO1'
 OFFSET = 2          # map bytes -> UFO1 part ids: the terrain's first set (BLANKS) comes first
 AX = AZ = 72.0      # the saucer's axis (map voxels): the middle of tile (4, 4)
-PROFILE = dict(R=23.0, rim=4.0, top=23.0, bottom=-1.0, rb=18.0, e=1.4)   # from --fit
+PROFILE = dict(R=23.0, rim=3.5, top=21.0, bottom=-1.0, rb=18.0, e=1.4, rc=4.5)   # from --fit (terrain.16: flat top)
 CAP_BASE = -8.0     # the cap model stands this far below level 2's floor (level 1 height 16)
 SHELL = 2           # model voxels
 
 
-def radius(h, R, rim, top, bottom, rb, e):
-    """The saucer's radius at height h above level 1's floor (0 outside it)."""
+def radius(h, R, rim, top, bottom, rb, e, rc=0.0):
+    """The saucer's radius at height h above level 1's floor (0 outside it). The dome rises from the rim to
+    a flat top of radius rc (terrain.16; the cap's light sits on it: the owner saw a cone)."""
     h = np.asarray(h, float)
     r = np.zeros_like(h)
     lo = (h >= bottom) & (h < rim)
@@ -51,7 +51,7 @@ def radius(h, R, rim, top, bottom, rb, e):
     r[lo] = rb + (R - rb) * np.sqrt(t)
     up = (h >= rim) & (h <= top)
     t = (h[up] - rim) / (top - rim)
-    r[up] = R * np.clip(1 - t ** e, 0, 1) ** (1 / e)
+    r[up] = rc + (R - rc) * np.clip(1 - t ** e, 0, 1) ** (1 / e)
     return r
 
 
@@ -127,17 +127,18 @@ def fit(placed):
     ok0 = (px >= 0) & (px < CW) & (py >= 0) & (py < CH)
     best = (0, None)
     for R in (22.5, 23, 23.5):
-        for rim in (2, 3, 4):
-            for top in (21, 22, 23):
-                for bottom in (-2, -1):
-                    for rb in (16, 18):
-                        for e in (1.2, 1.4, 1.6):
-                            p = dict(R=R, rim=rim, top=top, bottom=bottom, rb=rb, e=e)
-                            m = np.zeros_like(art)
-                            sol = (R2 <= radius(H, **p)) & ok0
-                            m[py[sol], px[sol]] = True
-                            s = (m & art).sum() / max(1, (m | art).sum())
-                            if s > best[0]: best = (s, p)
+        for rim in (2.5, 3, 3.5, 4):
+            for top in (19, 20, 20.5, 21, 21.5, 22):
+                for bottom in (-1,):
+                    for rb in (17, 18):
+                        for e in (1.0, 1.2, 1.4, 1.7, 2.0):
+                            for rc in (4, 4.5, 5, 5.5, 6, 7):
+                                p = dict(R=R, rim=rim, top=top, bottom=bottom, rb=rb, e=e, rc=rc)
+                                m = np.zeros_like(art)
+                                sol = (R2 <= radius(H, **p)) & ok0
+                                m[py[sol], px[sol]] = True
+                                sc = (m & art).sum() / max(1, (m | art).sum())
+                                if sc > best[0]: best = (sc, p)
     print('fit:', best)
 
 
@@ -197,41 +198,104 @@ def hull():
     return solid, role, XX, ZZ, HH
 
 
-def references(solid, role, XX, ZZ, HH, outer_comp, inner_comp):
-    """Per solid voxel: (part, column, row) of the art pixel its colour comes from."""
-    ref = {}
-    dx, dz = XX - AX, ZZ - AZ
-    depth = dx + dz            # > 0: the near half (towards the flat game's eye)
-    misses = 0
+# ---------------------------------------------------------------- colours (terrain.16)
+# Each area of the saucer takes even colours from the art's own palette (by reference to a pixel of that
+# colour), not the pixel it lands on: the owner wanted clean edges on the rim and the cap, and no painted
+# shading (the table's sun and sky shade it). Measured from the art mapped onto the shape: the blue rim
+# band 1.5-4.5 up (radius 21.7+), white rim lights about 3.3 up, the purple light on the flat top (radius 5),
+# a lighter grey collar round it, the "!!" marks on the upper slope (rows 81-85 of the assembled picture:
+# two bars 2 pixels wide and 3 tall, a gap, a dot), four of them, one each way (owner).
+AREAS = {
+    'hull': [(244, 50), (243, 25), (245, 25)],        # palette index, share: an even, fine speckle
+    'rim': [(115, 70), (114, 30)],
+    'collar': [(241, 70), (240, 30)],
+    'light_mid': [(193, 100)], 'light': [(194, 100)],
+    'mark': [(5, 100)],                               # light grey: the art's bars are its lightest greys there
+    'inside': [(227, 70), (228, 30)],
+    'floor': [(198, 70), (197, 30)],
+}
+RIM_LIGHT = 224          # the rim lights' colour
+RIM_BAND = (1.0, 5.0, 20.8)       # height from, to; from radius
+RIM_LIGHTS = 20          # evenly spaced, alternate ones in the two sets (the art: two interleaved sets)
+RIM_LIGHT_H = (2.5, 4.1) # height of a light
+RIM_LIGHT_W = 0.55       # half its width along the rim (table units)
+LIGHT_R, COLLAR_R = 5.0, 7.0
+MARK_AZ = (45, 135, 225, 315)   # degrees from east toward south: the four diagonals (the art shows three)
+MARK_BARS = ((-2.15, -0.75), (0.75, 2.15))   # along the rim's direction, from the mark's middle
+MARK_R = ((10.6, 12.6), (13.3, 14.0))        # bar, dot: how far out from the axis (down the slope)
+
+
+def pixel_with(index, cache={}):
+    """(part, column, row) of a pixel of this palette colour in the set's sprites: colours by reference."""
+    if index not in cache:
+        for p in range(32):
+            try: g, _ = sprite(SET, p)
+            except Exception: continue
+            ys, xs = np.nonzero(g == index)
+            if len(xs):
+                cache[index] = (p, int(xs[0]), int(ys[0]))
+                break
+        else: raise SystemExit(f'colour {index} is in no {SET} sprite')
+    return cache[index]
+
+
+def speckle(area, i, j, k):
+    """One of the area's colours, the same for a voxel every time (a hash of its place)."""
+    h = (i * 73856093 ^ j * 19349663 ^ k * 83492791) & 0xFFFF
+    x = h % 100
+    for index, share in AREAS[area]:
+        if x < share: return pixel_with(index)
+        x -= share
+    return pixel_with(AREAS[area][0][0])
+
+
+def colours(solid, role, XX, ZZ, HH):
+    """Per solid voxel: (part, column, row) of its colour and its light (VrModels.h Model::light)."""
+    ref, light = {}, {}
+    pr = PROFILE
+    count = {}
     for (i, j, k) in zip(*np.nonzero(solid)):
         X, Z, H = XX[i, j, k], ZZ[i, j, k], HH[i, j, k]
-        r = role[i, j, k]
-        d = depth[i, j, k]
-        if r in (1, 3):
-            # outer hull: turned to the near side (same screen column and height)
-            if d < 0: X, Z = X - d, Z - d
-            comp = outer_comp
+        r = math.hypot(X - AX, Z - AZ)
+        az = math.degrees(math.atan2(Z - AZ, X - AX)) % 360
+        ro = role[i, j, k]
+        lt = 0
+        if ro == 2: area = 'inside'
+        elif ro == 4: area = 'floor'
+        elif ro == 3: area = 'hull'
+        elif H >= pr['top'] - 0.6 and r <= LIGHT_R:
+            area = 'light_mid' if r <= 2.0 else 'light'
+            lt = 3                                   # pulses
+        elif H >= pr['top'] - 3.5 and r <= COLLAR_R: area = 'collar'
+        elif RIM_BAND[0] <= H <= RIM_BAND[1] and r >= RIM_BAND[2]:
+            area = 'rim'
+            if RIM_LIGHT_H[0] <= H <= RIM_LIGHT_H[1]:
+                step = 360 / RIM_LIGHTS
+                n = round((az - 45) / step)
+                d = abs(((az - 45) - n * step + 180) % 360 - 180)
+                if math.radians(d) * r <= RIM_LIGHT_W: lt = 1 if n % 2 == 0 else 2
         else:
-            # the inside, the floor: turned to the far side, from the far pieces' sprites
-            if d > 0: X, Z = X - d, Z - d
-            comp = inner_comp
-        px, py = project(X, 24 + H, Z)
-        hit = lookup(comp, px, py)
-        if hit is None:
-            misses += 1
-            hit = lookup(outer_comp, px, py, 12)
-        ref[(i, j, k)] = hit
-    print(f'references: {len(ref)}, {misses} looked further')
-    return ref
+            area = 'hull'
+            for m in MARK_AZ:
+                s_ = math.radians(((az - m + 180) % 360) - 180) * r
+                if any(a <= s_ <= b for a, b in MARK_BARS) and any(a <= r <= b for a, b in MARK_R):
+                    area = 'mark'
+        ref[(i, j, k)] = speckle(area, i, j, k)
+        light[(i, j, k)] = lt
+        count[area] = count.get(area, 0) + 1
+    print('areas:', count, 'lights:', sum(1 for v in light.values() if v in (1, 2)))
+    return ref, light
 
 
-def write_piece(path, kgrid, refgrid, base):
-    """A model and its .ref: refs in the table's order (z, then y, then x) over solid voxels."""
+def write_piece(path, kgrid, refgrid, base, lightgrid=None):
+    """A model and its .ref (version 2: with lights): refs in the table's order (z, then y, then x) over
+    solid voxels."""
     g = Grid(kgrid.shape[0], kgrid.shape[1], kgrid.shape[2], PER)
     g.k = kgrid
     g.write_vox(path + '.vox')
     sx, sy, sz = kgrid.shape
-    out = bytearray(b'VRF1' + struct.pack('<f', base))
+    lc = pixel_with(RIM_LIGHT)
+    out = bytearray(b'VRF2' + struct.pack('<f', base))
     body = bytearray()
     count = 0
     for z in range(sz):
@@ -239,9 +303,10 @@ def write_piece(path, kgrid, refgrid, base):
             for x in range(sx):
                 if not kgrid[x, y, z]: continue
                 r = refgrid.get((x, y, z))
-                body += bytes((255, 0, 0)) if r is None else bytes((r[0], r[1], r[2]))
+                lt = (lightgrid or {}).get((x, y, z), 0)
+                body += bytes((255, 0, 0, lt)) if r is None else bytes((r[0], r[1], r[2], lt))
                 count += 1
-    out += struct.pack('<I', count) + body
+    out += struct.pack('<I', count) + bytes((lc[0], lc[1], lc[2], 0)) + body
     open(path + '.ref', 'wb').write(bytes(out))
     print(f'wrote {path}.vox ({count} voxels) and .ref')
 
@@ -349,19 +414,16 @@ def main():
         return
     at = {(tx, ty, tz): p for tx, ty, tz, slot, p in placed if slot == 3}   # objects
     floor_at = {(tx, ty, tz): p for tx, ty, tz, slot, p in placed if slot == 0}
-    outer_comp = composite(placed, lambda tx, ty, tz, p: (tz == 1 and p != 9) or tz == 2)
-    # the far pieces (west, north, north-west): from the game's angle their sprites show the inside
-    far = {(3, 3, 1), (4, 3, 1), (3, 4, 1), (4, 4, 1)}
-    inner_comp = composite(placed, lambda tx, ty, tz, p: (tx, ty, tz) in far)
     solid, role, XX, ZZ, HH = hull()
-    ref = references(solid, role, XX, ZZ, HH, outer_comp, inner_comp)
+    ref, light = colours(solid, role, XX, ZZ, HH)
     T = 16 * PER
     for (tx, ty, tz), p in sorted(at.items()):
         if tz != 1: continue
         ox, oy = (tx - 3) * T, (ty - 3) * T
         kg = np.where(solid[ox:ox + T, oy:oy + T, :], PLAIN, 0).astype(np.uint8)
         rg = {(x - ox, y - oy, z): v for (x, y, z), v in ref.items() if ox <= x < ox + T and oy <= y < oy + T}
-        write_piece(os.path.join(OUT, f'{SET}_{p}'), kg, rg, 0.0)
+        lg = {(x - ox, y - oy, z): v for (x, y, z), v in light.items() if ox <= x < ox + T and oy <= y < oy + T}
+        write_piece(os.path.join(OUT, f'{SET}_{p}'), kg, rg, 0.0, lg)
     # the cap: the dome over the centre tile, from level 1 height 16 (= level 2 height CAP_BASE)
     cap = floor_at.get((4, 4, 2))
     if cap is not None:
@@ -371,7 +433,25 @@ def main():
         kg = np.zeros((T, T, sub.shape[2] + 1), np.uint8)
         kg[:, :, 1:] = np.where(sub, PLAIN, 0)
         rg = {(x - ox, y - oy, z - k0 + 1): v for (x, y, z), v in ref.items() if ox <= x < ox + T and oy <= y < oy + T and z >= k0}
-        write_piece(os.path.join(OUT, f'{SET}_{cap}'), kg, rg, CAP_BASE)
+        lg = {(x - ox, y - oy, z - k0 + 1): v for (x, y, z), v in light.items() if ox <= x < ox + T and oy <= y < oy + T and z >= k0}
+        write_piece(os.path.join(OUT, f'{SET}_{cap}'), kg, rg, CAP_BASE, lg)
+    # the lift (terrain.16): the floor in the middle of level 0 and of level 1 (the same part) as a thin plate
+    # flush with the floor's top, coloured as its sprite draws it, flipping bright and dark with the game's
+    # frames (its own frames 8, 8, 17, 17)
+    lift = floor_at.get((4, 4, 0))
+    if lift is not None:
+        idx, yoff = sprite(SET, lift)
+        kg = np.zeros((T, T, 2), np.uint8)
+        rg, lg = {}, {}
+        for x in range(T):
+            for y in range(T):
+                X, Z = (x + 0.5) / PER, (y + 0.5) / PER
+                px, py = int(16 + X - Z), int(24 + (X + Z) / 2 + yoff)
+                if 0 <= px < 32 and 0 <= py < 40 and idx[py, px]:
+                    kg[x, y, 1] = PLAIN
+                    rg[(x, y, 1)] = (lift, px, py)
+                    lg[(x, y, 1)] = 4
+        write_piece(os.path.join(OUT, f'{SET}_{lift}'), kg, rg, -0.5, lg)
     legs = [((tx, ty), p) for (tx, ty, tz), p in sorted(at.items()) if tz == 0]
     if '--legs' in sys.argv: tune_legs(legs)
     for (tx, ty), p in legs:

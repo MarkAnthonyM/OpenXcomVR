@@ -106,8 +106,10 @@ const Model *terrainModel(const std::string &set, int id, int variant)
 	std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(*in)), std::istreambuf_iterator<char>());
 	std::unique_ptr<Model> m(new Model);
 	if (!parseVox(bytes, *m)) { Log(LOG_WARNING) << "[VR] model " << path << ": not a MagicaVoxel file"; return nullptr; }
-	// colour references and base height (<key>.ref): "VRF1", float baseY, uint32 count, then per solid voxel
-	// (in index order: z, then y, then x) part, column, row bytes; part 255 = from its own sprite as usual
+	// colour references and base height (<key>.ref). Version 1: "VRF1", float baseY, uint32 count, then per
+	// solid voxel (in index order: z, then y, then x) part, column, row bytes; part 255 = from its own sprite as
+	// usual. Version 2 (terrain.16): "VRF2", float baseY, uint32 count, the lights' colour (part, column, row,
+	// 0), then per solid voxel part, column, row, light (Model::light)
 	const std::string refPath = path.substr(0, path.size() - 4) + ".ref";
 	if (FileMap::fileExists(refPath))
 		if (const FileMap::FileRecord *rr = FileMap::at(refPath))
@@ -115,29 +117,39 @@ const Model *terrainModel(const std::string &set, int id, int variant)
 			{
 				std::vector<uint8_t> b((std::istreambuf_iterator<char>(*ri)), std::istreambuf_iterator<char>());
 				uint32_t count = 0;
-				if (b.size() >= 12 && std::memcmp(b.data(), "VRF1", 4) == 0)
+				int version = 0;
+				if (b.size() >= 12 && std::memcmp(b.data(), "VRF1", 4) == 0) version = 1;
+				if (b.size() >= 16 && std::memcmp(b.data(), "VRF2", 4) == 0) version = 2;
+				if (version)
 				{
 					std::memcpy(&m->baseY, b.data() + 4, 4);
 					std::memcpy(&count, b.data() + 8, 4);
 				}
+				const size_t head = version == 2 ? 16 : 12, rec = version == 2 ? 4 : 3;
 				size_t solid = 0;
 				for (uint8_t k : m->kind) if (k != MK_EMPTY) ++solid;
-				if (count != solid || b.size() < 12 + (size_t)count * 3)
+				if (!version || count != solid || b.size() < head + (size_t)count * rec)
 					Log(LOG_WARNING) << "[VR] model " << refPath << ": " << count << " references for " << solid << " voxels; not used";
 				else
 				{
 					m->ref.assign(m->kind.size(), 0u);
+					if (version == 2)
+					{
+						m->light.assign(m->kind.size(), 0);
+						m->lightRef = Model::REF_SET | (uint32_t)b[12] << 16 | (uint32_t)b[14] << 8 | b[13];
+					}
 					size_t j = 0;
 					for (size_t i = 0; i < m->kind.size(); ++i)
 					{
 						if (m->kind[i] == MK_EMPTY) continue;
-						const uint8_t *r = b.data() + 12 + j * 3;
+						const uint8_t *r = b.data() + head + j * rec;
 						++j;
 						if (r[0] != 255) m->ref[i] = Model::REF_SET | (uint32_t)r[0] << 16 | (uint32_t)r[2] << 8 | r[1];
+						if (version == 2) m->light[i] = r[3];
 					}
 				}
 			}
-	Log(LOG_INFO) << "[VR] model " << path << ": " << m->sx << "x" << m->sy << "x" << m->sz << (m->ref.empty() ? "" : ", colour references") << (m->baseY != 0.f ? ", base " + std::to_string(m->baseY) : "");
+	Log(LOG_INFO) << "[VR] model " << path << ": " << m->sx << "x" << m->sy << "x" << m->sz << (m->ref.empty() ? "" : ", colour references") << (m->light.empty() ? "" : ", lights") << (m->baseY != 0.f ? ", base " + std::to_string(m->baseY) : "");
 	slot = std::move(m);
 	return slot.get();
 }

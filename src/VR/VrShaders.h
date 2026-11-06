@@ -95,6 +95,9 @@ uniform vec4 uSunKey;        // outdoor battle: xyz world direction towards the 
 uniform vec3 uSunKeyCol;     // map (and what is over it) instead of light 0, and casts the shadows
 uniform vec4 uSunArea;       // the map on the table (world xz rect): where the sun shines
 uniform vec3 uSunKeySky;     // the sky's light over the map
+uniform int uAnimFrame;      // the game's terrain animation frame (0-7, a step every 100 ms): hand-built lights
+uniform vec3 uPulse[4];      // a pulsing light's colour per frame (frame & 3), relative to its first frame
+uniform vec3 uFlip;          // a flipping light's colour on its dark frames (frames 2, 3, 6, 7)
 uniform float uMapShade;     // outdoor battle: how bright the map's darkness leaves an unlit tile (the game's shade
 uniform vec3 uLampCol;       // as a factor); tiles brighter than that carry the game's own light, lit in this colour
 uniform float uMoonFloor;    // moonlit night: the unlit ground shows at least this bright under the moon
@@ -466,6 +469,16 @@ void sceneMain()
 		vec4 t = texture(uTex, vUV);
 		if (uMode == 3 && t.a < 0.5) discard;
 		if (t.a < 0.02) discard;
+		if (vMat >= 10 && vMat <= 13)
+		{
+			// hand-built lights (0.21.0-terrain.16): their own colour, glowing (never darkened by the night or
+			// the sun's angle) and lighting nothing round them; the rim's two sets show on alternate frames
+			if (vMat == 10 && (uAnimFrame & 1) != 0) discard;
+			if (vMat == 11 && (uAnimFrame & 1) == 0) discard;
+			vec3 f = vMat == 12 ? uPulse[uAnimFrame & 3] : (vMat == 13 && (uAnimFrame & 2) != 0 ? uFlip : vec3(1.0));
+			fragColor = vec4(t.rgb * f * uTint.rgb, 1.0);
+			return;
+		}
 		vec3 base = t.rgb * vColor.rgb * uTint.rgb;
 		if (uMode == 4) { fragColor = vec4(base, t.a * uTint.a); return; }
 		// the highlight follows the surface's own brightness, so a tile darkened by the night stays dark

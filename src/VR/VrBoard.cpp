@@ -95,6 +95,9 @@ static const int SHAPE_H = TILE_H + 16; // a tile's display shape may rise into 
 static const int CHUNK = 8;     // tiles per chunk side
 static const int ATLAS = 2048;
 static const float MAT_BOARD = 8.f;
+// hand-built lights (VrModels.h Model::light; 0.21.0-terrain.16): glow in their own colour, animated in step
+// with the game's terrain frames (shader: uAnimFrame, uPulse, uFlip)
+static const float MAT_GLOW_A = 10.f, MAT_GLOW_B = 11.f, MAT_GLOW_PULSE = 12.f, MAT_GLOW_FLIP = 13.f;
 
 /// How much a tile's shade (0 bright .. 15 dark, the game's lighting) darkens it, in linear light.
 /// Measured from the battlescape palette: each shade step moves a colour one step down its 16-colour
@@ -1526,9 +1529,10 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 	auto solid = [&](int x, int y, int z) -> bool { return z >= 1 && m.at(x, y, z) != VR::MK_EMPTY && m.at(x, y, z) != VR::MK_PATCH; };
 	const int dims[3] = {m.sx, m.sy, m.sz};
 	std::vector<uint32_t> maskCol;
-	std::vector<uint8_t> mask, used;
+	std::vector<uint8_t> mask, used; // mask: 0 no face, 1 plain, 2 pulsing light, 3 flipping light, 4/5 rim light layers A/B
 	struct Dir { int axis, sign; };
 	const Dir dirs[6] = {{0, 1}, {0, -1}, {1, 1}, {1, -1}, {2, 1}, {2, -1}};
+	float emitMat = MAT_BOARD, emitLift = 0.f; // the faces' material; how far out they stand (light layers)
 	auto emit = [&](int axis, int sign, float plane, int u, int v, int w, int h, int ua, int va, int nu, bool paint)
 	{
 		int ax, ay;
@@ -1550,14 +1554,15 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 		float nn[3] = {0, 0, 0};
 		nn[axis] = (float)sign;
 		glm::vec3 nrm(nn[0], nn[2], nn[1]);
+		const glm::vec3 lift = nrm * emitLift;
 		float tu0 = (ax + 1) / (float)ATLAS, tv0 = (ay + 1) / (float)ATLAS;
 		float tu1 = (ax + 1 + w) / (float)ATLAS, tv1 = (ay + 1 + h) / (float)ATLAS;
 		glm::vec4 white(1.f);
 		uint32_t b = (uint32_t)p.verts.size();
-		p.verts.push_back({corner((float)u, (float)v), nrm, {tu0, tv0}, white, MAT_BOARD});
-		p.verts.push_back({corner((float)(u + w), (float)v), nrm, {tu1, tv0}, white, MAT_BOARD});
-		p.verts.push_back({corner((float)(u + w), (float)(v + h)), nrm, {tu1, tv1}, white, MAT_BOARD});
-		p.verts.push_back({corner((float)u, (float)(v + h)), nrm, {tu0, tv1}, white, MAT_BOARD});
+		p.verts.push_back({corner((float)u, (float)v) + lift, nrm, {tu0, tv0}, white, emitMat});
+		p.verts.push_back({corner((float)(u + w), (float)v) + lift, nrm, {tu1, tv0}, white, emitMat});
+		p.verts.push_back({corner((float)(u + w), (float)(v + h)) + lift, nrm, {tu1, tv1}, white, emitMat});
+		p.verts.push_back({corner((float)u, (float)(v + h)) + lift, nrm, {tu0, tv1}, white, emitMat});
 		// keep the winding the same way round as the table's own faces
 		p.idx.insert(p.idx.end(), {b, b + 1, b + 2, b, b + 2, b + 3});
 	};
@@ -1569,18 +1574,22 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 			{
 				size_t o = (size_t)v * nu + u;
 				if (!mask[o] || used[o]) continue;
+				const uint8_t mv = mask[o]; // faces of one kind only (plain, or a light's)
 				int w = 1;
-				while (u + w < nu && mask[o + w] && !used[o + w]) ++w;
+				while (u + w < nu && mask[o + w] == mv && !used[o + w]) ++w;
 				int h = 1;
 				for (bool ok = true; v + h < nv && ok;)
 				{
 					for (int i = 0; i < w; ++i)
-						if (!mask[(size_t)(v + h) * nu + u + i] || used[(size_t)(v + h) * nu + u + i]) { ok = false; break; }
+						if (mask[(size_t)(v + h) * nu + u + i] != mv || used[(size_t)(v + h) * nu + u + i]) { ok = false; break; }
 					if (ok) ++h;
 				}
 				for (int j = 0; j < h; ++j)
 					for (int i = 0; i < w; ++i) used[(size_t)(v + j) * nu + u + i] = 1;
+				emitMat = mv == 2 ? MAT_GLOW_PULSE : mv == 3 ? MAT_GLOW_FLIP : mv == 4 ? MAT_GLOW_A : mv == 5 ? MAT_GLOW_B : MAT_BOARD;
+				emitLift = mv >= 4 ? 0.04f : 0.f;
 				emit(axis, sign, plane, u, v, w, h, ua, va, nu, paint);
+				emitMat = MAT_BOARD; emitLift = 0.f;
 			}
 	};
 	for (const Dir &d : dirs)
@@ -1603,7 +1612,9 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 					size_t o = (size_t)v * nu + u;
 					bool f = solid(c[0], c[1], c[2]) && !solid(nb[0], nb[1], nb[2]);
 					if (f && d.axis == 2 && d.sign < 0 && k == 1 && m.baseY == 0.f) f = false; // stands on the floor
-					mask[o] = f;
+					const size_t vi = ((size_t)c[2] * m.sy + c[1]) * m.sx + c[0];
+					const uint8_t lt = (f && !m.light.empty()) ? m.light[vi] : 0;
+					mask[o] = !f ? 0 : lt == VR::Model::LIGHT_PULSE ? 2 : lt == VR::Model::LIGHT_FLIP ? 3 : 1;
 					if (!f) continue;
 					any = true;
 					// one colour per voxel (from its centre), whichever face: faces of a stepped surface
@@ -1619,6 +1630,26 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 					else maskCol[o] = colour(toTable(c[0] + 0.5f, c[1] + 0.5f, c[2] + 0.5f), d.axis, d.sign, m.at(c[0], c[1], c[2]));
 				}
 			if (any) greedy(d.axis, d.sign, (float)k + (d.sign > 0 ? 1.f : 0.f), ua, va, nu, nv, false);
+			// the rim's lights (A, B): a thin layer just over those faces, in the lights' colour; the shader
+			// shows it on its frames only, the voxel's own colour shows through between
+			if (any && !m.light.empty())
+			{
+				uint32_t lc = 0xFFFFFFFFu;
+				refColour(m.lightRef, lc);
+				bool anyLight = false;
+				for (int v = 0; v < nv; ++v)
+					for (int u = 0; u < nu; ++u)
+					{
+						size_t o = (size_t)v * nu + u;
+						if (!mask[o]) continue;
+						int c[3];
+						c[d.axis] = k; c[ua] = u; c[va] = v;
+						const uint8_t lt = m.light[((size_t)c[2] * m.sy + c[1]) * m.sx + c[0]];
+						mask[o] = lt == VR::Model::LIGHT_A ? 4 : lt == VR::Model::LIGHT_B ? 5 : 0;
+						if (mask[o]) { maskCol[o] = lc; anyLight = true; }
+					}
+				if (anyLight) greedy(d.axis, d.sign, (float)k + (d.sign > 0 ? 1.f : 0.f), ua, va, nu, nv, false);
+			}
 		}
 	}
 	// the paint layer, flat on the floor (0.21.0-terrain.8): the ground as the sprite draws it (roots,
@@ -5282,6 +5313,15 @@ void Board::draw(const Shader &sh, const glm::mat4 &, const glm::vec3 &eye, doub
 	if (_p->hasBase) _p->baseView.draw(sh, _p->viewer); // labels face the head, not each eye (they must match in both)
 	else if (_p->hasBattle && _p->atlas.tex.valid())
 	{
+		// hand-built lights step with the game's terrain animation (100 ms a frame); the lab has no battle
+		// screen to step it, so it goes by the clock there
+		const int frame = _p->lab || !_p->battle ? (int)(SDL_GetTicks() / 100) : _p->battle->getAnimFrame();
+		sh.set("uAnimFrame", frame & 7);
+		// the small scout's cap (frames 9, 10, 11, 10) and lift (8, 8, 17, 17): their purple pixels' colour
+		// on each frame against the first, measured from the game's own frames
+		static const glm::vec3 PULSE[4] = {{1.f, 1.f, 1.f}, {0.878f, 0.762f, 0.893f}, {0.831f, 0.665f, 0.835f}, {0.878f, 0.762f, 0.893f}};
+		sh.set("uPulse[0]", PULSE[0]); sh.set("uPulse[1]", PULSE[1]); sh.set("uPulse[2]", PULSE[2]); sh.set("uPulse[3]", PULSE[3]);
+		sh.set("uFlip", glm::vec3(0.738f, 0.456f, 0.708f));
 		_p->applyWin(sh, true);
 		_p->drawBattle(sh);
 		_p->applyWin(sh, false);

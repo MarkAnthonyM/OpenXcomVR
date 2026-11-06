@@ -46,6 +46,15 @@ struct Model
 	/// side's sprite. References only, never colours: the pixels are the player's own.
 	std::vector<uint32_t> ref;
 	static const uint32_t REF_SET = 1u << 24;
+	/// Lights (".ref" version 2, 0.21.0-terrain.16): per voxel 0 = none, LIGHT_A / LIGHT_B = a light that
+	/// shows on even / odd frames of the game's terrain animation (the small scout's rim: two interleaved
+	/// sets), LIGHT_PULSE = glows, stepping bright, mid, dark, mid (the scout's cap), LIGHT_FLIP = glows,
+	/// bright two frames, dark two (its lift). Lights glow (never darkened by the night) on their own
+	/// surface only: they light nothing round them. A and B are drawn as a thin layer over the voxel's own
+	/// colour, in lightRef's colour.
+	std::vector<uint8_t> light;
+	uint32_t lightRef = 0;
+	enum { LIGHT_NONE = 0, LIGHT_A = 1, LIGHT_B = 2, LIGHT_PULSE = 3, LIGHT_FLIP = 4 };
 	uint8_t at(int x, int y, int z) const
 	{
 		if (x < 0 || y < 0 || z < 0 || x >= sx || y >= sy || z >= sz) return MK_EMPTY;
