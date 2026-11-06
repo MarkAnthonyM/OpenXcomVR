@@ -447,6 +447,37 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
 
 ## Decisions (keep these unless the owner changes them)
 
+Hand-built models (what made the small scout come out right, terrain.13-16; owner: so the next ones come
+out better the first time)
+1. Start from what the thing is, not from its pixels: list its features (hull, rim band, light, marks,
+   legs), how they repeat and how they're symmetric. A feature the art shows once, or squashed at its
+   edge, is usually repeated: the scout's "!!" faces all four diagonals (the art shows three, two of them
+   slanted). Make repeats identical and evenly placed.
+2. Shape: clean parametric shapes (a surface of revolution, struts, discs) whose few sizes are searched
+   against the art's outline from the game's angle. Never fit voxel by voxel for hard-edged pieces: the
+   exact-fit legs (terrain.14) matched every pixel and looked lumpy from every other side. Give designed
+   features their real form (a flat top under the light, a rim at a fixed height), and stop when what's
+   left is pixel noise. Organic pieces (tree crowns) can take more fitting.
+3. Colour by area, not by pixel: mark the areas on the model and give each even colours from the art's
+   palette (by reference to a pixel of that colour), a light speckle of 2-3 neighbouring entries on big
+   areas. Area edges then follow the shape exactly. Taking the pixel each voxel lands on smears features
+   one or two pixels wide (a voxel sits half a pixel off the art's grid): grey spilled into the rim.
+4. Measure in 3D: map the art's pixels onto the fitted shape (rays from the game's angle) to read where
+   features sit (height, radius, angle), and build them there.
+5. No painted light: the art's light-left/dark-right shading, highlights and drawn shadows stay out of the
+   colours; the table's sun and sky shade the model. Copied in, they double up and stay on the art's left
+   whichever way the table turns (and mirroring the near side onto the far side copies them there too).
+6. Look at all the art's frames, not just the first: pixels that change between frames are lights (the
+   scout's rim, cap and lift). Model them as lights: glowing, stepping with the game's terrain frames,
+   lighting nothing round them.
+7. Look before sending: render the model files from several sides, not only the game's angle, and say
+   plainly that it hasn't been seen in the headset. The owner judges in the headset.
+8. Cost: count triangles per tile for anything repeated across many tiles (the hand-built wheat, ~3,200 a
+   tile against ~950 rule-built, dropped his frame rate); a one-off piece like a UFO can afford more.
+9. Scores: the shape score catches wrong proportions and placement; the colour score compares against the
+   painted shading, so it drops for a model coloured by area (the scout's hull 5-89%) and is only a check
+   that the areas sit in the right places, not a target.
+
 The table and its view
 - The table keeps its own view; the flat screen is just a screen. Pointing
   the laser at it never changes the controls; edge and drag scrolling are off
