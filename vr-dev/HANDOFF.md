@@ -504,8 +504,11 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     painted shadow), checkering two neighbouring greys. Tried: the checker redrawn on the face's own grid at the
     art's pixel size, at half size, and no dither (the shade between: about four flat bands). Owner chose the
     checker redrawn at the art's pixel size: where the art dithers between two greys, a table-voxel checkerboard
-    of the same two greys, the lighter on cells with even (x + z). The panel line along the span comes out dotted
-    (the art draws it as a 2:1 line, like the fin stripe); keep or join: not decided yet. Next: the curved hull
+    of the same two greys, the lighter on cells with even (x + z). The panel line along the span came out dotted:
+    the art itself draws it broken (its darkest grey every other pixel, a slightly lighter grey between), and
+    each cell's middle lands alternately on the line and beside it, so the gaps came out lighter still. Owner
+    chose it joined (one solid line of the darkest grey, X 16-47 at Z 124), and as a rule for the model: panel
+    lines (seams) clean, solid and defined. Painted markings (the fin stripe) stay as drawn. Next: the curved hull
     (straightened panel by panel; fits a faceted shape). Not built yet; terrain.18 is unchanged.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
