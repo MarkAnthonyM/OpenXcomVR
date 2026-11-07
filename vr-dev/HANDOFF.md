@@ -480,6 +480,24 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     VrBoard buildTile: any part slot can have a model now (modelled[O_MAX]; the left fin and a nose piece
     are walls); an object's model still paints the ground from the floor's art. Cost: `outside` with
     `reveal` 809k -> 857k terrain triangles (+48k, one craft). Not yet seen in the headset.
+  - Texture study after terrain.18 (owner, headset: the scout's and Skyranger's hulls look "cloth-like";
+    the old rule-built Skyranger, broken as it was, looked interesting because it kept the pixel-art texture).
+    Findings, from offline renders (study scripts were session scratch, not in the repo):
+    the cloth look is mostly the voxel staircase of curved surfaces lit face by face (each half-voxel step a lit
+    tread and a darker riser: rows like knitting), not the speckle; even one flat colour shows it. Lighting by
+    the shape's smooth direction removes it: owner rejected that look. Faceted shapes step evenly only at clean
+    angles (panels square to the grid or at 45 degrees, slopes 1:1, 1:2, 2:1); a 16-sided scout still stepped
+    irregularly, an octagon was crisp (but eight-sided). Owner: the full art shading looks best so far
+    (faceted maybe better: he will judge in the headset); the art's checkerboard dithering looks too big on the
+    table (an art pixel = one table voxel = 2 x 2 model voxels; dithering was meant to blend on a CRT). The art is
+    drawn for one view: copied exactly, its pixel rows lie sheared across a flat face, so lines drawn straight
+    on screen become sawtooth staircases seen from the side. Straightening (each face cell 1 table voxel, the
+    art pixel at the cell's middle, the cell grid's phase chosen for the straightest rows) gives clean pixel art
+    on the face; from the game's angle it is off by up to half a pixel. Owner's choices so far, on the fins:
+    texture only (no shape details yet), straightened, at the art's pixel size (not Scale2x), the stripe kept as
+    drawn (its red pixels are the art's anti-aliasing of a 2:1 line; redrawn versions were tried and dropped).
+    Next: the same process on another part (a wing: flat, much dithering), then the curved hull (straightened
+    panel by panel; fits a faceted shape). Not built yet; terrain.18 is unchanged.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
