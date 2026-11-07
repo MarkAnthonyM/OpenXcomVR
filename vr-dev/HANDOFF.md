@@ -128,7 +128,7 @@ Script commands (one per line; numbers are optional with defaults):
 | `testburst dx dy big` | an explosion effect next to the selected soldier |
 | `skyshift days` | move the sky clock like the panel's SKY CLOCK keys (no argument: back to the game's clock); re-rolls the sky at once |
 | `skyclock day hour minute` | the date and time the sun and moon are worked out for (`skyclock -1` = the game's clock); takes effect at the next re-roll (`weather`, `shade`) |
-| `dbgpin on [dist]`, `dbgpage n`, `dbgpress ID` | the wrist debug panel (needs `-vrDebugPanel true`): hold it in front of the eye (the preview has no left hand to turn), show page 0 info / 1 controls, press a control (`RAIN`, `DARKER`, `TURNR`, `REAL`, `STRIKE`...) |
+| `dbgpin on [dist]`, `dbgpage n`, `dbgpress ID` | the wrist debug panel (needs `-vrDebugPanel true`): hold it in front of the eye (the preview has no left hand to turn), show page 0 info / 1 controls, press a control (`RAIN`, `DARKER`, `TURNR`, `REAL`, `STRIKE`, `SUNMARK`, `SHOT`...) |
 | `weather kind`, `strike`, `shade n`, `sunaz deg` | the battle's weather (`rain`, `snow`, `dust`, `sand`, `mist`, `clouds`, `clear`, `auto`), a lightning strike now, the mission's darkness (global shade, relit and rebuilt), the sun's direction for the following re-rolls (`-1` normal); `weather`/`shade` re-roll the sky, so set `sunaz` first |
 | `boardinfo`, `status` | log the table view (focus, where the soldier sits, level) / the table state |
 | `reveal`, `findset NAME`, `centertile x y` | the whole map explored (looking at terrain without fog); log where a terrain set's tiles are and centre the table on them (`findset UFO1`, `findset PLANE`); centre the table on a tile |
@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.19).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.20).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -387,6 +387,21 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     wing roots 100 -> 91, their tiles now holding the shoulders the art draws elsewhere), colour 61.9 -> 83.5.
     `outside` with `reveal`: 857k -> 852k terrain triangles. No engine code changed. Not yet seen in the
     headset.
+  - Owner on terrain.19 (headset): the wings look really good (slight adjustments to come); the hull's
+    texture cut the cloth look on the sides a lot, but looks off (to show with screenshots); a gap on the
+    sides let him see into the craft. He asked for a screenshot on the debug panel, the panel only for a
+    launch with his debug .bat (it persisted in options.cfg), and the sun marker switchable, off by default.
+  - terrain.20: the gap was terrain.19's own: letting the wing tiles hold the hull put them in bands()'s
+    `roof` set, so the level-1 side pieces under them (part 4 / 10, also used in rows 11-13 with no wing
+    above) got two bands; the most common (to Y 48) won, and rows 11-16 lost the shoulders above Y 48 (a slit
+    at X 60-64 / 96-100). Reverted (wing tiles hold the wing only; level 1 holds the shoulders); a check that
+    assembles every part's model at every place against the whole craft finds only the open doorway at the
+    rear (as terrain.18). Options: vrDebugPanel is set only from the command line (init ignores options.cfg)
+    and save() always writes it off. Debug panel (H 420): SCREENSHOT beside the tabs (3 s countdown, a tick a
+    second on the left controller; WristDebug::takeShot() polled by VrSystem doScreenshot(): captureTo() at
+    2560 x 1600, 80 degrees from the head, S->capturing (no hands, lasers) and the panel hidden; saved as
+    user/vr-screenshots/vr_<date>_<time>.png, the panel shows the file); SUN MARK on the controls page
+    (Board::setSkyMarker, off at the start; test `mark` presses it first). Test `dbg` takes a screenshot.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a

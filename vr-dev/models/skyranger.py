@@ -397,7 +397,7 @@ def holds(tx, ty, tz, slot, p):
         if p in (41, 42, 43, 44): return {C_POD}
         if slot == FLOOR: return set()
         return {C_FUS, C_CONE, C_CANOPY}
-    if p in WING_IDS: return {C_WING, C_FUS}     # the faceted hull's shoulders reach into the wings' tiles
+    if p in WING_IDS: return {C_WING}     # (the hull's shoulders beside them: level 1's pieces, bands())
     if p in (7, 8, 13, 14): return {C_FIN}
     return {C_FUS, C_CONE, C_CANOPY}      # the roof pieces
 

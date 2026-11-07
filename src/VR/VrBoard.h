@@ -189,6 +189,9 @@ public:
 	/// The debug panel's sky clock: move the time the sun and moon are worked out for (days; reset = the game's).
 	void shiftSkyClock(double days, bool reset = false);
 	int shadeOffset() const;
+	/// The debug panel's sun marker over the map (the sun's and moon's direction and height): off by default.
+	void setSkyMarker(bool on);
+	bool skyMarker() const;
 	SkyInfo skyInfo() const;
 	/// The geoscape dome as a sphere (world centre, radius); false when no globe is shown.
 	bool globeSphere(glm::vec3 &center, float &radius) const;

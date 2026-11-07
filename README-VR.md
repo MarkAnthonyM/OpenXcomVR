@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.19)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.20)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -217,8 +217,9 @@ stand) in an X-COM command center at a holographic war table:
   isn't already on the table. Base defence and alien base missions are
   indoors and keep the plain room light. `vrWeather` (default on) turns the
   weather off; the sun stays.
-- **Sky debug panel (weather branch).** With `vrDebugPanel` on (off by
-  default), turning the inside of your left wrist toward your face during a
+- **Sky debug panel (weather branch).** For a launch with `-vrDebugPanel true`
+  on the command line (since 0.21.0-terrain.20 it is never saved in
+  `options.cfg`: the next launch without it has no panel), turning the inside of your left wrist toward your face during a
   battle raises a panel along the forearm; press its tabs and buttons with the
   right index finger. **INFO** shows the mission and the terrain it was read
   as (and its map sets), indoors or outdoors, the site and the game clock with
@@ -235,7 +236,12 @@ stand) in an X-COM command center at a holographic war table:
   game's own clock and darkness stay as they are): -1H / +1H, +12H to swap day
   and night (New Battle always lands at noon, when a full moon is down), -MOON
   / +MOON to step four days (about an eighth of the moon's cycle) and GAME to
-  go back to the game's clock. The info
+  go back to the game's clock. SUN MARK (0.21.0-terrain.20, off at the
+  start) shows the sun's and moon's direction and height over the map.
+  SCREENSHOT (beside the tabs): three seconds to lower the wrist and look
+  (a tick a second on the left controller), then a 2560 x 1600 picture of
+  the view from your head, without hands, lasers or the panel, goes to the
+  user folder's `vr-screenshots/`; the panel names the file. The info
   page also shows the moon's phase and height (or that it is mirrored) and
   how strong its light is. While the panel
   setting is on, a **sky marker** stands over the battle map: an orange
@@ -666,6 +672,8 @@ Key ideas:
     near side mirrored. Markings, glass, the cone, gear and ramp stay coloured
     by area. The stepped slopes still show thin lines along the hull in the
     table's light: lighting each panel evenly is the next build to compare.
+    0.21.0-terrain.20 closes a slit along both sides at the top of the cabin
+    (the hull's shoulders beside the wings' tiles were left out).
   - lights in models: `.ref` version 2 adds a light flag per voxel and the
     lights' colour (Model::light): materials 10-13 in the board's shader,
     driven by `uAnimFrame` (the battle's animation frame; the lab goes by the

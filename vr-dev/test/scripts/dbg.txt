@@ -27,4 +27,9 @@ dbgpress GAME
 dbgpress REAL
 wait 500
 status
+dbgpress SHOT
+waitframes 45
+dbgpin 1 0.32
+waitframes 3
+shot shots/dbg_shot_panel.png
 quit

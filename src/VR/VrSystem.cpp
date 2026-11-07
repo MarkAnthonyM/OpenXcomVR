@@ -13,6 +13,7 @@
 #include "VrBoard.h"
 #include "VrWeather.h"
 #include "VrDebug.h"
+#include <ctime>
 #include "VrHands.h"
 #include "VrTable.h"
 #include "VrFloat.h"
@@ -2149,11 +2150,10 @@ static void saveShot(const std::string &path, int w, int h)
 	Log(LOG_INFO) << "[VR] screenshot " << path << (err ? " FAILED" : " saved");
 }
 
-/// One picture of the scene into the capture target (1600 x 1000), saved as a PNG.
-static void captureTo(const std::string &path, const glm::mat4 &view, const glm::vec3 &eye, float fovDeg)
+/// One picture of the scene into the capture target (1600 x 1000 unless asked), saved as a PNG.
+static bool captureTo(const std::string &path, const glm::mat4 &view, const glm::vec3 &eye, float fovDeg, int W = 1600, int H = 1000)
 {
-	const int W = 1600, H = 1000;
-	if (S->captureTarget.width() != W)
+	if (S->captureTarget.width() != W || S->captureTarget.height() != H)
 	{
 		S->captureTarget.create(W, H, 4);
 		S->captureTex.create(W, H, false, true);
@@ -2170,6 +2170,28 @@ static void captureTo(const std::string &path, const glm::mat4 &view, const glm:
 	for (size_t i = 3; i < flipped.size(); i += 4) flipped[i] = 255;
 	unsigned err = lodepng::encode(path, flipped, W, H);
 	Log(LOG_INFO) << "[VR] view " << path << (err ? " FAILED" : " saved");
+	return err == 0;
+}
+
+/// The debug panel's SCREENSHOT (0.21.0-terrain.20, owner: to show what he sees in the headset): once its
+/// countdown ends, the view from the head as the player sees it (the table, the HUD, the weather), without
+/// hands, controllers, lasers or the panel, 2560 x 1600 at 80 degrees, in the user folder's vr-screenshots/.
+static void doScreenshot(const glm::mat4 &view, const glm::vec3 &eye)
+{
+	WristDebug &dbg = S->table.debugPanel();
+	if (!dbg.takeShot()) return;
+	std::string dir = Options::getUserFolder() + "vr-screenshots/";
+	CrossPlatform::createFolder(dir);
+	time_t t = time(nullptr);
+	char name[64];
+	strftime(name, sizeof(name), "vr_%Y-%m-%d_%H-%M-%S.png", localtime(&t));
+	dbg.setHidden(true);
+	S->capturing = true;
+	bool ok = captureTo(dir + name, view, eye, 80.f, 2560, 1600);
+	S->capturing = false;
+	dbg.setHidden(false);
+	dbg.shotSaved(name, ok);
+	Log(LOG_INFO) << "[VR] screenshot " << (ok ? "saved " : "FAILED ") << dir << name;
 }
 
 /// The terrain lab's mark screenshots (0.21.0-terrain.3): clean pictures, without the lab's flags, labels,
@@ -2291,6 +2313,7 @@ static void previewFrame()
 	renderShadows();
 	renderScannerFeed();
 	doCaptures(viewFromPose(S->head), S->head.pos);
+	doScreenshot(viewFromPose(S->head), S->head.pos);
 	S->previewTarget.bind();
 	glm::mat4 proj = glm::perspective(glm::radians(62.f), (float)w / (float)h, 0.03f, 60.f);
 	drawScene(viewFromPose(S->head), proj, S->head.pos, false);
@@ -2364,6 +2387,7 @@ static void headsetFrame(float dt)
 		{
 			glm::mat4 m = S->rig * S->head.matrix();
 			doCaptures(glm::inverse(m), glm::vec3(m[3]));
+			doScreenshot(glm::inverse(m), glm::vec3(m[3]));
 		}
 		glFlush();
 	}

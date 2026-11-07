@@ -233,6 +233,7 @@ struct Board::Impl
 	// the debug panel's sky marker: where the sun, the moon and the table's light are
 	Mesh skyMarkMesh;
 	std::string skyMarkText; // what it showed last (tests)
+	bool skyMarkerOn = false; // the debug panel's SUN MARK switch (owner: off by default)
 	glm::vec3 shadowLight{0.f};  // where the shadow pass turned the standees toward (world)
 	bool hasShadowLight = false;
 	void drawSkyMarker(const Shader &sh);
@@ -5111,6 +5112,9 @@ void Board::setShadeOffset(int offset)
 
 int Board::shadeOffset() const { return _p->shadeOffset; }
 
+void Board::setSkyMarker(bool on) { _p->skyMarkerOn = on; if (!on) _p->skyMarkText.clear(); }
+bool Board::skyMarker() const { return _p->skyMarkerOn; }
+
 void Board::shiftSkyClock(double days, bool reset)
 {
 	Weather::shiftClock(days, reset);
@@ -5153,7 +5157,7 @@ void Board::drawWeather(const Shader &sh) const
 	p.applyWin(sh, true);
 	p.weather.draw(sh, p.boardMatrix());
 	sh.set("uClip", glm::vec4(1.f, 0.f, -1.f, 0.f));
-	if (Options::vrDebugPanel) const_cast<Impl&>(p).drawSkyMarker(sh);
+	if (Options::vrDebugPanel && p.skyMarkerOn) const_cast<Impl&>(p).drawSkyMarker(sh);
 	p.applyWin(sh, false);
 }
 

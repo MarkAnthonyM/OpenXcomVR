@@ -1263,6 +1263,12 @@ void updateOptions()
 	{
 		optionInfo.load(_commandLine, true);
 	}
+	// VR tabletop: the wrist debug panel is only for a launch that asks for it (-vrDebugPanel true);
+	// whatever options.cfg says (older builds saved it) is ignored, and save() never writes it on
+	{
+		auto it = _commandLine.find("vrdebugpanel");
+		vrDebugPanel = it != _commandLine.end() && (it->second == "true" || it->second == "1");
+	}
 }
 
 /**
@@ -1330,12 +1336,15 @@ bool save(bool reset, const std::string& filename)
 		}
 		auto optionsWriter = writer["options"];
 		optionsWriter.setAsMap();
+		const bool debugPanel = vrDebugPanel;   // VR tabletop: never saved on (see init)
+		vrDebugPanel = false;
 		auto sortedInfo = _info;
 		std::sort(sortedInfo.begin(), sortedInfo.end(), [](const OptionInfo& a, const OptionInfo& b) { return a.id() < b.id(); });
 		for (const auto& optionInfo : sortedInfo)
 		{
 			optionInfo.save(optionsWriter);
 		}
+		vrDebugPanel = debugPanel;
 		if (!reset && CrossPlatform::fileExists(filepath))
 		{
 			// Preserve any undefined options, because they could be from a different fork

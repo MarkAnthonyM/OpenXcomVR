@@ -12,7 +12,13 @@
  *  - CONTROLS: force the weather (or back to the mission's own roll), darken or
  *    lighten the table's map, turn the sun or give it back to the real sun, and
  *    strike lightning. These change the table only, never the game: the game's
- *    darkness, what soldiers see and the flat screen are unchanged.
+ *    darkness, what soldiers see and the flat screen are unchanged. SUN MARK
+ *    shows the sun's and moon's direction over the map (off at the start).
+ * SCREENSHOT (on both pages, 0.21.0-terrain.20): three seconds to lower the wrist
+ * and look, then a picture of the view from the head (no hands, no panel) is saved
+ * in the user folder's vr-screenshots/.
+ * The panel exists only for a launch with -vrDebugPanel true (never saved in
+ * options.cfg).
  */
 #include "VrGL.h"
 #include "VrHands.h"
@@ -43,6 +49,11 @@ public:
 	/// Tests: press a control by its id (INFO, CONTROLS, AUTO, CLEAR, RAIN, SNOW, DUST, SAND, MIST,
 	/// CLOUDS, DARKER, LIGHTER, GAME, TURNL, TURNR, REAL, STRIKE).
 	bool testPress(const std::string &id);
+	/// SCREENSHOT: true once when the countdown ends (the frame loop takes the picture, then calls shotSaved).
+	bool takeShot();
+	void shotSaved(const std::string &file, bool ok);
+	/// While a picture is taken the panel isn't drawn.
+	void setHidden(bool hidden);
 	struct Impl;
 private:
 	std::unique_ptr<Impl> _p;

@@ -21,7 +21,7 @@ namespace VR
 
 namespace
 {
-const int W = 240, H = 380;                 // the panel's picture (pixels)
+const int W = 240, H = 420;                 // the panel's picture (pixels)
 const float PW = 0.125f;                    // its width on the wrist (metres)
 const float PH = PW * H / W;
 
@@ -79,12 +79,18 @@ struct WristDebug::Impl
 	float frameMs = 0.f;
 	Game *game = nullptr;
 	Board *board = nullptr;
+	float shotIn = -1.f;           // SCREENSHOT: seconds left (-1 none)
+	bool shotDue = false;          // the countdown ended: the frame loop takes it
+	std::string shotMsg;           // the last picture's file (or failure)
+	bool hidden = false;
+	static constexpr float SHOT_DELAY = 3.f;
 
 	std::vector<PanelButton> buttons() const
 	{
 		std::vector<PanelButton> b;
-		b.push_back({"INFO", "INFO", 2, 2, W / 2 - 3, 20});
-		b.push_back({"CONTROLS", "CONTROLS", W / 2 + 1, 2, W / 2 - 3, 20});
+		b.push_back({"INFO", "INFO", 2, 2, 76, 20});
+		b.push_back({"CONTROLS", "CONTROLS", 80, 2, 78, 20});
+		b.push_back({"SHOT", shotIn >= 0.f ? fmt("IN %.0f", std::ceil(shotIn)) : std::string("SCREENSHOT"), 160, 2, 78, 20});
 		if (page != 1) return b;
 		const char *wx[8] = {"AUTO", "CLEAR", "RAIN", "SNOW", "DUST", "SAND", "MIST", "CLOUDS"};
 		for (int i = 0; i < 8; ++i) b.push_back({wx[i], wx[i], 4 + (i % 4) * 59, 40 + (i / 4) * 29, 55, 25});
@@ -98,6 +104,7 @@ struct WristDebug::Impl
 		for (int i = 0; i < 6; ++i) b.push_back({ck[i][0], ck[i][1], 4 + i * 39, 234, 37, 25});
 		b.push_back({"STRIKE", "STRIKE LIGHTNING", 4, 286, 115, 25});
 		b.push_back({"VANILLA", Options::vrVanillaSky ? "VANILLA: ON" : "VANILLA: OFF", 121, 286, 115, 25});
+		b.push_back({"SUNMARK", board && board->skyMarker() ? "SUN MARK: ON" : "SUN MARK: OFF", 4, 324, 115, 25});
 		return b;
 	}
 
@@ -124,6 +131,8 @@ struct WristDebug::Impl
 		else if (id == "PHASEP") board->shiftSkyClock(4.0);
 		else if (id == "NOW") board->shiftSkyClock(0.0, true);
 		else if (id == "VANILLA") { Options::vrVanillaSky = !Options::vrVanillaSky; board->skyChanged(); }
+		else if (id == "SUNMARK") board->setSkyMarker(!board->skyMarker());
+		else if (id == "SHOT") { if (shotIn < 0.f && !shotDue) { shotIn = SHOT_DELAY; shotMsg.clear(); } }
 		else return false;
 		lastPress = id;
 		pressFlash = 0.25f;
@@ -148,13 +157,15 @@ void WristDebug::Impl::render()
 		bool on = (b.id == "INFO" && page == 0) || (b.id == "CONTROLS" && page == 1);
 		std::string lw = b.id;
 		std::transform(lw.begin(), lw.end(), lw.begin(), ::tolower);
-		bool weatherOn = lw == I.forced || (b.id == "VANILLA" && Options::vrVanillaSky); // the weather button in force (AUTO when none)
+		bool weatherOn = lw == I.forced || (b.id == "VANILLA" && Options::vrVanillaSky) || (b.id == "SUNMARK" && board->skyMarker())
+			|| (b.id == "SHOT" && shotIn >= 0.f); // the weather button in force (AUTO when none), switches that are on
 		bool flash = pressFlash > 0.f && lastPress == b.id;
 		uint32_t bg = flash ? C(90, 200, 230) : (on || weatherOn) ? C(40, 90, 150) : BAND;
 		cv.rect(b.x, b.y, b.w, b.h, bg);
 		cv.frame(b.x, b.y, b.w, b.h, (on || weatherOn) ? CYAN : LINE);
 		cv.text(b.x, b.y + (b.h - 9) / 2, b.w, b.label, flash ? C(10, 20, 40) : (on || weatherOn) ? GOLD : TEXT, false, 1);
 	}
+	if (!shotMsg.empty()) cv.text(4, H - 12, W - 8, shotMsg, shotMsg.compare(0, 5, "Saved") == 0 ? GOLD : AMBER);
 	int y = 28;
 	auto head = [&](const std::string &s) { cv.rect(0, y, W, 11, C(14, 24, 52)); cv.text(4, y + 1, W - 8, s, GOLD); y += 13; };
 	auto line = [&](const std::string &s, uint32_t col = TEXT) { cv.text(6, y, W - 10, s, col); y += 10; };
@@ -238,7 +249,8 @@ void WristDebug::Impl::render()
 				: fmt("game clock %+.0f d %+.0f h (sun and moon only)", d, h), sh == 0.0 ? DIM : AMBER);
 		}
 		cv.text(4, 272, W - 8, fmt("LIGHTNING  strikes %.0f", I.strikes) + "      SKY", GOLD);
-		y = 318;
+		cv.text(4, 312, W - 8, "SHOW", GOLD);
+		y = 356;
 		line("Table only: the game's darkness, sight and", DIM);
 		line("flat screen stay as they are. Forced weather,", DIM);
 		line("a turned sun and the clock carry on.", DIM);
@@ -260,6 +272,14 @@ void WristDebug::update(Game *game, Board *board, const Hands &hands, const glm:
 	if (dt > 0.f) p.frameMs += (dt * 1000.f - p.frameMs) * 0.05f;
 	p.cooldown = std::max(0.f, p.cooldown - dt);
 	p.pressFlash = std::max(0.f, p.pressFlash - dt);
+	if (p.shotIn >= 0.f)
+	{
+		float before = p.shotIn;
+		p.shotIn -= dt;
+		if (std::ceil(p.shotIn) < std::ceil(before) && p.shotIn > 0.f && haptic) haptic(0, 0.2f, 0.02f); // a tick a second
+		if (p.shotIn <= 0.f) { p.shotIn = -1.f; p.shotDue = true; }
+		p.timer = std::min(p.timer, 0.05f);
+	}
 	bool battle = board && board->battle() != nullptr;
 	bool want = false;
 	if (Options::vrDebugPanel && battle)
@@ -341,7 +361,7 @@ void WristDebug::update(Game *game, Board *board, const Hands &hands, const glm:
 void WristDebug::draw(const Shader &sh) const
 {
 	const Impl &p = *_p;
-	if (p.show < 0.02f || !p.tex.valid()) return;
+	if (p.hidden || p.show < 0.02f || !p.tex.valid()) return;
 	if (p.quad.empty())
 	{
 		MeshData md;
@@ -395,6 +415,21 @@ void WristDebug::testPin(bool pin, const glm::vec3 &center, const glm::vec3 &nor
 void WristDebug::testPage(int page) { _p->page = page; _p->timer = 0.f; }
 
 bool WristDebug::testPress(const std::string &id) { return _p->press(id); }
+
+bool WristDebug::takeShot()
+{
+	if (!_p->shotDue) return false;
+	_p->shotDue = false;
+	return true;
+}
+
+void WristDebug::shotSaved(const std::string &file, bool ok)
+{
+	_p->shotMsg = ok ? "Saved " + file : "Screenshot FAILED: " + file;
+	_p->timer = 0.f;
+}
+
+void WristDebug::setHidden(bool hidden) { _p->hidden = hidden; }
 
 }
 }
