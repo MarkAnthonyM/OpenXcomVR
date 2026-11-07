@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.20).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.21).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -402,6 +402,22 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     2560 x 1600, 80 degrees from the head, S->capturing (no hands, lasers) and the panel hidden; saved as
     user/vr-screenshots/vr_<date>_<time>.png, the panel shows the file); SUN MARK on the controls page
     (Board::setSkyMarker, off at the start; test `mark` presses it first). Test `dbg` takes a screenshot.
+  - Owner on terrain.20 (headset, with screenshots): the hull's texture cleaned right up with the gap closed.
+    Wings: the dark gradient at the roots had dark blocks, not running smoothly into the lighter part; the
+    long seam (along the span, "outlining the rudder") too bold against the other seams and too long (the art's
+    doesn't reach the hull); the left wing had two bold seams the right doesn't; the red tips missed a bit at
+    the ends; the roundel had stray whitish blocks round its edge.
+  - terrain.21 (`skyranger.py` tex_wings, rewritten): both wings on one cell grid; find_lines() finds each
+    wing's broken dark lines outside ROOT_SHADE (12 voxels from the hull: the art's painted fuselage shadow,
+    250-252, made extra lines and ran the span line to the hull); a line is joined only if the other wing has
+    one there too (mirrored, each pairs with at most one), over the stretch both have, in the lighter of their
+    two greys (248 here); dark cells of lines only one wing has, and shadow cells near the root, take the
+    wing's gradient (per column the mean of its other cells; at the root a line fitted to the ten columns
+    next to it), the checker where it falls between two entries. Red tip: X < 1 or (X < 2.5 and Z >= the
+    leading edge's start), filling the leading corner's steps. Fuselage: cells within 2 voxels of the roundel
+    take their neighbours' texture (near_roundel(): the art's pale outline round the disc became whitish
+    cells), and a cell 4+ entries lighter than every neighbour takes their middle (2 cells). The roundel's
+    light stripes on its upper half are the sloped panel's steps lit (the panel-lighting build's job).
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a

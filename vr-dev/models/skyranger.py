@@ -264,7 +264,8 @@ def build():
         le = w['le0'] + w['slope'] * X
         return (X >= 0) & (X < w['root']) & (Z >= w['te']) & (Z <= le) & (Y >= w['y'][0]) & (Y < w['y'][1]) & ~fus_inside(X, Y, Z)
     def wing_area(X, Y, Z, m):
-        a = np.where(X < 1.0, CODES['red'], CODES['hull']).astype(np.uint8)
+        # the red tip, round the leading corner too (the leading edge's steps beyond X 1 were left grey)
+        a = np.where((X < 1.0) | ((X < 2.5) & (Z >= w['le0'])), CODES['red'], CODES['hull']).astype(np.uint8)
         top = Y >= w['y'][1] - 0.5
         lines = ((np.abs(Z - 123.5) < 0.5) & (X >= 16) & (X <= 46)) | ((np.abs(X - 16.25) < 0.5) & (Z < 123.5)) | ((np.abs(X - 44.25) < 0.5) & (Z > 120) & (Z < 128))
         if not ART_TEXTURE: a[top & lines] = CODES['panel']      # else texture() joins the art's own lines
@@ -469,6 +470,13 @@ from straighten import Canvas, proj, resolve, straightness
 FUS_COMPS = (C_FUS, C_CONE, C_CANOPY)
 
 
+def near_roundel(y, z):
+    """Within two voxels of the roundel on the sides: the art draws a pale outline round it there, which
+    taken as texture left whitish cells round the disc (owner, terrain.20); those cells take their neighbours'."""
+    rz, ry, rr = ROUNDEL
+    return np.hypot(z - rz, y - ry) <= rr + 2.0
+
+
 def hull_grey(index):
     """The hulls' gunmetal ramp (240 lit .. 255): other colours under the hull (the canopy's glass seen
     through, markings, the cockpit's consoles) aren't texture; those cells take their neighbours'."""
@@ -540,6 +548,7 @@ def tex_fuselage(c, placed, pidx):
                         x, y = np.mean(cells[k], axis=0)
                         if x < CXM: x = 2 * CXM - x
                         q = seen_at(who, P, (x, y, a + phz + 0.5))
+                        if near_roundel(y, a + phz + 0.5): q = None      # its outline isn't hull (owner)
                         row.append(art.value(q) if q is not None and art.ok[q] and hull_grey(art.col[q]) else None)
                     good = [i for i, v in enumerate(row) if v is not None]
                     if good:
@@ -549,7 +558,21 @@ def tex_fuselage(c, placed, pidx):
                 score += sum(sum(1 for u, v in zip(T[a], T[a + 1]) if u is not None and u == v) for a in T if a + 1 in T and len(T[a]) == len(T[a + 1]))
                 if best is None or score > best[0]: best = (score, phx, phy, phz, T, order)
     score, phx, phy, phz, T, order = best
-    print(f'  fuselage: phase {phx} {phy} {phz}, {len(T)} slabs')
+    # lone pale cells (owner, terrain.20: whitish blocks by the roundel): a cell 4+ entries lighter than every
+    # neighbour round it takes their middle
+    def lv(v): return v if isinstance(v, int) else sum(v) / 2
+    fixed = 0
+    for a in T:
+        row = T[a]
+        for s_, v in enumerate(row):
+            if v is None: continue
+            nb = [row[t] for t in (s_ - 1, s_ + 1) if 0 <= t < len(row)]
+            for b in (a - 1, a + 1):
+                if b in T and len(T[b]) == len(row): nb.append(T[b][s_])
+            nb = [lv(n) for n in nb if n is not None]
+            if len(nb) >= 3 and all(lv(v) <= n - 4 for n in nb):
+                row[s_] = int(round(np.median(nb))); fixed += 1
+    print(f'  fuselage: phase {phx} {phy} {phz}, {len(T)} slabs, {fixed} lone pale cells evened')
     hi, hk, hj = np.nonzero(hull)
     for i, k, j in zip(hi, hk, hj):
         a = int(np.floor(GZ[k] - phz)); key = (int(np.floor(GX[i] - phx)), int(np.floor(GY[j] - phy)))
@@ -576,46 +599,110 @@ def plane_cells(art, coords, sample, phases):
             for (ku, kv), q in vals.items():
                 if q is not None: G[ku - u0, kv - v0] = int(art.col[q])
             sc = straightness(G)
-            if best is None or sc > best[0]: best = (sc, cu, cv, vals)
-    return best[1], best[2], best[3]
+            if best is None or sc > best[0]: best = (sc, cu, cv, vals, (pu, pv))
+    return best[1], best[2], best[3], best[4]
 
 
-def join_lines(cells, dark=248, minrun=6, share=0.45):
-    """Panel lines: along each row and column of a face's cells, where the darkest greys (>= dark) make up a
-    broken line, a solid line of the darkest one from its first to its last dark cell."""
-    out = dict(cells)
+ROOT_SHADE = 12.0    # the wings' last 12 voxels at the hull: the art paints the fuselage's shadow there
+
+
+def find_lines(cells, skip, dark=248, minrun=6, share=0.45):
+    """Panel lines in a face's cells: along a row (axis 1: fixed Z, along X) or a column (axis 0: fixed X,
+    along Z), the darkest greys (>= dark) making up a broken line of at least minrun cells, dark on at least
+    share of them. Cells where skip(key) are left out (the painted shadow at the root). Returns (axis, line,
+    lo, hi, the line's usual dark grey)."""
+    out = []
     for axis in (0, 1):
         lines = {}
         for k, v in cells.items():
-            if isinstance(v, int) and v >= dark: lines.setdefault(k[axis], []).append(k[1 - axis])
-        for line, pos in lines.items():
-            if len(pos) < minrun // 2: continue
+            if isinstance(v, int) and v >= dark and not skip(k): lines.setdefault(k[axis], []).append((k[1 - axis], v))
+        for line, pv in lines.items():
+            pos = [p_ for p_, _ in pv]
             lo, hi = min(pos), max(pos)
-            if hi - lo + 1 < minrun or len(pos) / (hi - lo + 1) < share: continue
-            col = max(cells[(line, p) if axis == 0 else (p, line)] for p in pos)
-            for p in range(lo, hi + 1):
-                k = (line, p) if axis == 0 else (p, line)
-                if k in out: out[k] = col
+            if len(pos) < minrun // 2 or hi - lo + 1 < minrun or len(pos) / (hi - lo + 1) < share: continue
+            vals = [v for _, v in pv]
+            out.append((axis, line, lo, hi, max(set(vals), key=vals.count)))
     return out
 
 
 def tex_wings(c, placed, pidx):
-    """The main wings' tops (the front wings are the same parts): cells over X and Z, the art at the top's
-    plane, the checkerboard by cell, the panel lines joined."""
+    """The main wings' tops (the front wings are the same parts): cells over X and Z on one grid for both
+    wings, the art at the top's plane, the checkerboard by cell. Owner (terrain.20): panel lines joined into
+    solid lines of their usual grey, only where both wings have them (the craft is symmetric; the art's root
+    shadow made extra lines on one side) and only as far as both reach; the painted shadow at the root
+    (greys darker than the wing's gradient, ROOT_SHADE from the hull) replaced by the gradient carried on."""
     art = Canvas(SET, placed, lambda tx, ty, tz, s_, p: tz == 2 and 7 <= ty <= 10 and p in WING_IDS)
     yt = WING['y'][1]
-    for x0, x1 in ((0.0, WING['root']), (2 * CXM - WING['root'], 2 * CXM)):
-        m = (c.comp == C_WING) & (c.area == CODES['hull'])
-        m[:int((x0 - X0) * PER)] = False; m[int((x1 - X0) * PER):] = False
-        m[:, int((176 - Z0) * PER):] = False                     # the main wings only (the front ones are copies)
-        wi, wk, wj = np.nonzero(m)
-        coords = np.stack([GX[wi], GZ[wk]], -1)
-        cu, cv, vals = plane_cells(art, coords, lambda u, v: art.pixel(u, yt, v), (0.0, 0.5))
-        cells = {k: (art.value(q) if q is not None else None) for k, q in vals.items()}
-        cells = join_lines(cells)
-        for i, k, j, ku, kv in zip(wi, wk, wj, cu, cv):
-            v = cells.get((ku, kv))
-            if v is not None: pidx[i, k, j] = resolve(v, ku + kv)
+    m = (c.comp == C_WING) & (c.area == CODES['hull'])
+    m[:, int((176 - Z0) * PER):] = False                     # the main wings only (the front ones are copies)
+    wi, wk, wj = np.nonzero(m)
+    coords = np.stack([GX[wi], GZ[wk]], -1)
+    cu, cv, vals, (px, _) = plane_cells(art, coords, lambda u, v: art.pixel(u, yt, v), (0.0, 0.5))
+    mirror = lambda ku: int(round(2 * CXM - 1 - 2 * px)) - ku     # the cell across the craft's middle
+    cells = {k: (art.value(q) if q is not None else None) for k, q in vals.items()}
+    root = WING['root']
+    left = lambda k: k[0] + px < CXM
+    def shade(k):                                          # within ROOT_SHADE of the hull
+        x = k[0] + px + 0.5
+        return (x > root - ROOT_SHADE) if x < CXM else (x < 2 * CXM - root + ROOT_SHADE)
+    # panel lines on both wings (the right one's in the left's terms)
+    L = [l for l in find_lines({k: v for k, v in cells.items() if left(k)}, shade)]
+    R = []
+    for axis, line, lo, hi, col in find_lines({k: v for k, v in cells.items() if not left(k)}, shade):
+        if axis == 0: R.append((0, mirror(line), lo, hi, col))
+        else: R.append((1, line, mirror(hi), mirror(lo), col))
+    pairs = []                                             # each line pairs with at most one on the other wing
+    for ln1 in L:
+        for ln2 in R:
+            a_, l1, lo1, hi1, c1 = ln1; a2, l2, lo2, hi2, c2 = ln2
+            lo, hi = max(lo1, lo2), min(hi1, hi2)
+            if a_ != a2 or abs(l1 - l2) > 1 or hi - lo + 1 < 0.5 * min(hi1 - lo1 + 1, hi2 - lo2 + 1): continue
+            pairs.append((abs(l1 - l2), -(hi - lo), ln1, ln2, lo, hi))
+    joined, used = [], set()
+    for _, _, ln1, ln2, lo, hi in sorted(pairs, key=lambda t: t[:2]):
+        if ln1 in used or ln2 in used: continue
+        used.add(ln1); used.add(ln2)
+        joined.append((ln1[0], ln1[1], ln2[1], lo, hi, min(ln1[4], ln2[4])))   # the subtler of the two (owner)
+    # lines only one wing has (the art's marks round the root's shadow): their dark cells go (below)
+    stray = set()
+    for side, lst in ((True, L), (False, R)):
+        for ln in lst:
+            if ln in used: continue
+            a_, l_, lo, hi, _ = ln
+            for p_ in range(lo, hi + 1):
+                k = (l_, p_) if a_ == 0 else (p_, l_)
+                if not side: k = (mirror(k[0]), k[1])
+                v = cells.get(k)
+                if isinstance(v, int) and v >= 248: stray.add(k)
+    seam = set()
+    for a_, l1, l2, lo, hi, col in joined:
+        for p_ in range(lo, hi + 1):
+            for k in (((l1, p_), (mirror(l2), p_)) if a_ == 0 else ((p_, l1), (mirror(p_), l2))):
+                if k in cells: cells[k] = col; seam.add(k)
+    print(f'  wings: phase X {px}; panel lines on both wings: {len(joined)} (left {len(L)}, right {len(R)}); '
+          f'{len(stray)} cells of one-sided lines')
+    # the root's painted shadow: the gradient carried on (per column, the mean of its lighter cells)
+    def light(v): return v if isinstance(v, int) else sum(v) / 2
+    for side in (True, False):
+        cols = {}
+        for k, v in cells.items():
+            if v is None or left(k) != side or k in seam or k in stray or shade(k): continue
+            cols.setdefault(k[0], []).append(light(v))
+        xs = sorted(cols); means = [np.mean(cols[x]) for x in xs]
+        near = xs[-10:] if side else xs[:10]                 # the ten columns nearest the root
+        fit = np.polyfit(near, [means[xs.index(x)] for x in near], 1)
+        mean = dict(zip(xs, means))
+        for k, v in list(cells.items()):
+            if v is None or left(k) != side or k in seam: continue
+            if shade(k): g = min(np.polyval(fit, k[0]), 249.0)
+            elif k in stray: g = mean.get(k[0], light(v))
+            else: continue
+            if light(v) > g + 0.75:                           # darker than the gradient: shadow or a stray mark
+                lo_, f = int(np.floor(g)), g - np.floor(g)
+                cells[k] = lo_ if f < 0.25 else (lo_ + 1 if f > 0.75 else (lo_, lo_ + 1))
+    for i, k, j, ku, kv in zip(wi, wk, wj, cu, cv):
+        v = cells.get((ku, kv))
+        if v is not None: pidx[i, k, j] = resolve(v, ku + kv)
 
 
 def tex_fins(c, placed, pidx):
@@ -628,7 +715,7 @@ def tex_fins(c, placed, pidx):
     coords = np.stack([GZ[fk], GY[fj]], -1)
     faces = {}
     for name, xs in (('inner', f['x'] + f['t']), ('outer', 2 * CXM - f['x'])):
-        cu, cv, vals = plane_cells(art, coords, lambda u, v, xs=xs: art.pixel(xs, v, u), (0.0, 0.5))
+        cu, cv, vals, _ = plane_cells(art, coords, lambda u, v, xs=xs: art.pixel(xs, v, u), (0.0, 0.5))
         faces[name] = (cu, cv, vals)
     for n_, (i, k, j) in enumerate(zip(fi, fk, fj)):
         x = GX[i]
