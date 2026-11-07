@@ -488,16 +488,25 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     the shape's smooth direction removes it: owner rejected that look. Faceted shapes step evenly only at clean
     angles (panels square to the grid or at 45 degrees, slopes 1:1, 1:2, 2:1); a 16-sided scout still stepped
     irregularly, an octagon was crisp (but eight-sided). Owner: the full art shading looks best so far
-    (faceted maybe better: he will judge in the headset); the art's checkerboard dithering looks too big on the
-    table (an art pixel = one table voxel = 2 x 2 model voxels; dithering was meant to blend on a CRT). The art is
+    (faceted maybe better: he will judge in the headset). He first thought the art's checkerboard dithering
+    looked too big (an art pixel = one table voxel = 2 x 2 model voxels); he later corrected that: what looked bad
+    in the whole-craft renders was the exact copy's streaks (below), not the dither's size. The art is
     drawn for one view: copied exactly, its pixel rows lie sheared across a flat face, so lines drawn straight
     on screen become sawtooth staircases seen from the side. Straightening (each face cell 1 table voxel, the
     art pixel at the cell's middle, the cell grid's phase chosen for the straightest rows) gives clean pixel art
     on the face; from the game's angle it is off by up to half a pixel. Owner's choices so far, on the fins:
     texture only (no shape details yet), straightened, at the art's pixel size (not Scale2x), the stripe kept as
     drawn (its red pixels are the art's anti-aliasing of a 2:1 line; redrawn versions were tried and dropped).
-    Next: the same process on another part (a wing: flat, much dithering), then the curved hull (straightened
-    panel by panel; fits a faceted shape). Not built yet; terrain.18 is unchanged.
+    The wing (a flat top face): there the art's pixel grid lies diagonally (each art pixel lands as a slanted
+    diamond of one table voxel's area), so its checkerboard can't survive a copy: exact, it becomes diagonal
+    streaks; straightened as drawn, uneven blotches (the noise seen on the flatter hull parts). The wing's
+    dither is the art's light-to-dark shading (tip light, root dark; some of the root's dark is the fuselage's
+    painted shadow), checkering two neighbouring greys. Tried: the checker redrawn on the face's own grid at the
+    art's pixel size, at half size, and no dither (the shade between: about four flat bands). Owner chose the
+    checker redrawn at the art's pixel size: where the art dithers between two greys, a table-voxel checkerboard
+    of the same two greys, the lighter on cells with even (x + z). The panel line along the span comes out dotted
+    (the art draws it as a 2:1 line, like the fin stripe); keep or join: not decided yet. Next: the curved hull
+    (straightened panel by panel; fits a faceted shape). Not built yet; terrain.18 is unchanged.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
