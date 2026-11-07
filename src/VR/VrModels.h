@@ -54,6 +54,13 @@ struct Model
 	/// colour, in lightRef's colour.
 	std::vector<uint8_t> light;
 	uint32_t lightRef = 0;
+	/// Panels (".ref" version 3, 0.21.0-terrain.22): per voxel 0 = none, else 1 + an index into panelNormal.
+	/// A faceted hull's sloped panel is a staircase of voxels; lit face by face its steps show as lines (a lit
+	/// top, a darker side). The table lights every face of a panel's voxels by the panel's own direction
+	/// instead (model axes: x east, y south, z up), so a panel reads as one flat plate. A face turned away from
+	/// its panel (a cut end) keeps its own direction.
+	std::vector<uint8_t> panel;
+	std::vector<float> panelNormal; // 3 per panel
 	enum { LIGHT_NONE = 0, LIGHT_A = 1, LIGHT_B = 2, LIGHT_PULSE = 3, LIGHT_FLIP = 4 };
 	uint8_t at(int x, int y, int z) const
 	{

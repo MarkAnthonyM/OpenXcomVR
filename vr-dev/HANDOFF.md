@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.21).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.22).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -418,6 +418,22 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     take their neighbours' texture (near_roundel(): the art's pale outline round the disc became whitish
     cells), and a cell 4+ entries lighter than every neighbour takes their middle (2 cells). The roundel's
     light stripes on its upper half are the sloped panel's steps lit (the panel-lighting build's job).
+  - terrain.22 (owner: the build with each panel lit evenly, to compare with terrain.21 in the headset):
+    `.ref` "VRF3" (VrModels): as VRF2, then uint32 P and P panel normals (3 floats, model axes x east, y south,
+    z up), and a fifth byte per voxel (0 or 1 + panel); Model::panel / panelNormal. addModel: the mask is
+    16-bit, kind | panel << 3, so the greedy mesher merges faces only within a panel; a face whose panel
+    normal points along it (> 0.05) gets the panel's direction and MAT_PANEL (14), else its own (cut ends).
+    Shader: the two-sided flip (normal turned to the eye) skips material 14 (a step's side seen from below
+    could face away from its panel's direction). `skyranger.py` panels() / PANEL_LIGHT: per Z stretch (112-256
+    and the nose's 256-272-284-292-298), per side, CROSS's five segments plus the flat bottom and top; each
+    panel's direction the gradient of fus_faceted's boundary at its middle; every fuselage / cone voxel
+    facing out takes the nearest panel plane of its stretch and side (within 2.5 of the segment's height);
+    the canopy hood: its top the nose top's panel of that stretch, its eight sides one panel each (68
+    normals in all, each piece's .ref holds a table of the ones it uses). write_piece writes VRF3 when a
+    piece has panels. boardinfo now also logs "mesh hash <all> without PLANE <rest>" (positions, normals,
+    materials, indices summed over tile shapes; deterministic): the new build with terrain.21's model files
+    gave exactly terrain.21's hashes, and with the new files the hash without PLANE is unchanged
+    (8692edd3816e1a6e in `outside` with `reveal`, top level). Triangles 851,580 -> 852,868.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -465,6 +481,7 @@ out better the first time)
    never copied voxel by voxel: the art's grid lies slanted on the faces and turns into streaks); the art's
    dithering as a checkerboard of the same two shades on the face's own grid, at the art's pixel size; panel
    lines (seams) joined into clean solid lines; painted markings as drawn. `vr-dev/models/straighten.py`.
+   On trial with it (terrain.22): faceted hulls with each panel lit evenly by its own direction (`.ref` VRF3).
 
 The table and its view
 - The table keeps its own view; the flat screen is just a screen. Pointing

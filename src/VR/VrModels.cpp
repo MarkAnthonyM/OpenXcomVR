@@ -109,7 +109,9 @@ const Model *terrainModel(const std::string &set, int id, int variant)
 	// colour references and base height (<key>.ref). Version 1: "VRF1", float baseY, uint32 count, then per
 	// solid voxel (in index order: z, then y, then x) part, column, row bytes; part 255 = from its own sprite as
 	// usual. Version 2 (terrain.16): "VRF2", float baseY, uint32 count, the lights' colour (part, column, row,
-	// 0), then per solid voxel part, column, row, light (Model::light)
+	// 0), then per solid voxel part, column, row, light (Model::light). Version 3 (terrain.22): as 2, then
+	// uint32 panel count P and P normals (3 floats each, model axes), then per solid voxel part, column, row,
+	// light, panel (Model::panel: 0 none, else 1 + the panel's index)
 	const std::string refPath = path.substr(0, path.size() - 4) + ".ref";
 	if (FileMap::fileExists(refPath))
 		if (const FileMap::FileRecord *rr = FileMap::at(refPath))
@@ -120,12 +122,19 @@ const Model *terrainModel(const std::string &set, int id, int variant)
 				int version = 0;
 				if (b.size() >= 12 && std::memcmp(b.data(), "VRF1", 4) == 0) version = 1;
 				if (b.size() >= 16 && std::memcmp(b.data(), "VRF2", 4) == 0) version = 2;
+				if (b.size() >= 20 && std::memcmp(b.data(), "VRF3", 4) == 0) version = 3;
+				uint32_t panels = 0;
 				if (version)
 				{
 					std::memcpy(&m->baseY, b.data() + 4, 4);
 					std::memcpy(&count, b.data() + 8, 4);
 				}
-				const size_t head = version == 2 ? 16 : 12, rec = version == 2 ? 4 : 3;
+				if (version == 3)
+				{
+					std::memcpy(&panels, b.data() + 16, 4);
+					if (panels > 255 || b.size() < 20 + (size_t)panels * 12) { panels = 0; version = 0; }
+				}
+				const size_t head = version == 3 ? 20 + (size_t)panels * 12 : version == 2 ? 16 : 12, rec = version == 3 ? 5 : version == 2 ? 4 : 3;
 				size_t solid = 0;
 				for (uint8_t k : m->kind) if (k != MK_EMPTY) ++solid;
 				if (!version || count != solid || b.size() < head + (size_t)count * rec)
@@ -133,10 +142,16 @@ const Model *terrainModel(const std::string &set, int id, int variant)
 				else
 				{
 					m->ref.assign(m->kind.size(), 0u);
-					if (version == 2)
+					if (version >= 2)
 					{
 						m->light.assign(m->kind.size(), 0);
 						m->lightRef = Model::REF_SET | (uint32_t)b[12] << 16 | (uint32_t)b[14] << 8 | b[13];
+					}
+					if (version == 3 && panels)
+					{
+						m->panel.assign(m->kind.size(), 0);
+						m->panelNormal.resize((size_t)panels * 3);
+						std::memcpy(m->panelNormal.data(), b.data() + 20, (size_t)panels * 12);
 					}
 					size_t j = 0;
 					for (size_t i = 0; i < m->kind.size(); ++i)
@@ -145,11 +160,12 @@ const Model *terrainModel(const std::string &set, int id, int variant)
 						const uint8_t *r = b.data() + head + j * rec;
 						++j;
 						if (r[0] != 255) m->ref[i] = Model::REF_SET | (uint32_t)r[0] << 16 | (uint32_t)r[2] << 8 | r[1];
-						if (version == 2) m->light[i] = r[3];
+						if (version >= 2) m->light[i] = r[3];
+						if (version == 3 && panels && r[4] && r[4] <= panels) m->panel[i] = r[4];
 					}
 				}
 			}
-	Log(LOG_INFO) << "[VR] model " << path << ": " << m->sx << "x" << m->sy << "x" << m->sz << (m->ref.empty() ? "" : ", colour references") << (m->light.empty() ? "" : ", lights") << (m->baseY != 0.f ? ", base " + std::to_string(m->baseY) : "");
+	Log(LOG_INFO) << "[VR] model " << path << ": " << m->sx << "x" << m->sy << "x" << m->sz << (m->ref.empty() ? "" : ", colour references") << (m->light.empty() ? "" : ", lights") << (m->panel.empty() ? "" : ", " + std::to_string(m->panelNormal.size() / 3) + " panels") << (m->baseY != 0.f ? ", base " + std::to_string(m->baseY) : "");
 	slot = std::move(m);
 	return slot.get();
 }

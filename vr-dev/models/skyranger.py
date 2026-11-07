@@ -439,12 +439,17 @@ def speckle(area, i, j, k):
     return pixel_with(AREAS[area][0][0])
 
 
-def write_piece(path, kgrid, refs):
+def write_piece(path, kgrid, refs, pans=None, normals=()):
+    """The .vox and its .ref: VRF2 (colour references, no lights here), or VRF3 when some voxels belong to
+    panels (terrain.22): the piece's own table of the panels it uses (normals in model axes: x east, y south,
+    z up), then a fifth byte per voxel, 0 or 1 + its index there."""
     g = Grid(kgrid.shape[0], kgrid.shape[1], kgrid.shape[2], PER)
     g.k = kgrid
     g.write_vox(path + '.vox')
     sx, sy, sz = kgrid.shape
     lc = pixel_with(AREAS['red'][0][0])
+    used = sorted(set(int(v) for v in np.unique(pans[kgrid > 0])) - {0}) if pans is not None else []
+    local = {gid: i + 1 for i, gid in enumerate(used)}
     body = bytearray()
     count = 0
     for z in range(sz):
@@ -452,11 +457,109 @@ def write_piece(path, kgrid, refs):
             for x in range(sx):
                 if not kgrid[x, y, z]: continue
                 r = refs[(x, y, z)]
-                body += bytes((r[0], r[1], r[2], 0))
+                rec = (r[0], r[1], r[2], 0)
+                if used: rec += (local.get(int(pans[x, y, z]), 0),)
+                body += bytes(rec)
                 count += 1
-    out = bytearray(b'VRF2' + struct.pack('<f', 0.0)) + struct.pack('<I', count) + bytes((lc[0], lc[1], lc[2], 0)) + body
+    if used:
+        table = b''.join(struct.pack('<3f', *(normals[gid - 1][0], normals[gid - 1][2], normals[gid - 1][1])) for gid in used)
+        out = bytearray(b'VRF3' + struct.pack('<f', 0.0)) + struct.pack('<I', count) + bytes((lc[0], lc[1], lc[2], 0)) \
+            + struct.pack('<I', len(used)) + table + body
+    else:
+        out = bytearray(b'VRF2' + struct.pack('<f', 0.0)) + struct.pack('<I', count) + bytes((lc[0], lc[1], lc[2], 0)) + body
     open(path + '.ref', 'wb').write(bytes(out))
     return count
+
+
+# ---------------------------------------------------------------- panels (terrain.22)
+# Each flat panel of the faceted hull lit as one plate: its voxels' faces take the panel's direction (VRF3), so
+# the steps of a sloped panel don't show as lines (each step's lit top and darker side). Panels: per stretch of
+# the hull along Z (the constant middle, then the nose's stretches between its knots), per side, the cross-
+# section's segments (CROSS) plus the flat bottom and top. Their directions come from the shape itself (the
+# gradient of fus_faceted's boundary at the panel's middle).
+PANEL_LIGHT = True
+
+
+def panels(c):
+    """Per cell: 0, or 1 + the index of its panel in the returned list of normals (craft axes X, Y up, Z)."""
+    zk = sorted(set([FUS_Z[0]] + [z for z, _ in NOSE_W] + [z for z, _ in NOSE_T] + [z for z, _ in NOSE_B]))
+    zsegs = list(zip(zk[:-1], zk[1:]))                       # 112-256, 256-272, 272-284, 284-292, 292-298
+    yb = lambda Z: np.interp(Z, *zip(*NOSE_B)); yt = lambda Z: np.interp(Z, *zip(*NOSE_T))
+    ww = lambda Z: np.interp(Z, *zip(*NOSE_W))
+    def ynorm(Y, Z): return FUS['y0'] + (Y - yb(Z)) / max(yt(Z) - yb(Z), 0.5) * (FUS['yt'] - FUS['y0'])
+    def side_f(X, Y, Z):                                     # > 0 outside, across the side (|X - 80| - half-width)
+        return abs(X - CXM) - np.interp(ynorm(Y, Z), *zip(*CROSS)) * ww(Z) / FUS['w']
+    def grad(f, P, e=0.05):
+        g = np.array([(f(*(P + d)) - f(*(P - d))) / (2 * e) for d in np.eye(3) * e])
+        return g / np.linalg.norm(g)
+    normals, regions = [], []                                # region: (z0, z1, sign, yn0, yn1, point, normal)
+    for z0, z1 in zsegs:
+        Zm = (z0 + z1) / 2
+        for sign in (-1, 1):
+            for (y0n, h0), (y1n, h1) in zip(CROSS[:-1], CROSS[1:]):
+                ynm = (y0n + y1n) / 2
+                Y = yb(Zm) + (ynm - FUS['y0']) / (FUS['yt'] - FUS['y0']) * (yt(Zm) - yb(Zm))
+                X = CXM + sign * np.interp(ynm, *zip(*CROSS)) * ww(Zm) / FUS['w']
+                P = np.array([X, Y, Zm])
+                n = grad(side_f, P)
+                normals.append(n); regions.append((z0, z1, sign, y0n, y1n, P, n, len(normals)))
+        # the flat bottom and top (shared by both sides)
+        for which, yn in (('bottom', FUS['y0']), ('top', FUS['yt'])):
+            f = (lambda X, Y, Z: yb(Z) - Y) if which == 'bottom' else (lambda X, Y, Z: Y - yt(Z))
+            P = np.array([CXM, yb(Zm) if which == 'bottom' else yt(Zm), Zm])
+            n = grad(f, P)
+            normals.append(n); regions.append((z0, z1, 0, yn - 0.5, yn + 0.5, P, n, len(normals)))
+    sl, outer = c.fus_outer
+    solid = np.zeros(c.comp.shape, bool); solid[sl] = outer
+    skin = exposed(np.isin(c.comp, (C_FUS, C_CONE)), (0, 1, 2), ~solid) & (GZ[None, :, None] <= NOSE['zt'])
+    pan = np.zeros(c.comp.shape, np.uint8)
+    si, sk, sj = np.nonzero(skin)
+    for i, k, j in zip(si, sk, sj):
+        Pv = np.array([GX[i], GY[j], GZ[k]])
+        yn = ynorm(Pv[1], Pv[2])
+        best, bd = 0, 1e9
+        for z0, z1, sign, a0, a1, P0, n, gid in regions:
+            if not (z0 <= Pv[2] <= z1): continue
+            if sign and np.sign(Pv[0] - CXM) != sign: continue
+            if not (a0 - 2.5 <= yn <= a1 + 2.5): continue
+            d = abs(np.dot(Pv - P0, n))
+            if d < bd: best, bd = gid, d
+        pan[i, k, j] = best
+    # the faceted canopy (FACETED's hood): its flat top follows the nose's top (that stretch's top panel), its
+    # eight sloping sides each one panel (the direction at the side's middle)
+    if FACETED:
+        cp = CANOPY
+        def hood_f(X, Y, Z):                                 # > 0 above the hood's top surface
+            ax, az = abs(X - CXM) / cp['rx'], abs(Z - cp['z']) / cp['rz']
+            L = max(ax, az, (ax + az) / 1.4)
+            return Y - (yt(Z) + 2.5 * np.clip((1 - L) / 0.45, 0, 1))
+        def octant(X, Z):
+            ax, az = (X - CXM) / cp['rx'], (Z - cp['z']) / cp['rz']
+            terms = [abs(ax), abs(az), (abs(ax) + abs(az)) / 1.4]
+            t = int(np.argmax(terms))
+            return (t, int(np.sign(ax)) if t != 1 else 0, int(np.sign(az)) if t != 0 else 0)
+        side_ids = {}
+        for t, sx_, sz_ in [(0, -1, 0), (0, 1, 0), (1, 0, -1), (1, 0, 1), (2, -1, -1), (2, -1, 1), (2, 1, -1), (2, 1, 1)]:
+            # the side's middle: L = 0.775 along its direction
+            if t == 0: X, Z = CXM + sx_ * 0.775 * cp['rx'], cp['z']
+            elif t == 1: X, Z = CXM, cp['z'] + sz_ * 0.775 * cp['rz']
+            else: X, Z = CXM + sx_ * 0.775 * 0.7 * cp['rx'], cp['z'] + sz_ * 0.775 * 0.7 * cp['rz']
+            Y = yt(Z) + 2.5 * 0.5
+            normals.append(grad(hood_f, np.array([X, Y, Z])))
+            side_ids[(t, sx_, sz_)] = len(normals)
+        top_of = {(z0, z1): gid for z0, z1, sign, a0, a1, P0, n, gid in regions if sign == 0 and a0 > 40}
+        hood = exposed(c.comp == C_CANOPY, (0, 1, 2), c.comp == 0)
+        hi, hk, hj = np.nonzero(hood)
+        for i, k, j in zip(hi, hk, hj):
+            X, Y, Z = GX[i], GY[j], GZ[k]
+            ax, az = abs(X - CXM) / cp['rx'], abs(Z - cp['z']) / cp['rz']
+            L = max(ax, az, (ax + az) / 1.4)
+            if L < 0.6:
+                pan[i, k, j] = next((g for (z0, z1), g in top_of.items() if z0 <= Z <= z1), 0)
+            else:
+                pan[i, k, j] = side_ids.get(octant(X, Z), 0)
+    print(f'  panels: {len(normals)} over {len(zsegs)} stretches and the canopy; {int((pan > 0).sum())} skin cells')
+    return pan, normals
 
 
 # ---------------------------------------------------------------- the art's texture, straightened (terrain.19)
@@ -785,6 +888,7 @@ def piece(c, tx, ty, tz, comps, band):
     cc = c.comp[i0:i0 + T, k0:k0 + T, j0:j1]
     aa = c.area[i0:i0 + T, k0:k0 + T, j0:j1]
     pp = c.pidx[i0:i0 + T, k0:k0 + T, j0:j1]
+    pn = c.panel[i0:i0 + T, k0:k0 + T, j0:j1]
     sel = np.isin(cc, list(comps))
     if not sel.any(): return None
     top = int(np.nonzero(sel.any(axis=(0, 1)))[0].max()) + 1
@@ -794,7 +898,9 @@ def piece(c, tx, ty, tz, comps, band):
     areas[:, :, 1:] = np.where(sel[:, :, :top], aa[:, :, :top], 0)
     pal_ = np.zeros((T, T, top + 1), np.uint8)
     pal_[:, :, 1:] = np.where(sel[:, :, :top], pp[:, :, :top], 0)
-    return kg, (areas, pal_), (i0, k0, j0 - 1)
+    pan_ = np.zeros((T, T, top + 1), np.uint8)
+    pan_[:, :, 1:] = np.where(sel[:, :, :top], pn[:, :, :top], 0)
+    return kg, (areas, pal_, pan_), (i0, k0, j0 - 1)
 
 
 def main():
@@ -802,6 +908,7 @@ def main():
     placed = map_parts()
     c = build()
     c.pidx = texture(c, placed) if ART_TEXTURE else np.zeros(c.comp.shape, np.uint8)
+    c.panel, c.panel_normals = panels(c) if PANEL_LIGHT else (np.zeros(c.comp.shape, np.uint8), [])
     counts = {NAMES[a]: int((c.area == a).sum()) for a in np.unique(c.area) if a}
     print('craft:', int((c.comp > 0).sum()), 'cells;', counts)
     bnd = bands(placed)
@@ -816,7 +923,7 @@ def main():
     for p, lst in sorted(places.items()):
         keys = [r[0].tobytes() + bytes(r[0].shape) for _, r in lst]
         best = max(keys, key=lambda k: (keys.count(k), -keys.index(k)))   # a tie: its first place (the main wings)
-        (tx, ty, tz, slot), (kg, (areas, pals), (i0, k0, jb)) = lst[keys.index(best)]
+        (tx, ty, tz, slot), (kg, (areas, pals, pans), (i0, k0, jb)) = lst[keys.index(best)]
         for (where, r), key in zip(lst, keys):
             if key != best:
                 n = min(r[0].shape[2], kg.shape[2])
@@ -824,7 +931,7 @@ def main():
         refs = {}
         for x, y, z in zip(*np.nonzero(kg)):
             refs[(x, y, z)] = pixel_with(int(pals[x, y, z])) if pals[x, y, z] else speckle(NAMES[areas[x, y, z]], i0 + x, k0 + y, jb + z)
-        n = write_piece(os.path.join(OUT, f'{SET}_{p}'), kg, refs)
+        n = write_piece(os.path.join(OUT, f'{SET}_{p}'), kg, refs, pans, c.panel_normals)
         print(f'  {SET}_{p} ({tx},{ty},{tz}) slot {slot}: {n} voxels, {kg.shape[2]} layers')
     return c
 

@@ -98,6 +98,7 @@ static const float MAT_BOARD = 8.f;
 // hand-built lights (VrModels.h Model::light; 0.21.0-terrain.16): glow in their own colour, animated in step
 // with the game's terrain frames (shader: uAnimFrame, uPulse, uFlip)
 static const float MAT_GLOW_A = 10.f, MAT_GLOW_B = 11.f, MAT_GLOW_PULSE = 12.f, MAT_GLOW_FLIP = 13.f;
+static const float MAT_PANEL = 14.f; // a hand-built model's face lit by its panel's direction (terrain.22): as MAT_BOARD, never turned to the eye
 
 /// How much a tile's shade (0 bright .. 15 dark, the game's lighting) darkens it, in linear light.
 /// Measured from the battlescape palette: each shade step moves a colour one step down its 16-colour
@@ -1530,10 +1531,16 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 	auto solid = [&](int x, int y, int z) -> bool { return z >= 1 && m.at(x, y, z) != VR::MK_EMPTY && m.at(x, y, z) != VR::MK_PATCH; };
 	const int dims[3] = {m.sx, m.sy, m.sz};
 	std::vector<uint32_t> maskCol;
-	std::vector<uint8_t> mask, used; // mask: 0 no face, 1 plain, 2 pulsing light, 3 flipping light, 4/5 rim light layers A/B
+	// mask: 0 no face, 1 plain, 2 pulsing light, 3 flipping light, 4/5 rim light layers A/B; above that
+	// (terrain.22) the face's panel << 3, so faces only merge within a panel
+	std::vector<uint16_t> mask;
+	std::vector<uint8_t> used;
+	// a panel's direction in the table's axes (model x, y, z = table x, z, y)
+	auto panelDir = [&](int pid) { const float *n = &m.panelNormal[(size_t)(pid - 1) * 3]; return glm::normalize(glm::vec3(n[0], n[2], n[1])); };
 	struct Dir { int axis, sign; };
 	const Dir dirs[6] = {{0, 1}, {0, -1}, {1, 1}, {1, -1}, {2, 1}, {2, -1}};
 	float emitMat = MAT_BOARD, emitLift = 0.f; // the faces' material; how far out they stand (light layers)
+	int emitPanel = 0;                         // the faces' panel (0: lit by their own direction)
 	auto emit = [&](int axis, int sign, float plane, int u, int v, int w, int h, int ua, int va, int nu, bool paint)
 	{
 		int ax, ay;
@@ -1556,6 +1563,7 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 		nn[axis] = (float)sign;
 		glm::vec3 nrm(nn[0], nn[2], nn[1]);
 		const glm::vec3 lift = nrm * emitLift;
+		if (emitPanel) nrm = panelDir(emitPanel); // lit as its panel (the lift, light layers only, stays square)
 		float tu0 = (ax + 1) / (float)ATLAS, tv0 = (ay + 1) / (float)ATLAS;
 		float tu1 = (ax + 1 + w) / (float)ATLAS, tv1 = (ay + 1 + h) / (float)ATLAS;
 		glm::vec4 white(1.f);
@@ -1575,7 +1583,7 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 			{
 				size_t o = (size_t)v * nu + u;
 				if (!mask[o] || used[o]) continue;
-				const uint8_t mv = mask[o]; // faces of one kind only (plain, or a light's)
+				const uint16_t mv = mask[o]; // faces of one kind (plain, or a light's) and one panel only
 				int w = 1;
 				while (u + w < nu && mask[o + w] == mv && !used[o + w]) ++w;
 				int h = 1;
@@ -1587,10 +1595,12 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 				}
 				for (int j = 0; j < h; ++j)
 					for (int i = 0; i < w; ++i) used[(size_t)(v + j) * nu + u + i] = 1;
-				emitMat = mv == 2 ? MAT_GLOW_PULSE : mv == 3 ? MAT_GLOW_FLIP : mv == 4 ? MAT_GLOW_A : mv == 5 ? MAT_GLOW_B : MAT_BOARD;
-				emitLift = mv >= 4 ? 0.04f : 0.f;
+				const int kindv = mv & 7;
+				emitPanel = mv >> 3;
+				emitMat = kindv == 2 ? MAT_GLOW_PULSE : kindv == 3 ? MAT_GLOW_FLIP : kindv == 4 ? MAT_GLOW_A : kindv == 5 ? MAT_GLOW_B : emitPanel ? MAT_PANEL : MAT_BOARD;
+				emitLift = kindv >= 4 ? 0.04f : 0.f;
 				emit(axis, sign, plane, u, v, w, h, ua, va, nu, paint);
-				emitMat = MAT_BOARD; emitLift = 0.f;
+				emitMat = MAT_BOARD; emitLift = 0.f; emitPanel = 0;
 			}
 	};
 	for (const Dir &d : dirs)
@@ -1617,6 +1627,12 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 					const uint8_t lt = (f && !m.light.empty()) ? m.light[vi] : 0;
 					mask[o] = !f ? 0 : lt == VR::Model::LIGHT_PULSE ? 2 : lt == VR::Model::LIGHT_FLIP ? 3 : 1;
 					if (!f) continue;
+					// its panel, unless the face turns away from it (a cut end keeps its own light)
+					if (!m.panel.empty() && m.panel[vi])
+					{
+						const float *pn = &m.panelNormal[(size_t)(m.panel[vi] - 1) * 3];
+						if (pn[d.axis] * d.sign > 0.05f) mask[o] |= (uint16_t)(m.panel[vi] << 3);
+					}
 					any = true;
 					// one colour per voxel (from its centre), whichever face: faces of a stepped surface
 					// coloured from different sprite rows striped
@@ -4800,6 +4816,26 @@ std::string Board::debugInfo() const
 		size_t tris = 0;
 		for (const Chunk &c : p.chunks) tris += c.tris;
 		ss << " terrain triangles " << tris;
+		// the built shapes' geometry (positions, normals, materials), summed over tiles so the order doesn't
+		// matter: equal hashes = the same faces lit the same way (0.21.0-terrain.22: checks that models without
+		// panel data build exactly as before); without the Skyranger's tiles as a second number
+		uint64_t hAll = 0, hNoPlane = 0;
+		for (auto &kv : p.tileProtos)
+		{
+			uint64_t h = 1469598103934665603ull;
+			auto mix = [&](float f) { uint32_t u; std::memcpy(&u, &f, 4); h = (h ^ u) * 1099511628211ull; };
+			for (const Vertex &v : kv.second.verts)
+			{
+				mix(v.pos.x); mix(v.pos.y); mix(v.pos.z); mix(v.normal.x); mix(v.normal.y); mix(v.normal.z); mix(v.material);
+			}
+			for (uint32_t i : kv.second.idx) h = (h ^ i) * 1099511628211ull;
+			bool plane = false;
+			for (const MapData *md : kv.first.m)
+				if (md && md->getDataset() && md->getDataset()->getName() == "PLANE") plane = true;
+			hAll += h;
+			if (!plane) hNoPlane += h;
+		}
+		ss << " mesh hash " << std::hex << hAll << " without PLANE " << hNoPlane << std::dec;
 	}
 	if (p.alienView || p.winOn) ss << " alienTurn " << p.alienView << " hidden " << p.hidden << " reveal " << p.reveal << " win " << p.win.x << "," << p.win.y << "," << p.win.z << "," << p.win.w;
 	if (p.battle && p.battle->getSelectedUnit())

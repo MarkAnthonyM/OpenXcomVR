@@ -407,7 +407,9 @@ void sceneMain()
 	}
 	vec3 n = normalize(vNormal);
 	// two-sided surfaces: turn the normal toward the viewer (independent of triangle winding)
-	if (dot(n, uEye - vWorld) < 0.0) n = -n;
+	// (not a hand-built panel's faces, terrain.22: lit by the panel's direction, which a step's side seen
+	// from low down can face away from)
+	if (dot(n, uEye - vWorld) < 0.0 && vMat != 14) n = -n;
 
 	if (uMode == 1)
 	{

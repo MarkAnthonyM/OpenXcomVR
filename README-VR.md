@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.21)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.22)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -498,7 +498,7 @@ All VR code lives in `src/VR/`; the engine only gets small hooks.
 | `VrWeather.*` | The sky over an outdoor battle: the sun's direction at the site and its height and colour from the mission's darkness, the weather roll, rain / snow / dust particles stopping at roofs, mist, cloud drift, lightning and procedural thunder. |
 | `VrDebug.*` | The sky debug panel on the left wrist (weather branch): info and controls pages drawn with the dashboards' canvas, pressed with the right index finger. |
 | `VrLab.*` | The terrain lab (developer tool, `-vrTerrainLab`): a terrain's parts or map blocks on the table without a mission; also the relief mode switch. |
-| `VrModels.*` | Hand-built terrain models (`Resources/VR/models/<SET>_<id>.vox`, versions `-2`.., colour references `.ref`): shapes only, coloured from the player's sprites. |
+| `VrModels.*` | Hand-built terrain models (`Resources/VR/models/<SET>_<id>.vox`, versions `-2`.., colour references, lights and panels `.ref`): shapes only, coloured from the player's sprites. |
 | `VrCompare.*` | The lab's comparison of the table's shapes with the art: a CPU renderer from the game's angle, the difference and its score (contact sheets, inspect panel). |
 | `VrRelief.*` | Relief for painted floor parts listed in `Resources/VR/terrain-relief.txt`: heights worked out from the painting. |
 | `VrDash.*` | The geoscape dashboards on the back-wall monitors, drawn with the game's fonts straight from the saved game. |
@@ -682,6 +682,15 @@ Key ideas:
     of their two greys; dark marks only one wing has are evened out. The red
     tips go round the leading corner. The pale outline the art draws round
     each roundel, and lone pale cells on the hull, are left out.
+    0.21.0-terrain.22 lights each of the faceted hull's panels evenly: a
+    sloped panel is a staircase of voxels, and lit face by face every step
+    showed as a line (a lit top, a darker side). The model files now say
+    which panel each hull voxel belongs to and the panel's direction (`.ref`
+    version 3), and the table lights all of that voxel's faces by the
+    panel's direction, so each panel reads as one flat plate with crisp
+    edges where panels meet; the canopy's hood too. The steps are still
+    there in the shape (its outline, its shadow); only their light is even.
+    Models without panel data (everything else) build exactly as before.
   - lights in models: `.ref` version 2 adds a light flag per voxel and the
     lights' colour (Model::light): materials 10-13 in the board's shader,
     driven by `uAnimFrame` (the battle's animation frame; the lab goes by the
