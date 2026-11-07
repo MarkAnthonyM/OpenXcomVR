@@ -491,3 +491,157 @@ Decisions; look here for the details (shader uniforms, timings, levels).
     units), `scannerpress [red|blue|yellow|green]`, `scannerdump <png>` (the
     three screens); test `scan`.
 
+## Terrain branch: early builds (vr-prototype-terrain, not merged yet)
+
+Moved out of HANDOFF.md to keep it readable in one go; the later builds and the decisions are there.
+
+- terrain.1: the terrain lab (VrLab, `-vrTerrainLab [TERRAIN]`: the table binds the lab's own
+  SavedBattleGame, no BattlescapeState; revalidate and raycast know about it). Board::buildTile: one
+  shape per combination of a tile's parts (TileKey); the floor owns z 0-1; shown faces from the owner's
+  sprite, hidden ones from the solid's far side; `stray` parts (under 40% of shown faces on their art)
+  lose the faces that miss. growToArt: objects covering under 70% of their art grow crowns round about
+  their axis. VrRelief: 64 parts in `bin/common/Resources/VR/terrain-relief.txt`, steps (default) or
+  smooth, `-vrRelief`. VrRoom: a 10 cm basin under the glass; the shader leaves the glass out under
+  the map (uMapCut / uMapCutInv). Dropped: a "boxed" rule rebuilding objects whose box misses their
+  art (sand-hill ramps became bowls). See README-VR "How it works".
+- Owner after terrain.1: steps (missions use them; smooth/flat only to compare). He asked for a lab
+  to check against the flat art and to report problems: terrain.2 adds the inspect panel, marks with
+  A (window: reasons + note on the table keyboard; non-modal TextEdit focus, a modal one swallows the
+  buttons), per-run notes + screenshots (doCaptures: the scene again from the head, 1600x1000, 0.6 s
+  after the window closes), marks.txt, LAMPS (TerrainLabState::updateLamps: LL_UNITS power 15),
+  STRENGTH (Weather::force "kind:N" for dust/sand/mist/clouds too: density), ASSEMBLED (mutual 3-in-4
+  neighbour rule over the map blocks), PICTURES (cards; Board::flatPicture). Owner's choices: all
+  three picture kinds, A to mark, screenshots, a folder per run, marks persist until removed.
+- Owner's first lab notes (CULTA: wheat too tall and cone-topped, two fruit trees "crown wrong") and
+  his save `vr-dev/test/saves/farm_wheat.asav` (unit 2 standing in wheat at 31,28; wheat should come
+  to a soldier's waist). terrain.3: growToArt fits slices (a disc clipped to the tile, radius per
+  height, largest that stays inside the art), drops top slices that add nothing (flat tops, no
+  cones), ignores a ground patch's colour inside the diamond (trunks), replaces the collision when
+  the overlap is 60%+ (natural sets only; U_/UFO/PLANE/XBASE/UBASE/BRAIN and craft sets keep the old
+  additive rule). "tall" entries in terrain-relief.txt set an object's height (CULTIVAT 4 tall 11).
+  `OXCE_VR_SHAPE_LOG=1` logs each fit. Lab shots are clean (Board::setCapturePass: no HUD, lab
+  overlays, hands or lasers; corner ticks round the marked tile) plus `NNN-close.png` (40 degrees,
+  three tiles high, from the head's direction, at least 20 degrees down). PICTURES starts off (owner).
+- Owner's notes on terrain.3 (wheat: ears should stick out; fruit trees: taller trunk, round top,
+  gaps in the leaves showing trunk and branches, "match the original art more accurately"; and marks
+  as corner ticks, not red boxes). terrain.4: SHAPE_H = TILE_H + 16 (own[] and the mesher; shapes
+  rise into the level above, levels are drawn by chunk so nothing clips them); round slices capped at
+  8.75 unless the tile-clipped (square) fit beats them by 0.1 IoU; a dome (half ellipsoid from where
+  the crown reaches 60% of its width, its outline reaching the art's top near the axis); rowShift:
+  the trunk's lowest art row (within 3 px of the axis, after the patch) is height 0, up to 6 rows,
+  also added to the part's yoff when faces are coloured; gaps by line of sight (sprite pixel of each
+  voxel centre: empty -> the ray goes, trunk colour -> voxels in front of the one nearest the axis go);
+  ragged block tops (top band under 92% filled) -> top 2 lower, stalks 1-4 high on 45% of columns.
+  Drop-from-top tolerance is now max(3, total/150) pixels. Marks: Board::Impl::drawTicks (red), the
+  shots' ticks yellow. Test op `closeup x y z name` (the lab's two shots of any tile).
+- terrain.5 (owner: the lab crashed paging CULTA 18 -> 19 and 21 -> 20): map-block pages put each
+  part by its MCD type; BARN 7 (a roof piece in CULTA16-18) has type 10, so setMapData wrote past the
+  tile's four slots (heap corruption, the crash came in the next lighting pass). Parts now go by their
+  byte in the .MAP tile, as BattlescapeGenerator does. BARN 7 is the only MCD typed outside 0-3 in
+  xcom1; the parts page still leaves it out (it lists types 0-3).
+- Owner (2026-11-03): the rule-based shapes are hard to get right; he has no time to sculpt models
+  himself. Agreed plan: (1) measure the shapes against the art, (2) contact sheets so his reviews take
+  minutes, (3) Claude hand-builds the few pieces rules won't get (shortlist: Skyranger, small scout,
+  farm trees, wheat; he'll add more as he finds them), saved as .vox so he could nudge one in
+  MagicaVoxel but never has to, (4) the rest stays rule-based. Send a set of sheets with every terrain
+  build. terrain.6 does (1) and (2): `VrCompare.*`, a CPU renderer of a Proto from the game's angle
+  (isoView: one voxel step = one pixel, so it lies on the sprite exactly; a full block fills the 32x40
+  frame), diff (red table only, blue art only, mismatches beside the other kind not counted) and the
+  shape score (shared / union). Proto::yoffs: per part, sprite row = projected row + yoffs (floors +2:
+  their top is 2 voxels up but drawn at height 0; raised trees include rowShift). Board::Impl::build
+  points at the atlas shapes go into: the sheets build in `scratch` so the table's atlas never fills.
+  Inspect panel: MATCH line; marks also save NNN-compare.png; the SHEETS key / test op `sheets` write
+  `terrain-lab/sheets/<date_time>/<SET>.png` + scores.txt (worst first). All 26 xcom1 sets take ~11 s.
+  First sheets: plain walls 98-100%, floors 93-94% (the 2-voxel slab's sides, by design); trees lose
+  points for the ground patch the table leaves out on purpose; worst: UFO1 (small scout hull blocks
+  +74..123% table only), U_BITS, JUNGLE, DESERT, PLANE, CULTIVAT hedge posts 20-22, dead tree 13,
+  wheat 4 (the ears).
+- terrain.7 (owner: hand-built trees first; farm trees first, 32 model voxels across a tile, the
+  grass patch painted flat): `VrModels.*` loads `Resources/VR/models/<SET>_<id>.vox` (MagicaVoxel;
+  `FileMap::fileExists` first, FileMap::at stops the game on a missing file). Kinds by palette entry:
+  1 wood, 2 leaves, 3 fruit, 4 patch (others by colour). Shapes only: Board::Impl::addModel colours them
+  from the sprite at build time (kind-aware; hidden faces from the point mirrored through the model's
+  axis = centroid of its solid voxels; one colour per voxel from its centre, else stepped surfaces
+  striped; leaves jitter +-2 px per voxel, else streaks on the crown's sides), greedy-meshed into the
+  build atlas; z = 0 paint at height 2.05; undersides darkened. buildTile: a modelled object skips its
+  LOFT voxels and growToArt; Proto::model bit; yoffs + 2 (art height 0 = floor top). Sheets say
+  "hand-built". Models made by `vr-dev/models/farm_trees.py` (voxlib.py: grid, projection, .vox writer)
+  from sprites dumped with `dumpart CULTIVAT` (never committed). Trunks stand where the art puts their
+  foot (roots widest on sprite row 35: table (11, 11); the collision is a 3x3 column at the centre).
+  Fruit trees: ellipsoid + 140 leaf clumps, fitted to the art (carve empty pixels, fill uncovered crown
+  pixels near the surface), branches where wood shows through the crown (leaves in front removed,
+  a branch back to the trunk), apples where the art has them and mirrored. Dead tree: screen
+  polylines lifted to 3D by an azimuth each (limbs at most 6 out, twigs grow from their limb's point).
+  Scores 9 100%, 12 100%, 13 98% (were 79, 74, 37). Farm save: atlas 33% (27% without the models).
+- Owner on terrain.7: trees "a lot better"; but (1) the grass at the apple trees' base looked strange (a
+  dark corner, not matching the grass round it), (2) the roots didn't show (and the sheets didn't say),
+  (3) the laser is cumbersome for the inspect panel. Causes: the paint took the nearest green to each
+  ground point's sprite pixel, so the diamond's back corner (behind the crown in the art) got crown
+  leaves and the roots/sticks drawn on the ground became grass; the paint was a hard square at twice
+  the floor's detail in the art's patch colours. The shape score can't see colour; and from the game's
+  angle terrain.7's flared trunk covered the root pixels in a similar brown, so not even a colour check
+  would have caught it there. Owner chose: paint as drawn minus the tree, low raised roots, paint only
+  where it differs from the floor (ragged edge), a colour check, fingertip hover + touch to pin, the
+  panel staying beside the tile with the comparison in it. terrain.8: addModel's paint: sprite pixels
+  the model's standing voxels (z >= 3) cover are the tree; other ground pixels as drawn; hidden cells
+  by BFS from visible ones; painted where the colour is over 34 (RGB) from every floor colour making 2%+
+  of the floor sprite (no floor: all); edge cells kept with probability 0.3 + 0.175 per cell in (hash);
+  lone cells dropped, holes (6+ neighbours) filled. Generator roots(): cells within 6 of the axis whose
+  visible ground pixel is wood (or red-brown, read as fruit) get z = 1, within 3.5 also z = 2 (tree 9:
+  19 cells, 12: none, its art has no roots apart from the trunk, 13: 47). Compare: colourOff /
+  colour() (3 x 3 averages over each side's own pixels, distance over 48 = yellow), sheets sort by
+  min(shape, colour); fifth picture "above" (lookView 45, 78 degrees). All sets: 52 parts under 90%
+  colour, mostly relief floors (POLAR craters, MOUNT rocks: the painting sits at the relief's depth, so
+  from the game's angle it is shifted; real, not fixed) and URBITS 0. Lab: Table updateTaps has a lab
+  branch (pointing fingertip within 10 cm of a tile's floor -> Board::labFinger, 0.25 s; touch-down
+  -> labTouch toggles the pin); VrSystem routes A to Board::labFingerMark first (no laser needed). Panel
+  320 x 300: scores line, the five pictures along the bottom.
+- Owner on terrain.8: fingertip inspection "feels good"; roots still don't match the art; tree 12's grass
+  needs fixing; and why do table tiles on the sheets have a bottom layer of grass the art doesn't (his
+  inspect panel of CULTIVAT 4)? That layer is the floor's 2-voxel slab: the floor's top was at height 2
+  while walls, objects, units, shots and finger picks use 0, so every wall/object lost the art's bottom
+  2 rows (64 of the wheat's 737 pixels) inside the slab. Owner chose thin floors at height 0 but kept
+  the visible thickness (hanging below). terrain.9: Board::Impl::addFloor (top at 0 over cells no foot
+  covers, coloured as before; skirts -2..0 on TileKey::edges sides: no floor beside at the same level,
+  and on z > 0 not over a wall of the level below on that side); buildTile no longer puts floors in
+  own[]; walls/objects own z 0-1 except the slab copy (columns not going on up at z 2-3; a part with
+  nothing above keeps z 0-1 unless it covers 90%+ of the tile); growToArt slices from z 0; relief BASE
+  0; the void quad at -1.5; ticks, sky marker, partInfo floor top (rain) at 0; models' frame (z 1 on
+  Y 0, paint 0.05) and every part's yoffs = its yoff (no +2 anywhere). boardMatrix translates the map
+  up FLOOR_LIFT = 2 voxels so the ground floor's top/edges stay where the old slab's were and
+  everything on the map moves alike. Visible differences: the wheat and every wall/object reach the
+  ground; the soldiers' faction base discs and the grass-tuft cards show (they were inside the slab);
+  nothing else moved (barn, roofs from the upper level, map edges checked against terrain.8). Roots:
+  roots() groups the drawn root pixels by direction from the trunk (they join at its foot), one
+  tapering capsule root per group to its farthest pixel (Y 0.9 -> 0.1, r 0.55 -> 0.32) + 2 mirrored
+  behind; trunk flare 0.5 (fruit) / 0.6 (dead). Tree 9: 4 roots, 13: 5, 12: none (its art has none).
+  Paint: ground the tree hides is never painted (only holes filled), and a colour that is a darker
+  shade (hue within 25 degrees, lower value) of a floor colour is a drawn shadow, not painted (tree
+  12's blob was the crown's (0, 24, 0) underside). The generator works in the new frame (same files).
+  Slab-copy rule as it ended up (all sets' sheets compared part by part with terrain.8: 282 up, 17
+  down by at most 18, mean shape 81.7 -> 83.9%): a wall/object's bottom 2 layers are the floor's copy
+  only if they cover 90%+ of the tile, the part has voxels above, and its art does not come down to
+  the ground along the tile's south and east sides (70%+ of 32 samples; sand mounds and crop fields
+  do); then columns not going on up lose them. Otherwise the part keeps its low layers (rubble, a part
+  that is only a slab). growToArt's "collision already covers the art" check counts only what the part
+  keeps, and leaves out the bottom 2 layers when the part has nothing above (low grass/bushes are built
+  from their art); the old additive rule (craft/UFO/base) still starts at z 2. Raised floors keep their
+  part above the slab as voxels (floor-owned, from the ground in columns going on up); a floor whose art
+  covers under 90% of the tile (a hull edge, half a deck) has its surface only where its art is. New:
+  the soldiers' field in `outside` shows its flower beds (CULTIVAT 5 etc.: raised beds at the art's
+  height, hard-edged where a bed meets grass: for the owner to judge), FOREST 4/5 grass cover shows.
+  Test op `comparepart SET id` (any part on its own, shots/part_<SET>_<id>.png). `bh` failed on both
+  terrain.8 and .9 in this session (timing; it passed on terrain.8 earlier).
+- terrain.10 (owner curious what the trees look like at 16 x 16 x 24): Model::perX / perZ (model voxels
+  per table voxel; addModel divides by them, the paint's occlusion starts 1 + perZ up); VrModels coarsen()
+  behind `-vrModelRes 16|24` (command line only). Shown to the owner from the preview: 32x32x24 almost the
+  same as 32x32x48; 16 chunky (leaf blocks, 2-pixel twigs and roots, apples as cubes) but matching the
+  rest of the table; game-angle scores alike (apple tree 99-100%, dead tree 98/98/96%). He'll compare in
+  the headset; the files stay at 32 until he decides.
+- terrain.11 (owner: wants to see the trees rebuilt at 16 in the headset, "most likely" going back to
+  32x32x48 after): `farm_trees.py --res 16` builds them on the collision grid (voxlib Grid(per=1); SX/SY
+  36, SZ 38) into bin/common/Resources/VR/models16/; with -vrModelRes 16 the loader takes those
+  (perX = perZ = 1) and coarsens only parts without one. The 32 files are unchanged (checked byte for
+  byte).
+- terrain.12 (owner, after his headset test: stays with 32 x 32 x 48): models16/, -vrModelRes, coarsen()
+  and the generator's --res are gone. Model::perX / perZ and voxlib Grid(per) stay (2 = the 32 models).
