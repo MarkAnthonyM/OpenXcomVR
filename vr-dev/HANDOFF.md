@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.18).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.19).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -509,7 +509,32 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     each cell's middle lands alternately on the line and beside it, so the gaps came out lighter still. Owner
     chose it joined (one solid line of the darkest grey, X 16-47 at Z 124), and as a rule for the model: panel
     lines (seams) clean, solid and defined. Painted markings (the fin stripe) stay as drawn. Next: the curved hull
-    (straightened panel by panel; fits a faceted shape). Not built yet; terrain.18 is unchanged.
+    (straightened panel by panel; fits a faceted shape).
+    The hull (a strip of the fuselage's middle, round and faceted): straightening turns the art's shading into
+    clean pixel art there too, but thin lines along the hull stay: each voxel step on a curve or slope has a lit
+    top and a darker side, lit separately by the table (the cloth look's cause); faceting only makes them
+    regular. Lighting each faceted panel evenly (every voxel of a panel by the panel's direction, not its
+    face's) removes them: flat plates with crisp edges, unlike the smooth light he rejected. That needs the
+    table's renderer (VrModels .ref panel data, addModel merging per panel with the panel's direction, the
+    shader lighting by it); models without panel data unchanged. Owner: first a build faceted and straightened
+    without that change (terrain.19), then one with it to compare.
+  - terrain.19: `skyranger.py` FACETED (fuselage and nose as flat panels: CROSS (Y, half-width) 24/24, 28/28,
+    36/28, 44/24, 50/18, 52/14; nose NOSE_W/T/B; the canopy a faceted octagonal hood 2.5 above the nose's top,
+    sloping to it: a fixed-height hood sank into the faceted nose) and ART_TEXTURE (texture(): the new
+    `straighten.py`: Canvas = the art of chosen parts put together in the game's draw order, checkers(), cell
+    phase by straightness). Per piece: fuselage unrolled (per table-voxel slab along Z the skin's cells round
+    the section in angle order s, each the art at its middle if the game's view shows that cell there, from a
+    canvas of the fuselage's own parts; the hidden side mirrored; only the hull's ramp 240-255 counts, other
+    colours (glass seen through, markings, consoles) take neighbours'; checker by slab + s); wings: cells over
+    X, Z on the top's plane from the main wings' parts, join_lines() makes the broken dark lines (>= 248) solid;
+    fins: per face as drawn (the approved study); pods: per table voxel, the art where seen (mirrored);
+    anything left (undersides, ends) the nearest textured cell. Markings, glass, cone, gear, ramp by area. The
+    wing tiles now also hold the hull (the faceted shoulders are wider at Y 48-50 and reach X 60-64: they were
+    left out, and the wings stopped short of them). Sheets vs terrain.18: only PLANE; mean shape 84.9 -> 82.0
+    (the faceted sides are boxier than the art's round ones: level-1 sides 99 -> 85, roof 85 -> 73; the right
+    wing roots 100 -> 91, their tiles now holding the shoulders the art draws elsewhere), colour 61.9 -> 83.5.
+    `outside` with `reveal`: 857k -> 852k terrain triangles. No engine code changed. Not yet seen in the
+    headset.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -718,7 +743,8 @@ Room and rendering
   than three cells are only in the screen's inventory. (Planned on the terrain branch.)
 - Terrain parts' animations (8 frames) aren't shown: the table builds frame 0. (Planned on the terrain branch.)
 - Craft and UFO hulls are their collision voxels, except the small scout (hand-built since terrain.13) and
-  the Skyranger's outside (terrain.18; its inside, ribs and cockpit, next).
+  the Skyranger's outside (terrain.18; faceted and textured from the art, terrain.19; its inside, ribs and
+  cockpit, still to do).
 - Weather and the sun have only been judged in the desktop preview (no
   headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Hand-built model of the Skyranger (terrain set PLANE, map block PLANE): 0.21.0-terrain.18, the outside.
+"""Hand-built model of the Skyranger (terrain set PLANE, map block PLANE): 0.21.0-terrain.18, the outside;
+0.21.0-terrain.19, faceted and textured from the art (FACETED, ART_TEXTURE; texture()).
 
 Run after `dumpart PLANE` in the terrain lab (see voxlib.py). Writes bin/common/Resources/VR/models/
 PLANE_<id>.vox and .ref for every part that holds a piece of the craft. Shapes and pixel references only,
@@ -24,6 +25,9 @@ and levels into the parts that hold each piece. The map faces the nose south (+Z
 - Landing gear: four-wheel bogies (main) and a wheel pair with a drag brace (nose); the ramp, a grating
   from the floor's rear edge to the ground.
 Markings on both sides (owner): the X-COM roundel on each side ahead of the wings.
+Since terrain.19 (FACETED) the fuselage and nose are flat panels at clean angles (CROSS, NOSE_W/T/B) and the
+canopy a faceted hood; with ART_TEXTURE the hull, wings, fins and pods take the art's texture, straightened
+(straighten.py). The round arch and the area colours stay behind the flags for comparison.
 Owner's choices (2026-11-05): the outside first, the inside's ribs next; markings both sides; nozzles
 plain blue (not glowing).
 """
@@ -108,12 +112,32 @@ def fus_section(Z):
     return ww, yb, yt, FUS['rb'] * ww / FUS['w']
 
 
+# faceted (terrain.19, owner: to try in the headset): the hull as flat panels at clean angles, so the voxel
+# steps on each panel are even (1:1, 1:2, 2:1, square to the grid). The cross-section by height (Y, half-width)
+# from the floor: 1:1 out, a vertical side, 2:1 in, 1:1 in, 1:2 in, a flat top. The nose in plan (Z, half-width),
+# its top and bottom in side view (Z, Y), scaled from the middle's section.
+FACETED = True
+ART_TEXTURE = True      # terrain.19: the hull, wings, fins and pods take the art's texture, straightened (texture())
+CROSS = [(24.0, 24.0), (28.0, 28.0), (36.0, 28.0), (44.0, 24.0), (50.0, 18.0), (52.0, 14.0)]
+NOSE_W = [(256.0, 28.0), (272.0, 24.0), (284.0, 18.0), (292.0, 10.0), (298.0, 4.0)]
+NOSE_T = [(256.0, 52.0), (272.0, 50.0), (284.0, 44.0), (292.0, 36.0), (298.0, 30.0)]
+NOSE_B = [(256.0, 24.0), (284.0, 24.0), (292.0, 25.0), (298.0, 27.0)]
+
+
 def fus_inside(X, Y, Z):
+    if FACETED: return fus_faceted(X, Y, Z)
     ww, yb, yt, rb = fus_section(Z)
     h = (Y - yb) / (yt - yb)
     r = ww * np.clip(1 - np.clip(h, 0, 1) ** FUS['e'], 0, 1) ** (1 / FUS['e'])
     r = np.minimum(r, rb + (ww - rb) * np.clip(h * 6, 0, 1))
     return (np.abs(X - CXM) <= r) & (h >= 0) & (h <= 1) & (Z >= FUS_Z[0]) & (Z <= NOSE['zt'])
+
+
+def fus_faceted(X, Y, Z):
+    ww = np.interp(Z, *zip(*NOSE_W)); yt = np.interp(Z, *zip(*NOSE_T)); yb = np.interp(Z, *zip(*NOSE_B))
+    Yn = FUS['y0'] + (Y - yb) / np.maximum(yt - yb, 0.5) * (FUS['yt'] - FUS['y0'])
+    hw = np.interp(Yn, *zip(*CROSS)) * ww / FUS['w']
+    return (np.abs(X - CXM) <= hw) & (Yn >= FUS['y0']) & (Yn <= FUS['yt']) & (Z >= FUS_Z[0]) & (Z <= NOSE['zt'])
 
 
 def grid(box):
@@ -223,7 +247,16 @@ def build():
         foot = fus_inside(X, Y - 1.0, Z)       # the bubble's lowest band: the frame
         bars = (np.abs(X - CXM) < 0.6) | ((Z > cp['z'] - 6.5) & (Z < cp['z'] - 5.5))   # the middle bar, the cross bar
         return np.where(foot | bars, CODES['frame'], CODES['glass']).astype(np.uint8)
-    c.put(((CXM - cp['rx'] - 1, CXM + cp['rx'] + 1), (cp['z'] - cp['rz'] - 1, cp['z'] + cp['rz'] + 1), (cp['y'] - cp['ry'] - 1, cp['y'] + cp['ry'] + 1)),
+    if FACETED:
+        # a faceted hood following the nose's top: an octagon in plan, flat on top 2.5 above the hull, its
+        # sides sloping down to the hull (the round bubble's size; a fixed height would sink into the nose)
+        def bubble(X, Y, Z):
+            ax, az = np.abs(X - CXM) / cp['rx'], np.abs(Z - cp['z']) / cp['rz']
+            L = np.maximum(np.maximum(ax, az), (ax + az) / 1.4)
+            ytop = np.interp(Z, *zip(*NOSE_T))
+            lift = 2.5 * np.clip((1 - L) / 0.45, 0, 1)
+            return (L <= 1) & (Y <= ytop + lift) & (Y >= ytop - 4) & ~fus_inside(X, Y - 0.6, Z)
+    c.put(((CXM - cp['rx'] - 1, CXM + cp['rx'] + 1), (cp['z'] - cp['rz'] - 1, cp['z'] + cp['rz'] + 1), (cp['y'] - cp['ry'] - 1, 56.0)),
           bubble, C_CANOPY, canopy_area, over=True)
     # --- wings (left; the right mirrored): a plate, the tip edge red
     w = WING
@@ -234,7 +267,7 @@ def build():
         a = np.where(X < 1.0, CODES['red'], CODES['hull']).astype(np.uint8)
         top = Y >= w['y'][1] - 0.5
         lines = ((np.abs(Z - 123.5) < 0.5) & (X >= 16) & (X <= 46)) | ((np.abs(X - 16.25) < 0.5) & (Z < 123.5)) | ((np.abs(X - 44.25) < 0.5) & (Z > 120) & (Z < 128))
-        a[top & lines] = CODES['panel']
+        if not ART_TEXTURE: a[top & lines] = CODES['panel']      # else texture() joins the art's own lines
         return a
     c.put(((0, 64), (112, 176), w['y']), wing, C_WING, wing_area)
     c.mirror(((0, 64), (112, 176), w['y']), C_WING)
@@ -364,7 +397,7 @@ def holds(tx, ty, tz, slot, p):
         if p in (41, 42, 43, 44): return {C_POD}
         if slot == FLOOR: return set()
         return {C_FUS, C_CONE, C_CANOPY}
-    if p in WING_IDS: return {C_WING}
+    if p in WING_IDS: return {C_WING, C_FUS}     # the faceted hull's shoulders reach into the wings' tiles
     if p in (7, 8, 13, 14): return {C_FIN}
     return {C_FUS, C_CONE, C_CANOPY}      # the roof pieces
 
@@ -425,6 +458,237 @@ def write_piece(path, kgrid, refs):
     return count
 
 
+# ---------------------------------------------------------------- the art's texture, straightened (terrain.19)
+# The owner's choices from the texture study (vr-dev/HANDOFF.md): the art's own shading kept; one colour per
+# table voxel from the art pixel at the cell's middle, the cell grid's phase chosen for the straightest rows;
+# the dither redrawn as a checkerboard at the art's pixel size on each face's own grid (the fins kept as
+# drawn, as approved); panel lines joined into solid lines. Markings, glass, the cone, gear and ramp stay
+# coloured by area. Hidden sides take the visible side mirrored (X -> 160 - X); what neither shows takes the
+# nearest textured voxel.
+from straighten import Canvas, proj, resolve, straightness
+FUS_COMPS = (C_FUS, C_CONE, C_CANOPY)
+
+
+def hull_grey(index):
+    """The hulls' gunmetal ramp (240 lit .. 255): other colours under the hull (the canopy's glass seen
+    through, markings, the cockpit's consoles) aren't texture; those cells take their neighbours'."""
+    return int(index) // 16 == 15
+
+
+def owners(c, comps):
+    """The game's view of the given components: per canvas pixel, the nearest cell (its centre's pixel)."""
+    from straighten import W as CW, H as CH
+    full = np.nonzero(np.isin(c.comp, comps))
+    X, Z, Y = GX[full[0]], GZ[full[1]], GY[full[2]]
+    px, py = proj(X, Y, Z)
+    px, py = np.floor(px).astype(int), np.floor(py).astype(int)
+    o = np.argsort(X + Y + Z)
+    who = np.full((CH, CW), -1, np.int64)
+    who[py[o], px[o]] = o
+    return who, np.stack([X, Y, Z], -1)
+
+
+def seen_at(who, P, point, tol=1.2):
+    """The pixel showing point, if the cell drawn there is the point's own (within tol)."""
+    u, v = proj(*point)
+    n = who[int(np.floor(v)), int(np.floor(u))]
+    if n < 0 or np.linalg.norm(P[n] - np.array(point)) > tol: return None
+    return int(np.floor(v)), int(np.floor(u))
+
+
+def exposed(m, axes=(0, 1, 2), outside=None):
+    """Cells of m with a face neighbour in outside (default: not m) along the given axes."""
+    if outside is None: outside = ~m
+    t = np.zeros_like(m)
+    for ax in axes:
+        for s_ in (1, -1):
+            sh = np.roll(outside, s_, axis=ax)
+            idx = [slice(None)] * 3
+            idx[ax] = 0 if s_ == 1 else -1
+            sh[tuple(idx)] = False
+            t |= sh
+    return m & t
+
+
+def tex_fuselage(c, placed, pidx):
+    """The fuselage unrolled: per table-voxel slab along Z, the skin's cells round the cross-section in order
+    (s), each the art at its middle; the checkerboard by (slab + s)."""
+    art = Canvas(SET, placed, lambda *t: bool(holds(*t) & set(FUS_COMPS)))
+    who, P = owners(c, FUS_COMPS)
+    sl, outer = c.fus_outer
+    solid = np.zeros(c.comp.shape, bool); solid[sl] = outer
+    hull = (c.comp == C_FUS) & (c.area == CODES['hull'])
+    skin = exposed(hull, (0, 2), ~solid)                    # faces out across the section (not the ends)
+    si, sk, sj = np.nonzero(skin)
+    SXs, SZs, SYs = GX[si], GZ[sk], GY[sj]
+    best = None
+    for phz in (0.0, 0.5):
+        slab = np.floor(SZs - phz).astype(int)
+        for phx in (0.0, 0.5):
+            for phy in (0.0, 0.5):
+                cx_, cy_ = np.floor(SXs - phx).astype(int), np.floor(SYs - phy).astype(int)
+                T, order = {}, {}
+                for a in np.unique(slab):
+                    m = slab == a
+                    cells = {}
+                    for x, y, kx, ky in zip(SXs[m], SYs[m], cx_[m], cy_[m]):
+                        cells.setdefault((kx, ky), []).append((x, y))
+                    yc = SYs[m].mean()
+                    keys = sorted(cells, key=lambda k: np.mean([np.arctan2(y - yc, x - CXM) for x, y in cells[k]]))
+                    row = []
+                    for k in keys:
+                        x, y = np.mean(cells[k], axis=0)
+                        if x < CXM: x = 2 * CXM - x
+                        q = seen_at(who, P, (x, y, a + phz + 0.5))
+                        row.append(art.value(q) if q is not None and art.ok[q] and hull_grey(art.col[q]) else None)
+                    good = [i for i, v in enumerate(row) if v is not None]
+                    if good:
+                        row = [v if v is not None else row[min(good, key=lambda g: abs(g - i))] for i, v in enumerate(row)]
+                    T[a] = row; order[a] = {k: i for i, k in enumerate(keys)}
+                score = sum(sum(1 for u, v in zip(r[:-1], r[1:]) if u is not None and u == v) for r in T.values())
+                score += sum(sum(1 for u, v in zip(T[a], T[a + 1]) if u is not None and u == v) for a in T if a + 1 in T and len(T[a]) == len(T[a + 1]))
+                if best is None or score > best[0]: best = (score, phx, phy, phz, T, order)
+    score, phx, phy, phz, T, order = best
+    print(f'  fuselage: phase {phx} {phy} {phz}, {len(T)} slabs')
+    hi, hk, hj = np.nonzero(hull)
+    for i, k, j in zip(hi, hk, hj):
+        a = int(np.floor(GZ[k] - phz)); key = (int(np.floor(GX[i] - phx)), int(np.floor(GY[j] - phy)))
+        if a in order and key in order[a]:
+            s_ = order[a][key]; v = T[a][s_]
+            if v is not None: pidx[i, k, j] = resolve(v, a + s_)
+
+
+def plane_cells(art, coords, sample, phases):
+    """A flat face's texture: cells of one table voxel over the face's two axes (coords: per voxel (u, v)),
+    each sample(u_mid, v_mid) -> art pixel; the phase with the straightest rows. Returns per voxel (value,
+    parity)."""
+    best = None
+    for pu in phases:
+        for pv in phases:
+            cu = np.floor(coords[:, 0] - pu).astype(int); cv = np.floor(coords[:, 1] - pv).astype(int)
+            keys = sorted(set(zip(cu, cv)))
+            vals = {}
+            for ku, kv in keys:
+                q = sample(ku + pu + 0.5, kv + pv + 0.5)
+                vals[(ku, kv)] = q
+            u0, v0 = min(k[0] for k in keys), min(k[1] for k in keys)
+            G = np.full((max(k[0] for k in keys) - u0 + 1, max(k[1] for k in keys) - v0 + 1), None, object)
+            for (ku, kv), q in vals.items():
+                if q is not None: G[ku - u0, kv - v0] = int(art.col[q])
+            sc = straightness(G)
+            if best is None or sc > best[0]: best = (sc, cu, cv, vals)
+    return best[1], best[2], best[3]
+
+
+def join_lines(cells, dark=248, minrun=6, share=0.45):
+    """Panel lines: along each row and column of a face's cells, where the darkest greys (>= dark) make up a
+    broken line, a solid line of the darkest one from its first to its last dark cell."""
+    out = dict(cells)
+    for axis in (0, 1):
+        lines = {}
+        for k, v in cells.items():
+            if isinstance(v, int) and v >= dark: lines.setdefault(k[axis], []).append(k[1 - axis])
+        for line, pos in lines.items():
+            if len(pos) < minrun // 2: continue
+            lo, hi = min(pos), max(pos)
+            if hi - lo + 1 < minrun or len(pos) / (hi - lo + 1) < share: continue
+            col = max(cells[(line, p) if axis == 0 else (p, line)] for p in pos)
+            for p in range(lo, hi + 1):
+                k = (line, p) if axis == 0 else (p, line)
+                if k in out: out[k] = col
+    return out
+
+
+def tex_wings(c, placed, pidx):
+    """The main wings' tops (the front wings are the same parts): cells over X and Z, the art at the top's
+    plane, the checkerboard by cell, the panel lines joined."""
+    art = Canvas(SET, placed, lambda tx, ty, tz, s_, p: tz == 2 and 7 <= ty <= 10 and p in WING_IDS)
+    yt = WING['y'][1]
+    for x0, x1 in ((0.0, WING['root']), (2 * CXM - WING['root'], 2 * CXM)):
+        m = (c.comp == C_WING) & (c.area == CODES['hull'])
+        m[:int((x0 - X0) * PER)] = False; m[int((x1 - X0) * PER):] = False
+        m[:, int((176 - Z0) * PER):] = False                     # the main wings only (the front ones are copies)
+        wi, wk, wj = np.nonzero(m)
+        coords = np.stack([GX[wi], GZ[wk]], -1)
+        cu, cv, vals = plane_cells(art, coords, lambda u, v: art.pixel(u, yt, v), (0.0, 0.5))
+        cells = {k: (art.value(q) if q is not None else None) for k, q in vals.items()}
+        cells = join_lines(cells)
+        for i, k, j, ku, kv in zip(wi, wk, wj, cu, cv):
+            v = cells.get((ku, kv))
+            if v is not None: pidx[i, k, j] = resolve(v, ku + kv)
+
+
+def tex_fins(c, placed, pidx):
+    """Each fin face: cells over Z and Y on its plane, the art as drawn (owner, the fin study). The art shows
+    the left fin's inner face and the right fin's outer face; the other two are their mirror images."""
+    art = Canvas(SET, placed, lambda tx, ty, tz, s_, p: p in (7, 8, 13, 14))
+    f = FIN
+    m = c.comp == C_FIN
+    fi, fk, fj = np.nonzero(m)
+    coords = np.stack([GZ[fk], GY[fj]], -1)
+    faces = {}
+    for name, xs in (('inner', f['x'] + f['t']), ('outer', 2 * CXM - f['x'])):
+        cu, cv, vals = plane_cells(art, coords, lambda u, v, xs=xs: art.pixel(xs, v, u), (0.0, 0.5))
+        faces[name] = (cu, cv, vals)
+    for n_, (i, k, j) in enumerate(zip(fi, fk, fj)):
+        x = GX[i]
+        left = x < CXM
+        outer_face = (x < f['x'] + f['t'] / 2) if left else (x > 2 * CXM - f['x'] - f['t'] / 2)
+        cu, cv, vals = faces['outer' if outer_face else 'inner']
+        q = vals.get((cu[n_], cv[n_]))
+        if q is not None: pidx[i, k, j] = int(art.col[q])
+
+
+def tex_cells(c, placed, pidx, comp, area, parts):
+    """Box-like pieces (the pods): one colour per table voxel, the art where the piece's surface in that cell
+    is seen (the hidden side mirrored), the checkerboard by cell."""
+    art = Canvas(SET, placed, lambda tx, ty, tz, s_, p: p in parts)
+    who, P = owners(c, (comp,))
+    m = (c.comp == comp) & (c.area == CODES[area])
+    ex = exposed(c.comp == comp) & m
+    ei, ek, ej = np.nonzero(ex)
+    cells = {}
+    for i, k, j in zip(ei, ek, ej):
+        cells.setdefault((int(np.floor(GX[i])), int(np.floor(GZ[k])), int(np.floor(GY[j]))), []).append((GX[i], GY[j], GZ[k]))
+    vals = {}
+    for key, pts in cells.items():
+        x, y, z = np.mean(pts, axis=0)
+        if x < CXM: x = 2 * CXM - x
+        q = seen_at(who, P, (x, y, z), 1.5)
+        if q is not None and art.ok[q] and hull_grey(art.col[q]): vals[key] = art.value(q)
+    mi, mk, mj = np.nonzero(m)
+    for i, k, j in zip(mi, mk, mj):
+        key = (int(np.floor(GX[i])), int(np.floor(GZ[k])), int(np.floor(GY[j])))
+        if key in vals: pidx[i, k, j] = resolve(vals[key], sum(key))
+
+
+def texture(c, placed):
+    """Per cell: a palette index from the art (0: colour by area)."""
+    import scipy.ndimage as nd
+    pidx = np.zeros(c.comp.shape, np.uint8)
+    tex_fuselage(c, placed, pidx)
+    tex_wings(c, placed, pidx)
+    tex_fins(c, placed, pidx)
+    tex_cells(c, placed, pidx, C_POD, 'pod', (41, 42, 43, 44))
+    # what no view textured (undersides, ends, behind other pieces): the nearest textured cell of its piece
+    for comp, areas in ((C_FUS, ('hull',)), (C_WING, ('hull',)), (C_POD, ('pod',))):
+        want = (c.comp == comp) & np.isin(c.area, [CODES[a] for a in areas])
+        have = want & (pidx > 0)
+        if not have.any(): continue
+        miss = want & ~have
+        _, ind = nd.distance_transform_edt(~have, return_indices=True)
+        mi = np.nonzero(miss)
+        pidx[mi] = pidx[ind[0][mi], ind[1][mi], ind[2][mi]]
+    # the front wings: the main wings' outer tiles moved (as build() copies them)
+    for (sx0, dx) in ((0, 32), (128, -32)):
+        i0, i1, di = int(sx0 * PER), int((sx0 + 32) * PER), int(dx * PER)
+        k0, k1, dk = int((112 - Z0) * PER), int((160 - Z0) * PER), int(112 * PER)
+        src = pidx[i0:i1, k0:k1]; dst = pidx[i0 + di:i1 + di, k0 + dk:k1 + dk]
+        sel = (c.comp[i0 + di:i1 + di, k0 + dk:k1 + dk] == C_WING) & (src > 0)
+        dst[sel] = src[sel]
+    return pidx
+
+
 def piece(c, tx, ty, tz, comps, band):
     """The part's model: the craft's cells in its tile's column, its components, its heights."""
     T = 16 * PER
@@ -433,6 +697,7 @@ def piece(c, tx, ty, tz, comps, band):
     if k0 < 0 or k0 + T > NZ: return None
     cc = c.comp[i0:i0 + T, k0:k0 + T, j0:j1]
     aa = c.area[i0:i0 + T, k0:k0 + T, j0:j1]
+    pp = c.pidx[i0:i0 + T, k0:k0 + T, j0:j1]
     sel = np.isin(cc, list(comps))
     if not sel.any(): return None
     top = int(np.nonzero(sel.any(axis=(0, 1)))[0].max()) + 1
@@ -440,13 +705,16 @@ def piece(c, tx, ty, tz, comps, band):
     kg[:, :, 1:] = np.where(sel[:, :, :top], PLAIN, 0)
     areas = np.zeros((T, T, top + 1), np.uint8)
     areas[:, :, 1:] = np.where(sel[:, :, :top], aa[:, :, :top], 0)
-    return kg, areas, (i0, k0, j0 - 1)
+    pal_ = np.zeros((T, T, top + 1), np.uint8)
+    pal_[:, :, 1:] = np.where(sel[:, :, :top], pp[:, :, :top], 0)
+    return kg, (areas, pal_), (i0, k0, j0 - 1)
 
 
 def main():
     os.makedirs(OUT, exist_ok=True)
     placed = map_parts()
     c = build()
+    c.pidx = texture(c, placed) if ART_TEXTURE else np.zeros(c.comp.shape, np.uint8)
     counts = {NAMES[a]: int((c.area == a).sum()) for a in np.unique(c.area) if a}
     print('craft:', int((c.comp > 0).sum()), 'cells;', counts)
     bnd = bands(placed)
@@ -461,14 +729,14 @@ def main():
     for p, lst in sorted(places.items()):
         keys = [r[0].tobytes() + bytes(r[0].shape) for _, r in lst]
         best = max(keys, key=lambda k: (keys.count(k), -keys.index(k)))   # a tie: its first place (the main wings)
-        (tx, ty, tz, slot), (kg, areas, (i0, k0, jb)) = lst[keys.index(best)]
+        (tx, ty, tz, slot), (kg, (areas, pals), (i0, k0, jb)) = lst[keys.index(best)]
         for (where, r), key in zip(lst, keys):
             if key != best:
                 n = min(r[0].shape[2], kg.shape[2])
                 print(f'  part {p} at {where[:3]} differs from its model by {int((r[0][:, :, :n] != kg[:, :, :n]).sum())} cells')
         refs = {}
         for x, y, z in zip(*np.nonzero(kg)):
-            refs[(x, y, z)] = speckle(NAMES[areas[x, y, z]], i0 + x, k0 + y, jb + z)
+            refs[(x, y, z)] = pixel_with(int(pals[x, y, z])) if pals[x, y, z] else speckle(NAMES[areas[x, y, z]], i0 + x, k0 + y, jb + z)
         n = write_piece(os.path.join(OUT, f'{SET}_{p}'), kg, refs)
         print(f'  {SET}_{p} ({tx},{ty},{tz}) slot {slot}: {n} voxels, {kg.shape[2]} layers')
     return c
