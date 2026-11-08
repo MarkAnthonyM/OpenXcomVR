@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.22).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.23).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -434,6 +434,43 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     materials, indices summed over tile shapes; deterministic): the new build with terrain.21's model files
     gave exactly terrain.21's hashes, and with the new files the hash without PLANE is unchanged
     (8692edd3816e1a6e in `outside` with `reveal`, top level). Triangles 851,580 -> 852,868.
+  - Owner on terrain.22 (headset): the panel lighting gives the best result so far (kept). To fix on the Skyranger:
+    (1) the wings too low (they should sit by the fins like the art, joining the wings' and fins' dark gradients;
+    the front wings too), (2) a texture pass on the front, (3) the canopy's shape and texture like the art, (4) the
+    nose cone's shape, (5) a feature under the cockpit with a red triangle (missing). Asked what (5) is: read from
+    the art as a small device on the nose's right side (two small dark ports in a light frame, dark slats behind,
+    a red triangle with a yellow middle pointing down ahead of it, an amber dash above): a gun or sensor fairing
+    with a warning marker, or a hatch with steps; the Skyranger has no weapons in the game. Owner: keep the
+    canopy's highlight; one build; for (5) my recommendation, modelled simply (a pad one table voxel out, the ports
+    as recesses, the slats as ribs, the triangle and light painted, both sides).
+  - terrain.23 (`skyranger.py`; no engine code changed, the mesh hash without PLANE unchanged, 8692edd3816e1a6e).
+    Wings: a fit of their height and planform (both mirrored) against the art's wing pixels from the game's angle,
+    the rest of the craft in front: terrain.22 89.6%; the best flat wing one higher 93.7%; a slope or a root fillet
+    no better. What still missed was the hull covering the left wing's root: measured along the stretch between
+    the wings, the art's far shoulder from the game's angle (min X - Y of the outline) is 15 against the faceted
+    hull's 12 (the near side's lower edge within 1). CROSS's upper facets 2 lower and in: (34,28), (42,24), (50,16),
+    (52,12) (keeps 16 at the wing's height: the wing tiles end at X 64). With that the wings fit best where they
+    were (Y 48-49, 96.3%): it was the hull that made them look low; WING te 113, le0 127.5, tip at X 1 (red tip
+    from there). Where the nose narrows (Z 256+) that left a one-model-voxel slit at the front wings' leading root
+    corner: filled as hull (held by roof piece 52/53). Canopy: the art's glass and frame mapped onto the nose
+    (centred Z 281, X 71-91, Z 271-291; the terrain.19 hood sat 8 too far back); HOOD (the octagon hood, refitted:
+    centre Z 282, rz 10, rx 11, lift 5, glass/frame score 0.31 -> 0.60); labelled glass ahead of Z 279 (the
+    windscreen = front faces, the side windows; a frame bar between the front diagonals and the sides: the art's one
+    bar), frame at the foot and the glass's rear edge, the cowl behind grey. A solid roof amid glass (tried, roof
+    L < 0.55 or 0.3) looked like an eyeball from above. Beak: BEAK, a regular octagon tapering elliptically, Y 27,
+    r 6, Z 293-302 (yellow IoU 0.61 -> 0.75), bottom at Y 24 (nothing of the game's below level 1 there; the
+    level-0 band would drop it). Panels: the hood's eight sides, its roof the nose's top panel; the beak's eight
+    faces per Z stretch (293-296-299-302) and its bottom (93 normals). Texture: main computes panels first;
+    tex_panels() straightens the art per panel (u across, v up the panel; cells of one table voxel; the art where the
+    game's view shows the point, the hidden side mirrored; accept() colour classes; phase by straightness; gaps the
+    nearest given cell): the nose's hull from Z 256 (the unrolled body texture assumes the constant section), with
+    `even` (a cell 2+ entries off its 3 x 3 neighbours' middle takes it: the art's irregular dark noise made
+    blotches), the glass (128-143 and the highlight 224-228), the cowl (hull greys; the art's white edge highlight
+    made a white patch), the beak (16-31). FEATURE / side_feature(): a pad one table voxel out (Z 279-287, Y 31-35.5)
+    with two ports (outer layer cut, inner dark 13/12) and slats (alternate rows cut, grooves 11/12), the triangle
+    (37/36, middle 20) at Z 289.5 and the amber light (101/100) at Y 39.5-41: both sides. Sheets vs terrain.22: only
+    PLANE, mean shape 80.5 -> 85.1% (wing parts 71-86 -> 90-100, level-1 sides 84 -> 97), colour 85.2 -> 85.1.
+    Triangles 852,868 -> 858,940. Not yet seen in the headset.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -481,7 +518,12 @@ out better the first time)
    never copied voxel by voxel: the art's grid lies slanted on the faces and turns into streaks); the art's
    dithering as a checkerboard of the same two shades on the face's own grid, at the art's pixel size; panel
    lines (seams) joined into clean solid lines; painted markings as drawn. `vr-dev/models/straighten.py`.
-   On trial with it (terrain.22): faceted hulls with each panel lit evenly by its own direction (`.ref` VRF3).
+   With it, faceted hulls with each panel lit evenly by its own direction (`.ref` VRF3; owner on terrain.22: the
+   best result so far, kept). Where a shape isn't one constant section (a tapering nose, a hood, a beak) the
+   texture goes panel by panel (`tex_panels()`, terrain.23).
+11. When a part looks misplaced, check its neighbours against the art first: terrain.23's "too low" wings were
+   at the art's height; the hull's top was too wide and covered their roots. Fit the outline of what's around a
+   part (from the game's angle) before moving the part.
 
 The table and its view
 - The table keeps its own view; the flat screen is just a screen. Pointing
@@ -649,8 +691,8 @@ Room and rendering
   than three cells are only in the screen's inventory. (Planned on the terrain branch.)
 - Terrain parts' animations (8 frames) aren't shown: the table builds frame 0. (Planned on the terrain branch.)
 - Craft and UFO hulls are their collision voxels, except the small scout (hand-built since terrain.13) and
-  the Skyranger's outside (terrain.18; faceted and textured from the art, terrain.19; its inside, ribs and
-  cockpit, still to do).
+  the Skyranger's outside (terrain.18; faceted and textured from the art, terrain.19; panels lit evenly,
+  terrain.22; the front and the hull's top refitted, terrain.23; its inside, ribs and cockpit, still to do).
 - Weather and the sun have only been judged in the desktop preview (no
   headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).
