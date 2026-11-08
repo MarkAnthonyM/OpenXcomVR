@@ -2,7 +2,8 @@
 """Hand-built model of the Skyranger (terrain set PLANE, map block PLANE): 0.21.0-terrain.18, the outside;
 0.21.0-terrain.19, faceted and textured from the art (FACETED, ART_TEXTURE; texture()); 0.21.0-terrain.22, each
 panel lit evenly (panels()); 0.21.0-terrain.23, the hull's top slimmer, the cockpit hood (HOOD), the beak (BEAK),
-the device under the cockpit (FEATURE) and the nose textured panel by panel (tex_panels()).
+the device under the cockpit (FEATURE) and the nose textured panel by panel (tex_panels()); 0.21.0-terrain.24, the hull's
+edge at the fins' line through the wings' thickness and a roof cap (CROSS), no voxel shared by two pieces.
 
 Run after `dumpart PLANE` in the terrain lab (see voxlib.py). Writes bin/common/Resources/VR/models/
 PLANE_<id>.vox and .ref for every part that holds a piece of the craft. Shapes and pixel references only,
@@ -58,7 +59,7 @@ GX, GZ, GY = centres(X0, NX), centres(Z0, NZ), centres(Y0, NY)
 
 # ---------------------------------------------------------------- the fitted sizes (map voxels)
 CXM = 80.0                       # the craft's centre line
-FUS = dict(w=28.0, y0=24.0, yt=52.0, e=2.5, rb=24.0)       # cross-section (85% of the middle's outline)
+FUS = dict(w=28.0, y0=24.0, yt=54.0, e=2.5, rb=24.0)       # cross-section (85% of the middle's outline); top 52 -> 54 (terrain.24)
 FUS_Z = (112.0, 256.0)           # constant from the rear to the cockpit
 NOSE = dict(zt=298.0, p=1.5, q=2.0, ytip=28.0, tipw=4.0)    # the taper to the tip (90% of the nose's outline)
 SHELL = 2                        # model voxels
@@ -135,10 +136,21 @@ FACETED = True
 ART_TEXTURE = True      # terrain.19: the hull, wings, fins and pods take the art's texture, straightened (texture())
 # terrain.23: the upper facets 2 lower and in (were 36/28, 44/24, 50/18, 52/14): the art's far shoulder from the game's
 # angle sits 3.5 below the old one (it hid the wing roots and the fins' feet); the 1:1 facet keeps 16 at the wing's
-# height so the wings (their tiles end at X 64) still meet the hull
-CROSS = [(24.0, 24.0), (28.0, 28.0), (34.0, 28.0), (42.0, 24.0), (50.0, 16.0), (52.0, 12.0)]
+# height so the wings (their tiles end at X 64) still meet the hull.
+# terrain.24 (owner: the wings didn't sit flush against the fins like the art; a strip of hull rose between the wing
+# roots and the fins' feet, and the art's dark wing-root shading landed on it; it wasn't the faceting: the round hull
+# rose there too): the hull's edge at the fin line (16 out, X 64 / 96) at the wing's top (49), the 1:1 shoulder below it
+# on the art's measured line (X - Y = 15 from the game's angle), and the roof a cap between the fins rising 1:2 to a
+# flat top 12 wide at 54 (the roof pieces' sprites, rows 11-13 without wings: 92.2% against terrain.23's 90.5%; a
+# flat roof at 50 level with raised wings, tried first, 85.6%). Wing, hull edge and the fins' feet meet in one line.
+# The hull stands exactly at the fin line through the wing's thickness (48-49, upright): the front wings' parts are
+# the main wings' (one model), and wherever the hull reached past X 64 at the wing's height the two pieces drew
+# faces in the same place (the dark bars the owner saw above the front wings in terrain.23). Below the wing the
+# shoulder stays out to 17 (a step of one under the wing, an eave between the wings): the hull's inner layer there
+# must stay outside X 64, where the cabin's floor tiles hold nothing.
+CROSS = [(24.0, 24.0), (28.0, 28.0), (33.0, 28.0), (41.0, 24.0), (47.9, 17.1), (48.0, 16.0), (49.0, 16.0), (54.0, 6.0)]
 NOSE_W = [(256.0, 28.0), (272.0, 24.0), (284.0, 18.0), (292.0, 10.0), (298.0, 4.0)]
-NOSE_T = [(256.0, 52.0), (272.0, 50.0), (284.0, 44.0), (292.0, 36.0), (298.0, 30.0)]
+NOSE_T = [(256.0, 54.0), (272.0, 50.0), (284.0, 44.0), (292.0, 36.0), (298.0, 30.0)]
 NOSE_B = [(256.0, 24.0), (284.0, 24.0), (292.0, 25.0), (298.0, 27.0)]
 
 
@@ -290,7 +302,12 @@ def build():
     # no bottom under the cabin's floor tiles (x4..5, rows 9..17) nor over the ramp's hatch (rows 7..8)
     bottom = (Y < FUS['y0'] + SHELL / PER) & (X >= 64) & (X < 96) & (Z >= 112) & (Z < 288)
     shell &= ~bottom
-    inner = touching(shell, cav) & ~touching(shell, ~outer)
+    # nor the shell's innermost cells that reach in past X 64 / 96 below the wings' height along the cabin (the
+    # floor tiles there hold nothing; terrain.24's shoulder: the shell's two layers lie four cells across on its 1:1
+    # slope); the cells beside them become the inside layer
+    wall = shell & (X >= 64) & (X < 96) & (Y < 48) & (Z >= 112) & (Z < FUS_Z[1])
+    shell &= ~wall
+    inner = touching(shell, cav | wall) & ~touching(shell, ~outer)
     area = np.where(inner, CODES['inside'], CODES['hull']).astype(np.uint8)
     cur = c.comp[sl]
     cur[shell] = C_FUS
@@ -381,16 +398,23 @@ def build():
     # terrain.23: where the nose narrows (from Z 256) the slimmer hull leaves a slit (one model voxel) between the
     # front wings' roots (their tiles end at X 64) and the hull: the hull filled out to them there (the roof piece
     # above holds it)
+    # (terrain.24: with the roof's cap the nose's taper narrows the hull at the wings' height by up to 3 there: the
+    # fill now walks in from the wing until it meets the hull)
     for side in (-1, 1):
         sl, X, Z, Y = grid(((CXM - 20, CXM + 20), (224.0, 272.0), w['y']))
         cur, ar = c.comp[sl], c.area[sl]
         root = np.abs(X - CXM) <= 16.0
-        gap = (cur == 0) & (np.sign(X - CXM) == side) & root & fus_inside(X - side * 2.0, Y, Z) & ~fus_inside(X, Y, Z)
-        wing_out = np.zeros_like(gap)
         step = 1 if side < 0 else -1          # the neighbour toward the tip
-        wing_out[:] = np.roll(cur == C_WING, step, axis=0)
-        fill = gap & wing_out
-        cur[fill] = C_FUS; ar[fill] = CODES['hull']
+        reach = np.zeros(X.shape, bool)
+        for k in range(1, 9):                 # the hull within 4 further in
+            reach |= fus_inside(X - side * 0.5 * k, Y, Z)
+        cand = (cur == 0) & (np.sign(X - CXM) == side) & root & reach & ~fus_inside(X, Y, Z)
+        filled = cur == C_WING
+        for _ in range(8):
+            fill = cand & np.roll(filled, step, axis=0) & ~filled
+            if not fill.any(): break
+            filled |= fill
+            cur[fill] = C_FUS; ar[fill] = CODES['hull']
     # --- fins (left; the right mirrored)
     f = FIN
     def fin(X, Y, Z):

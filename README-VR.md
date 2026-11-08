@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.23)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.24)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -705,6 +705,14 @@ Key ideas:
     cockpit on each side, the device the art shows: a low pad with two
     small ports and slats behind them, a red warning triangle with a yellow
     middle ahead of it and a small amber light above.
+    0.21.0-terrain.24 makes the wings sit flush against the fins: the
+    hull's edge now stands exactly at the fins' line at the wings' height,
+    so wing, hull and the fins' feet meet in one line (before, a narrow
+    sloped strip of hull rose between the wing roots and the fins and lit
+    as a dark band), and the roof between the fins is a low ridged cap like
+    the game's roof pieces. The front wings, which are the same game pieces
+    as the main wings' outer half, no longer overlap the hull: two pieces
+    drew faces in the same place there (dark bars above the front wings).
   - lights in models: `.ref` version 2 adds a light flag per voxel and the
     lights' colour (Model::light): materials 10-13 in the board's shader,
     driven by `uAnimFrame` (the battle's animation frame; the lab goes by the

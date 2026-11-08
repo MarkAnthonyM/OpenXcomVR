@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.23).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.24).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -471,6 +471,29 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     (37/36, middle 20) at Z 289.5 and the amber light (101/100) at Y 39.5-41: both sides. Sheets vs terrain.22: only
     PLANE, mean shape 80.5 -> 85.1% (wing parts 71-86 -> 90-100, level-1 sides 84 -> 97), colour 85.2 -> 85.1.
     Triangles 852,868 -> 858,940. Not yet seen in the headset.
+  - Owner on terrain.23 (headset, two screenshots): the wings still don't sit flush against the fins like the art; a
+    shadow that seems to belong to the wings shows on the hull above both wings (front and rear). Asked whether the
+    faceting caused it: no (the round hull rose above the wing roots too). Found: (a) rear: the hull reached past the
+    fin line at the wing's height, so a narrow 1:1 strip (49-50) and a 1:2 bevel rose between the wing root and the
+    fin's foot, lit as plates (the strip dark); the hull's texture there was the same mid-grey as between the wings
+    (measured per height), not a painted shadow. (b) front: the dark bars were two pieces drawing the same voxels:
+    the front wings' parts are the main wings' (one model each, the main wings' shape), and with terrain.23's slimmer
+    hull their inner edge sat in the hull's skin (558 voxels claimed by two placed pieces, all at Y 48-49, Z 225-261).
+  - terrain.24 (`skyranger.py`; no engine code changed; mesh hash without PLANE unchanged). Tried and dropped: the wings
+    one higher with a flat roof at 50 level with them (one plane; the wing 94.1% vs 96.3% against the art, and the roof
+    pieces' sprites 85.6%: isolated, a roof piece's sprite does show the roof's height, a craft's outline doesn't).
+    Kept: CROSS (24,24), (28,28), (33,28), (41,24), (47.9,17.1), (48,16), (49,16), (54,6), FUS yt 54, NOSE_T from
+    (256,54): the hull stands at the fin line (16 out) through the wing's thickness (48-49), so wing, hull edge and
+    the fins' feet meet in one line and no voxel is shared; below the wing a step of one (the shell's inner layer must
+    stay outside X 64, where the cabin's floor tiles hold nothing; its innermost cells there left out, `wall`, the
+    next ones the inside layer); the far shoulder on the art's line (X - Y = 15); the roof a 1:2 cap to a flat top 12
+    wide at 54 (roof pieces 60/61 at rows 11-13, sprites alone: 92.2% vs terrain.23's 90.5%). Wings back to terrain.23's
+    (Y 48-49, te 113, le0 127.5, tip X 1). The front wings' root-corner fill (the nose narrows from Z 256) now walks in
+    until it meets the hull (up to 3 there). Checks: no voxel drawn by two pieces (was 558), no wing cell facing a gap
+    of up to 4 before the hull, nothing missing but the rear roof row's end. Sheets vs terrain.23: only PLANE, mean
+    shape 85.1 -> 86.8% (wing roots 93-97 -> 100, cockpit pieces 49/51/52 up), colour 85.1 -> 85.7. Triangles
+    858,940 -> 868,212. Offline renders can't show two pieces drawing the same voxel (they draw the assembled grid):
+    count it (every part's one model at every place) instead. Not yet seen in the headset.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -523,7 +546,11 @@ out better the first time)
    texture goes panel by panel (`tex_panels()`, terrain.23).
 11. When a part looks misplaced, check its neighbours against the art first: terrain.23's "too low" wings were
    at the art's height; the hull's top was too wide and covered their roots. Fit the outline of what's around a
-   part (from the game's angle) before moving the part.
+   part (from the game's angle) before moving the part. The craft's outline along a constant section can't show
+   heights (a roof's, a shoulder's); a piece's own sprite alone can (the roof pieces, terrain.24).
+12. A part used in several places has one model: wherever it lands next to other pieces, check that no voxel is
+   claimed by two placed pieces (faces drawn twice flicker or show as dark bars; the front wings, terrain.23), and
+   that pieces meet without gaps. Shape the neighbours so the shared model fits every place.
 
 The table and its view
 - The table keeps its own view; the flat screen is just a screen. Pointing
@@ -692,7 +719,7 @@ Room and rendering
 - Terrain parts' animations (8 frames) aren't shown: the table builds frame 0. (Planned on the terrain branch.)
 - Craft and UFO hulls are their collision voxels, except the small scout (hand-built since terrain.13) and
   the Skyranger's outside (terrain.18; faceted and textured from the art, terrain.19; panels lit evenly,
-  terrain.22; the front and the hull's top refitted, terrain.23; its inside, ribs and cockpit, still to do).
+  terrain.22; the front and the hull's top refitted, terrain.23; wings flush with the fins, terrain.24; its inside, ribs and cockpit, still to do).
 - Weather and the sun have only been judged in the desktop preview (no
   headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).
