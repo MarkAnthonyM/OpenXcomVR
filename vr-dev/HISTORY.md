@@ -645,3 +645,145 @@ Moved out of HANDOFF.md to keep it readable in one go; the later builds and the 
   byte).
 - terrain.12 (owner, after his headset test: stays with 32 x 32 x 48): models16/, -vrModelRes, coarsen()
   and the generator's --res are gone. Model::perX / perZ and voxlib Grid(per) stay (2 = the 32 models).
+
+### terrain.13 to terrain.18 (moved from HANDOFF.md at terrain.24)
+
+  - terrain.13 (owner: start the wheat and the small scout; apples as 4 voxels). Owner's choices: wheat dense
+    like the art, 3 versions mixed by tile position; scout a thin shell like the art; an apple a 2 x 2 square
+    facing out. farm_trees.py apple() (tree 9: 22 -> 88 fruit voxels; 12: 2 -> 8, its mirrored apples don't
+    find leaves). VrModels: kind 5 PLAIN (any pixel; the wheat's mid browns class as FRUIT, so WOOD voxels
+    skipped them and striped the field dark below / pale gold on top), versions `<key>-2.vox`.. (modelVariants;
+    TileKey::variant from a position hash in tileKey), `<key>.ref` ("VRF1", float baseY, uint32 count, then
+    part/column/row bytes per solid voxel in z, y, x order; 255 = own sprite) -> Model::ref / baseY; addModel
+    takes the part's MapData for the set; floors can be modelled (buildTile modelledFloor; bottom faces at
+    z 1 drawn when baseY != 0). Atlas: shelves by height class (4/8/12/16/then by 8), usedPercent() in
+    boardinfo; first wheat (9000 quads a tile, 1 model voxel stalks) filled the 2048 atlas in the farm save
+    and looped "atlas full; rebuilding". wheat.py: upright 2 x 2 stalks on 58% of table voxels, tops 8-12,
+    ears 2-3.5 nudged a voxel, thin tips: ~1700 quads a tile; CULTIVAT 4 shape 92% colour 100%; farm save
+    atlas 41% rows / 29% texels. small_scout.py: profile fitted to the composite (R 23, rim 4, top 23, rb 18,
+    e 1.4; IoU 0.984; `--fit`), shell 2 model voxels, underside layer z 1 + inside floor z 2, slices per
+    tile (UFO1 0-7 level 1), cap = UFO1 10 (floor on level 2) from level-1 height 16 with baseY -8, legs
+    16-19 from the sprites (top 14.1 out / 25 up, foot pad 20.3 out). Refs: outer voxels mirrored to the near
+    half (dx + dz -> -(dx + dz), same screen column) into the composite of hull + cap; inner/floor voxels to
+    the far half into the far pieces (W, N, NW + centre floor). UFO1A map bytes - 2 = UFO1 ids (BLANKS
+    first). dumpart now reaches any set the lab knows (findSet). Sheets vs terrain.9: only UFO1 and wheat
+    moved (UFO1 hull 45-72% -> 71-92% shape; legs 38-68 -> 95-100; cap 96 -> 52: the model holds the dome over
+    the centre tile, the cap's sprite only the light; isolated far/side slices show their inside, so colour
+    63-76% for 7 and 1). Not yet seen in the headset.
+    Cost: boardinfo now reports "terrain triangles" (all built chunks): `outside` 172k without the wheat
+    models, 305k with them (llvmpipe: ~0.9 -> ~0.8 s a frame). That pushed v3 over its timing (the table
+    advances at most 0.1 s a frame: VrSystem dt cap), so v3 and v2 wait 40 more frames before their last
+    readout; both pass now (v2's old 0.062 m failure was the same timing). Full run: h2 and bh failed once,
+    h2 passed alone (flaky, like bh).
+  - Owner on terrain.13: the wheat dropped the frame rate in the headset, steadily (not stutters): drawing
+    cost. Measured per wheat tile (temporary OXCE_VR_TRI_LOG in tileProto, not kept): hand-built 3120-3360
+    triangles, rule-built 946-954 (a block's flat sides merge into a few rectangles; each of ~140 stalks has
+    its own sides and top, the nudged ears and thin tips more); `outside` has ~58 wheat tiles. Cheaper
+    generator variants counted (faces a tile): now ~1800, feet on the grid ~1600, + straight ears without
+    tips ~590, + 40% fill ~450. Owner chose the rule-built wheat for now. He asked why UFO1 19 wasn't 100%:
+    the legs were simple shapes from a few measurements (piston too thin, a knee ring the art lacks, top and
+    pad a pixel high).
+  - terrain.14: CULTIVAT_4*.vox removed (wheat.py and the versions code stay); triangles in `outside` back
+    to 171,744. small_scout.py fit_leg(): rays() = every 4 x 4 sample's ray through the voxel grid (the
+    comparison's view: covered when 8 of 16 samples meet the shape); a voxel for each art pixel whose
+    footprint falls mostly in it (nearest the strut), then the strut's voxels that change no pixel's status,
+    then single switches. Carving the strut first could not get there (a voxel straddles half a pixel row:
+    no voxel's footprint lands exactly on one pixel, (i + j) - 2k is odd). Legs 16-19: 0 pixels differ in
+    the game's comparison (no red or blue at all), 100% / 100%. Sheets vs terrain.13: only those and wheat
+    (92 -> 90, rule-built).
+  - Owner on terrain.14: the exact-fit legs looked worse in the headset than terrain.13's. Seen from four
+    sides (offline render): a lumpy strut, the piston no longer round, stray voxels round the pad. The fit
+    only sees the game's angle; a voxel straddles half a pixel, so each one-pixel detail becomes a bump or
+    notch; the art's dark edge pixels and shading become shape. Lesson (owner agreed): don't chase hand-built
+    hard-edged pieces to 100%; use the score to catch real mistakes (proportions, placement, a part the art
+    lacks), fix those in the shape's parameters, stop when what's left is pixel noise, judge in the headset.
+    Organic pieces (crowns) take more fitting. terrain.15: small_scout.py leg(shape) with LEG = top 23,
+    piston_r 1.2 (the art's 4-pixel piston), piston 0.45, strut_r 0.55, no knee ring, pad_r 3.4, pad_h 0.9,
+    cone_r 1.4; `--legs` searches those one at a time against the four sprites (wrong_pixels(): the
+    comparison's 4 x 4 sampling via rays()). Pixels wrong (four legs): terrain.13 129, untuned 116, searched
+    66 with pad_h 0.7; 86 with 0.9 kept (0.7 leaves the pad one model voxel thin). Game comparison: 16/17/18
+    100%, 19 98% shape, colour 99-100%. fit_leg() removed.
+  - Explorer for the owner (not in the repo; built from his data in the session, sent as a file, never
+    published: it holds the game's art): the scout's 15 sprites assembled in the game's draw order (Map.cpp
+    drawTerrain: z, then x, then y), spread apart, build steps, the table's model rendered from the game's
+    angle beside it, piece colours, both cuts mapped onto the saucer from above. Finding while making it: I
+    had told the owner the artist cut the saucer "along lines on the screen" (strips above each diamond);
+    wrong. Mapped back onto the saucer, the art's pieces roughly follow the 3 x 3 tiles with hand-drawn,
+    wandering edges (south and east reach diagonally in toward the middle); each sprite is bounded by its
+    32 x 40 frame and nearer tiles draw over farther ones, nothing more.
+  - Owner on terrain.15 (headset): close, but (1) grey voxels spill into the blue rim, (2) the pink top comes
+    to a point (the art's is flat) with grey crossing its edge, (3) the "!!" marks should be even, aligned and
+    on all four sides, (4) drop the art's light-left/dark-right shading? (agreed: the table lights it; painted
+    shading doubles up and stays on the art's left whichever way the table turns; the mirrored far side
+    carried it too). Causes: per-voxel colours from the pixel each voxel lands on, half a pixel off the art's
+    grid, on 1-2 pixel features; the profile's superellipse top. The art's side marks (slanted, higher, at the
+    left and right) are the same "!!" seen from the side: one ring of marks, four diagonals (the art shows 3).
+    He chose: an even grey with a light speckle; rim lights like the flat game; cap pulse and lift flip like
+    the game; glow at night on their own surfaces only (he asked whether glow gives the UFO away in the fog:
+    no, unexplored tiles aren't drawn at all; only light thrown on explored ground nearby could).
+    Animation (decoded UFO1.PCK/TAB/MCD; the game steps terrain frames every 100 ms, BattlescapeState
+    DEFAULT_ANIM_SPEED, Tile::animate): near hull pieces 3-7 swap two sprites each frame (the rim's specks
+    in two interleaved sets: lights running round); cap 10: frames 9, 10, 11, 10 (purple x 0.88/0.76/0.89,
+    0.83/0.67/0.84 of the first); lift 9: 8, 8, 17, 17 (dark frames x 0.74/0.46/0.71). The far pieces 0-2 and
+    the legs don't animate.
+  - terrain.16: profile with a flat top (radius() rc: R 23, rim 3.5, top 21, rb 18, e 1.4, rc 4.5; IoU 0.987).
+    colours(): areas by place on the shape, each from palette entries by reference (pixel_with(): a pixel of
+    that colour in a UFO1 sprite): hull 244/243/245 speckle (hash), rim band 115/114 (1-5 up, radius 20.8+),
+    20 rim lights (224) at 45 + 18 k degrees, 2.5-4.1 up, half-width 0.55, sets A (even k) / B (odd), collar
+    241/240 (top - 3.5 up, radius <= 7), light 194 (centre 193, radius <= 2) pulsing (radius <= 5), marks 5
+    (light grey) at 45/135/225/315 degrees, bars +-0.75..2.15 along the rim at radius 10.6-12.6, dots
+    13.3-14.0 (measured: assembled picture rows 81-85 mapped onto the shape), inside 227/228, inside floor
+    198/197, underside the hull's (the table darkens it). Lift: UFO1_9 model (floor part, used at level 0
+    and level 1's middle): a plate one model voxel thick, baseY -0.5 (flush), its own sprite's pixels,
+    flipping. `.ref` "VRF2": header + the lights' colour (part, column, row, 0), 4 bytes a voxel (part,
+    column, row, light). Board: mask values per face kind (greedy merges like faces only), MAT_GLOW_PULSE /
+    FLIP for lit voxels, a layer 0.04 out for rim lights A/B (MAT_GLOW_A/B) over the band's own colour;
+    shader: materials 10-13 output the texture x uPulse/uFlip x uTint, unlit, never darkened; A shows on even
+    frames, B on odd (discarded otherwise); Board::draw sets uAnimFrame from SavedBattleGame::getAnimFrame()
+    (lab: SDL_GetTicks()/100), uPulse/uFlip constants measured above (UFO1's; another animated model with
+    other patterns would need them per pattern). VrCompare skips material 11 (frame 0 = the art). Sheets:
+    shapes about as before (hull 72-93%), colour 5-89%: expected, the art's painted shading is gone. Preview:
+    in the farm save the rim's specks change between frames; at shade 15 the hull is dark, the lights lit.
+    Not yet seen in the headset.
+  - terrain.17 (owner: look at the legs again with the hand-built notes in mind): the legs were the scout's
+    last part still coloured pixel by pixel from their own sprites (the art's shading: a lit stripe and a
+    dark side on the piston, a dark cap, a lit pad edge, each leg different). leg_colours(): areas by height,
+    piston 227/228 above the knee, rod 231/230, pad (y <= pad_h) the hull's 244/243/245; written as `.ref`
+    (VRF2, no lights). Read from the sprites: piston ramp 226 lit .. 231 dark, rod 229 .. 234, pad 240-249
+    (the hull's greys); the piston's dark top sits under the hull, left out. LEG piston_r 1.2 -> 1.3, strut_r
+    0.55 -> 0.5: voxels a layer piston 21-24 (was 16-21: ridges), rod 3-4 (was 3-5: kinks); pixels wrong over
+    the four legs 86 -> 84. Tried and dropped: a fixed footprint stamped per layer (perfectly even, but the
+    slanted leg became a stack of offset blocks). Sheets: legs shape 98-100% as before, colour 55-74%
+    (expected: no painted shading). Hull files unchanged. Not yet seen in the headset.
+  - terrain.18 (owner: the Skyranger next; chose the outside first and the inside's ribs (real, standing
+    out a voxel) in the following build, markings on both sides, nozzles plain blue, not glowing).
+    `vr-dev/models/skyranger.py` (after `dumpart PLANE` in the lab): PLANE.MAP 10 x 20 x 3, nose south
+    (+Z); map bytes - 2 = PLANE ids; nothing in PLANE.MCD animates. The craft is built whole on one grid
+    (map X 0-160, Z 96-304, Y 0-80, 2 cells a table voxel; Craft.comp = component, .area = colour area),
+    then cut: holds() says which components a part may hold (level 0 gear/ramp; level 1 pods, else the
+    fuselage/cone/canopy, floors none: the game's floors stay; level 2 wings, fins, else the roof), bands()
+    its heights (a level-1 part holds up to the top where level 2 has no fuselage piece: the arch's
+    shoulders, the nose). A part used in several places gets one model: its most common shape (ties: its
+    first place); differences are printed (only the rear roof row: the end's top, and the front wings
+    poking 1 table voxel into the fuselage at roof height, hidden). Fitted (common silhouettes, shared /
+    union against the art of those parts): fuselage section w 28, floor 24, top 52, e 2.5, bottom rounding
+    24 (85% of the middle); constant Z 112-256 (forced: the game repeats roof pieces 60/61 rows 7-15),
+    nose zt 298, p 1.5, q 2, tip height 28, tip half-width 4 (90%); wing plate Y 48-49, trailing edge Z 112,
+    leading edge Z = 126.5 + 0.754 X, tip at X 0 (the art mapped onto its plane); fins plates at X 64-65 and
+    95-96, Z 112-142 at the roof, top Y 72 back to Z 131 (mapped onto their planes); pods centred in their
+    tiles (forced: both pods use parts 41/42) X 40/120, Y 32-48, chamfer 2, Z 116-170, intake leaning 4
+    forward at the top (89%; off-centre fits were worse); main gear X 56/104, Z 152, wheels r 4.5 w 2 at X
+    +-3, Z +-5 (the art's overlap, spaced to touch), nose gear X 72/88, Z 250, a brace back 9; canopy
+    ellipsoid Z 274, Y 41, radii 11/8/17 (64% of the art's glass pixels, the rest its frame bars); yellow
+    from Z 294 plus a cone to Z 303 (60% of the art's yellow); ramp from (Z 144, Y 24) to (Z 96, Y 0).
+    Colours by area from the palette (AREAS), shading left out: hull 246/245/247 (the middle of the art's
+    240-252 ramp), inside 230/231, pods 243/242/244, red 34/35, stripe 149/150, nozzle 132/131/133, etc.
+    The wings' panel lines from the art mapped onto the wing plane (one along the span at Z 123.5, two
+    across); the darkest pixels near the root there are the fuselage's painted shadow, left out. Markings
+    mirrored to the other side (owner): roundel (Z 246, Y 37, r 4.5; a red cross), the fins' "V" and
+    stripe on their outer faces. Whole craft against the assembled art: 96% shape. Sheets: PLANE mean
+    shape 82.8 -> 84.9%; the cockpit pieces 48-53 score 14-33% in isolation (their sprites draw consoles
+    and glass inside, the model's cut gives them the shell), the composite is what counts there.
+    VrBoard buildTile: any part slot can have a model now (modelled[O_MAX]; the left fin and a nose piece
+    are walls); an object's model still paints the ground from the floor's art. Cost: `outside` with
+    `reveal` 809k -> 857k terrain triangles (+48k, one craft). Not yet seen in the headset.
