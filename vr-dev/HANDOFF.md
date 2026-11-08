@@ -357,6 +357,12 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     shape 85.1 -> 86.8% (wing roots 93-97 -> 100, cockpit pieces 49/51/52 up), colour 85.1 -> 85.7. Triangles
     858,940 -> 868,212. Offline renders can't show two pieces drawing the same voxel (they draw the assembled grid):
     count it (every part's one model at every place) instead. Not yet seen in the headset.
+  - Owner on terrain.24's renders: a dark edge along the hull's sides at the wings' height. It's the hull's vertical
+    strip at the fin line (Y 48-49, panels 6 / 13) and the ledge under it (5 / 12): a sliver facing sideways,
+    evenly lit, between panels tilted up, the whole length (the roof pieces repeat, so it can't exist only under the
+    wings). Rendered with the strip and ledge lit as the 1:1 slope below (panels 4 / 11), the line is gone and the
+    shape is unchanged. Owner: bundle that fix with the canopy changes (next: a canopy study). Before it, at his
+    request, the fins' and wings' texturing findings written up as a recipe for future models: `vr-dev/TEXTURING.md`.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -406,7 +412,9 @@ out better the first time)
    lines (seams) joined into clean solid lines; painted markings as drawn. `vr-dev/models/straighten.py`.
    With it, faceted hulls with each panel lit evenly by its own direction (`.ref` VRF3; owner on terrain.22: the
    best result so far, kept). Where a shape isn't one constant section (a tapering nose, a hood, a beak) the
-   texture goes panel by panel (`tex_panels()`, terrain.23).
+   texture goes panel by panel (`tex_panels()`, terrain.23). The full recipe, from the fins and wings (the best
+   parts so far), what was dropped and where it gets harder: `vr-dev/TEXTURING.md`. Read it before texturing a
+   new part.
 11. When a part looks misplaced, check its neighbours against the art first: terrain.23's "too low" wings were
    at the art's height; the hull's top was too wide and covered their roots. Fit the outline of what's around a
    part (from the game's angle) before moving the part. The craft's outline along a constant section can't show
@@ -607,7 +615,8 @@ Room and rendering
 
 ## Where things are
 
-`vr-dev/HISTORY.md` keeps the per-build notes of merged branches and the terrain branch's early builds. `README-VR.md` has the file-by-file overview ("How it works") and the engine
+`vr-dev/HISTORY.md` keeps the per-build notes of merged branches and the terrain branch's early builds.
+`vr-dev/TEXTURING.md` is the recipe for texturing hand-built models from the art. `README-VR.md` has the file-by-file overview ("How it works") and the engine
 hooks. In short: `src/VR/VrSystem.cpp` (frame loop, input mapping, lights,
 test script runner), `VrBoard.cpp` (everything on the table: diorama, view
 rules, HUD, fog, effects, minimap), `VrTable.cpp` (console buttons, action
