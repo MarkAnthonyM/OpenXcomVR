@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.24)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.25)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -713,6 +713,21 @@ Key ideas:
     the game's roof pieces. The front wings, which are the same game pieces
     as the main wings' outer half, no longer overlap the hull: two pieces
     drew faces in the same place there (dark bars above the front wings).
+    0.21.0-terrain.25 reshapes the nose and rebuilds the canopy. Every
+    face of the nose now steps along one voxel axis only (a top sloping
+    forward, upright sides, a flat front), so its pixels stay square and
+    crisp from every angle instead of turning into a honeycomb on the
+    tapering facets; the nose ends at the beak, whose top meets the front
+    edge of the nose's flat deck as in the art. The canopy is a longer, low
+    glass cabin: the roof flush with the deck at the back, sloping to a
+    raked windscreen with its top corners cut, one flat side window each
+    side, the windscreen's glass carried further down the nose, and a frame
+    one table voxel wide all round. The nose's hull and the glass are
+    shaded by rule on the voxel grid from the art's tones (glass lighter in
+    the middle, darker toward the frame and the hull, a checker between
+    steps) instead of copied pixel by pixel, which had left blotches. The
+    dark line along the hull's sides at the wings' height is gone: the thin
+    strip there is lit like the slope below it.
   - lights in models: `.ref` version 2 adds a light flag per voxel and the
     lights' colour (Model::light): materials 10-13 in the board's shader,
     driven by `uAnimFrame` (the battle's animation frame; the lab goes by the

@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.24).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.25).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -363,6 +363,39 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     wings). Rendered with the strip and ledge lit as the 1:1 slope below (panels 4 / 11), the line is gone and the
     shape is unchanged. Owner: bundle that fix with the canopy changes (next: a canopy study). Before it, at his
     request, the fins' and wings' texturing findings written up as a recipe for future models: `vr-dev/TEXTURING.md`.
+  - Canopy study (owner, after terrain.24; scratch log kept in the session only). Owner's choices: the battlescape
+    art is the only reference (not the Ufopaedia picture); the canopy longer (glass from Z 270, was 278) as a low
+    glass cabin (variant 3: sides rise from the hull, roof sloping down to a raked windscreen); a uniform frame 2
+    cells (one table voxel) wide all round, bars split 1 + 1 over the windscreen's seams; the windscreen's glass
+    carried down the nose to Y 35.5 (a lower window); the windscreen's top corners about 2 cells apart (the front
+    frame looked triangular); the angled front corner panes are part of one long side window. Texture splotches
+    (owner asked why): per-panel cell grids at odd angles, 25-50% of cells with no art (filled by nearest), the
+    art's scattered dither, and faces that step two ways (a texture pixel seen as a hexagon from the diagonal).
+    Owner chose: the nose's texture drawn by rule (TEX_AXIS 'rule', sigma 1.5) and the nose reshaped so every face
+    steps one way only (crisp pixels over roundness). Options shown and not taken: a hybrid (one-way top and sides,
+    tapering shoulders; the shoulders stayed big beside the canopy), the body's facets tapering into the nose in
+    steps (jagged edges, not crisper), a flat deck on today's facets (sides still two-way), the deck as one triangle
+    from the wing roots (chines; best outline 95.9% but the chines step two ways: owner, "crisp pixels are more
+    important"), flat panel planes drawn by the renderer (engine change; parked). A first refit of option 1 that
+    scored 96.2% was invalid (non-concave profiles: the extended cut planes sliced the body); profiles must be
+    concave and start at the body's values.
+  - terrain.25 (`skyranger.py`; no engine code changed; mesh hash without PLANE unchanged). The nose (NOSE_MODE 'cut',
+    nose_planes): the body's section (CROSS) as a prism cut by planes each parallel to one voxel axis: top sloping
+    along Z (NOSE_T 54, 46, 39.5, 34.5, 30 at Z 256/272/284/292/298), upright sides (NOSE_W 28, 20.5, 14.5, 9, 4),
+    bottom (NOSE_B), front at Z 293.5, so only the beak is yellow; the body (Z <= 256) stays `_scaled` (terrain.24's
+    wing fit), and a notch at the fin line (Y 47.9-49, x > 16) keeps the nose out of the front wings' voxels. The
+    beak (BEAK deck=True): based on the nose's front face, its flat top meeting the deck's front edge, tapering
+    (p 1.5) to a tip at Y 26, Z 302. The canopy (CANOPY_MODE 'cabin', CABIN axis=True): roof flush with the deck
+    at the back (47 at Z 270) sloping to 46, windscreen foot Z 291.5 raked 4, sides one flat face each (parallel
+    to Z, leaning 0.436 above Y 34, so the canopy narrows toward the back on the sloping deck), upright corner cuts
+    3 / 2 cells at the top, kept inside the nose (in_nose) and above Y 33; frame and chin by cabin_post. Glass by
+    rule (glass_rule2, per table-voxel block of 2x2x2): lighter in the middle, darker toward the frame (ring 0, 2,
+    1, .5) and the hull's edge (foot 0, 5, 4.5 ... .5), half steps a checker, the art's highlight spots kept.
+    Panels: each nose skin cell takes the cut plane it lies on. The dark edge fixed: the strip and ledge at the
+    wings' height (panels 5/6, 12/13) lit as the slope below (4/11). Checks: no voxel drawn by two pieces (78 at
+    the front wings before the notch), holes in the outer surface as terrain.24. Sheets vs terrain.24: only PLANE,
+    mean shape 86.7 -> 86.4%, colour 85.9 -> 85.5 (the art's nose is rounder than any one-way shape: outline
+    96.2 -> 95.3%). Triangles 868,212 -> 828,452. Not yet seen in the headset.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -590,7 +623,8 @@ Room and rendering
 - Terrain parts' animations (8 frames) aren't shown: the table builds frame 0. (Planned on the terrain branch.)
 - Craft and UFO hulls are their collision voxels, except the small scout (hand-built since terrain.13) and
   the Skyranger's outside (terrain.18; faceted and textured from the art, terrain.19; panels lit evenly,
-  terrain.22; the front and the hull's top refitted, terrain.23; wings flush with the fins, terrain.24; its inside, ribs and cockpit, still to do).
+  terrain.22; the front and the hull's top refitted, terrain.23; wings flush with the fins, terrain.24; the nose cut to one-way faces and the canopy rebuilt as a glass cabin,
+  terrain.25; its inside, ribs and cockpit, still to do).
 - Weather and the sun have only been judged in the desktop preview (no
   headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).
@@ -612,6 +646,14 @@ Room and rendering
   should come low from the sunset side (a direction, not the fill), with the
   moon kept weak at 10 and taking over at 11. The owner likes the current
   dusk, the red-orange sunset most; keep that look whatever changes.
+
+- Skyranger nose as one triangle (owner, terrain.25 study): the flat deck from the hull's top at the wing roots
+  (Y 49 at Z 256, x 16) to the front edge (33.4 at Z 293.5), chines x + Y + 0.636 (Z - 256) <= 65 down to the
+  sides. Outline 95.9% (best of the study) but the chines step two ways (honeycomb pixels); owner preferred crisp
+  pixels. Worth another look if faces that step two ways can be made crisp (next idea).
+- Flat panel planes drawn by the renderer (terrain.25 study, offline preview only): each panel a true plane with
+  its texture laid on it, so any shape gets crisp, regular pixels; an engine change, and the style moves toward
+  low-poly.
 
 ## Where things are
 

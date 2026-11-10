@@ -78,7 +78,9 @@ CONE_Z = 294.0                   # the body's tip from here on is yellow
 # taper) from Z 293 to its tip at 302, on Y 27, 6 out (the art's yellow 61% -> 75%), its bottom the nose's level
 # (nothing of the game's below level 1 there to hold more).
 HOOD = dict(z=282.0, rx=11.0, rz=10.0, lift=5.0, zg=279.0, roof=0.55, solid=0.0)   # roof: the flat top; solid: its grey part
-BEAK = dict(yc=27.0, r=6.0, zs=293.0, zt=302.0, p=2.0, ybot=24.0)
+BEAK = dict(deck=True, zs=293.0, zt=302.0, ytip=26.0, p=1.5, low=0.3, bot0=24.0, top0=33.375, w0=7.75)
+# (to terrain.24 an octagon: yc 27, r 6, ybot 24; now its base is the nose's front face: top0, w0 = NOSE_T and
+# NOSE_W at NOSE_CUT front)
 
 # ---------------------------------------------------------------- colours (palette entry, share)
 AREAS = {
@@ -149,8 +151,8 @@ ART_TEXTURE = True      # terrain.19: the hull, wings, fins and pods take the ar
 # shoulder stays out to 17 (a step of one under the wing, an eave between the wings): the hull's inner layer there
 # must stay outside X 64, where the cabin's floor tiles hold nothing.
 CROSS = [(24.0, 24.0), (28.0, 28.0), (33.0, 28.0), (41.0, 24.0), (47.9, 17.1), (48.0, 16.0), (49.0, 16.0), (54.0, 6.0)]
-NOSE_W = [(256.0, 28.0), (272.0, 24.0), (284.0, 18.0), (292.0, 10.0), (298.0, 4.0)]
-NOSE_T = [(256.0, 54.0), (272.0, 50.0), (284.0, 44.0), (292.0, 36.0), (298.0, 30.0)]
+NOSE_W = [(256.0, 28.0), (272.0, 20.5), (284.0, 14.5), (292.0, 9.0), (298.0, 4.0)]     # terrain.25 (to 24: 24, 18, 10)
+NOSE_T = [(256.0, 54.0), (272.0, 46.0), (284.0, 39.5), (292.0, 34.5), (298.0, 30.0)]   # (to 24: 50, 44, 36)
 NOSE_B = [(256.0, 24.0), (284.0, 24.0), (292.0, 25.0), (298.0, 27.0)]
 
 
@@ -163,7 +165,54 @@ def fus_inside(X, Y, Z):
     return (np.abs(X - CXM) <= r) & (h >= 0) & (h <= 1) & (Z >= FUS_Z[0]) & (Z <= NOSE['zt'])
 
 
+NOSE_MODE = 'cut'
+NOSE_CUT = dict(cross=[(24.0, 24.0), (28.0, 28.0), (33.0, 28.0), (41.0, 24.0), (49.0, 16.0), (54.0, 6.0)], extra=[],
+                front=293.5)     # the nose ends where the beak starts
+
+
+def nose_planes():
+    """NOSE_MODE 'cut': the nose as the body's section (a prism along Z) cut by planes each parallel to one voxel
+    axis: the top sloping along Z (NOSE_T), the sides upright (NOSE_W), the bottom (NOSE_B), the front (zt), and
+    extra ones. Each plane: (n, d, sided) in (x = |X - 80|, Y, Z), inside where n . p <= d; sided: has an x part."""
+    k = NOSE_CUT
+    P = []
+    cr = k['cross']
+    for (Y0, h0), (Y1, h1) in zip(cr[:-1], cr[1:]):
+        n = np.array([Y1 - Y0, -(h1 - h0), 0.0]); n /= np.linalg.norm(n)
+        P.append((n, float(n @ [h0, Y0, 0.0]), True))
+    def lines(pts, kind):
+        for (z0, v0), (z1, v1) in zip(pts[:-1], pts[1:]):
+            sl = (v1 - v0) / (z1 - z0)
+            if kind == 'T': n = np.array([0.0, 1.0, -sl]); d = v0 - sl * z0
+            elif kind == 'W': n = np.array([1.0, 0.0, -sl]); d = v0 - sl * z0
+            else: n = np.array([0.0, -1.0, sl]); d = -v0 + sl * z0
+            m = np.linalg.norm(n); P.append((n / m, d / m, kind == 'W'))
+    lines(NOSE_T, 'T'); lines(NOSE_W, 'W'); lines(NOSE_B, 'B')
+    P.append((np.array([0.0, 1.0, 0.0]), cr[-1][0], False))     # the body's flat top
+    P.append((np.array([0.0, -1.0, 0.0]), -cr[0][0], False))    # and bottom
+    P.append((np.array([0.0, 0.0, 1.0]), k.get('front', NOSE['zt']), False))
+    for n, d in k['extra']:
+        n = np.asarray(n, float); m = np.linalg.norm(n); P.append((n / m, d / m, abs(n[0]) > 1e-9))
+    return P
+
+
 def fus_faceted(X, Y, Z):
+    """Inside the fuselage: the body's faceted section (CROSS) to Z 256, then the nose (NOSE_MODE 'cut'): that
+    section cut by planes each parallel to one voxel axis (nose_planes), so every face of the nose steps one way
+    only and its texture's pixels stay square (terrain.25)."""
+    body = _scaled(X, Y, Z)
+    if NOSE_MODE != 'cut':
+        return body
+    x = np.abs(X - CXM)
+    nose = (Z > FUS_Z[1]) & (Z <= NOSE_CUT['front'])
+    for n, d, _ in nose_planes():
+        nose = nose & (n[0] * x + n[1] * Y + n[2] * Z <= d + 1e-9)
+    nose &= ~((Y >= 47.9) & (Y <= 49.0) & (x > 16.0))     # upright at the fin line through the wings' thickness,
+    return np.where(Z <= FUS_Z[1], body, nose)            # as the body (terrain.24): no voxel shared with a wing
+
+
+def _scaled(X, Y, Z):
+    """The body's section, scaled along the nose (the nose up to terrain.24; the body for every Z <= 256)."""
     ww = np.interp(Z, *zip(*NOSE_W)); yt = np.interp(Z, *zip(*NOSE_T)); yb = np.interp(Z, *zip(*NOSE_B))
     Yn = FUS['y0'] + (Y - yb) / np.maximum(yt - yb, 0.5) * (FUS['yt'] - FUS['y0'])
     hw = np.interp(Yn, *zip(*CROSS)) * ww / FUS['w']
@@ -179,9 +228,117 @@ def hood_L(X, Z):
     return terms.max(0), terms.argmax(0)
 
 
+CANOPY_MODE = 'cabin'     # 'hood': the cockpit hood up to terrain.24
+TEX_AXIS = 'rule'        # the nose's texture redrawn by rule (tex_rule), the glass's cells on the voxel grid (tex_axis)
+TEX_RULE = dict(sigma=1.5)
+# the cockpit (terrain.25, the canopy study): a glass cabin on the nose's flat top, from zr to the windscreen's foot
+# zf (at yf, raked back rake to its top at yr1); the roof from yr0 at the back (flush with the top) to yr1; each
+# side one flat face along Z (axis), rf wide at ys, leaning in a per unit up; the front corners cut upright (ch);
+# never wider than the nose (in_nose) or below ymin; the frame frame_w cells along the surface from every edge
+# with the hull and the bars by the windscreen; the windscreen's glass carried down the nose's top to chin_y; the
+# glass shaded by glass_rule2 (darker by table voxels from the bars (ring) and the hull's edge (foot); x.5 = a
+# checkerboard of the two blues either side)
+CABIN = dict(axis=True, zr=270.0, zf=291.5, yf=35.0, rake=4.0, yr0=47.0, yr1=46.0, rf=10.84, ys=34.0, a=0.436,
+             ch=3.0, in_nose=True, ymin=33.0, gap=0.0, frame_w=2, chin_y=35.5,
+             glass_rule2=dict(ring=[0, 2, 1, 0.5], foot=[0, 5, 4.5, 3.5, 2.5, 1.5, 0.5]))
+
+
+def cabin_terms(X, Y, Z):
+    """The cabin's faces as signed distances-ish (<= 0 inside): roof, windscreen, side, chamfer, rear."""
+    k = CABIN
+    zw = k['zf'] - k['rake']
+    roof = k['yr0'] + (k['yr1'] - k['yr0']) * (Z - k['zr']) / (zw - k['zr'])
+    zfront = k['zf'] - (Y - k['yf']) * k['rake'] / (k['yr1'] - k['yf'])
+    if 'a' in k:   # sides leaning in at a fixed slope from the foot line, where the hull is rf wide
+        y0, dy = k.get('foot', (47.0, 0.5))
+        hw = k['rf'] - k['a'] * np.clip(Y - (y0 - dy * (Z - 273.0)), 0, None)
+    else:
+        hw = k['rf'] - np.clip(Y - k['ys'], 0, None) * (k['rf'] - k['rt']) / (k['yr1'] - k['ys'])
+    ax = np.abs(X - CXM)
+    ch = k['ch'] + (k.get('ch_top', k['ch']) - k['ch']) * (Y - k['yf']) / (k['yr1'] - k['yf'])   # smaller toward the top
+    if k.get('axis'):   # every face parallel to one voxel axis: sides along Z (upright below ys, leaning in above),
+        hw = k['rf'] - k['a'] * np.clip(Y - k['ys'], 0, None)     # the front corner cuts upright
+        if k.get('in_nose'):     # never wider than the nose under it (its upright sides)
+            hw = np.minimum(hw, np.interp(np.maximum(Z, FUS_Z[1]), *zip(*NOSE_W)))
+        return dict(roof=Y - roof, front=Z - zfront, side=ax - hw, cham=(ax + Z - (k['rf'] + k['zf'] - k['ch'])) / 1.414,
+                    rear=k['zr'] - Z)
+    return dict(roof=Y - roof, front=Z - zfront, side=ax - hw, cham=(ax + Z - (hw + zfront - ch)) / 1.414,
+                rear=k['zr'] - Z)
+
+
+def cabin_inside(X, Y, Z):
+    t = cabin_terms(X, Y, Z)
+    return (t['roof'] <= 0) & (t['front'] <= 0) & (t['side'] <= 0) & (t['cham'] <= 0) & (t['rear'] <= 0) & (Y >= CABIN.get('ymin', 28.0))
+
+
+def cabin_post(c):
+    """The cabin's windscreen carried down onto the nose's top (CABIN chin_y: hull cells ahead of the windscreen
+    within its width become glass), then the frame: every canopy surface cell within frame_w cells (along the
+    surface, 26-connected) of the canopy's edge with the hull, and the bars between the windscreen and the other
+    glass (frame_w in all: the windscreen side gets the larger half)."""
+    from scipy.ndimage import binary_dilation
+    k = CABIN
+    sl, outer = c.fus_outer
+    fsolid = np.zeros(c.comp.shape, bool); fsolid[sl] = outer
+    def rng(G, a, b):
+        ix = np.nonzero((G > a) & (G < b))[0]
+        return slice(ix[0], ix[-1] + 1)
+    S = (rng(GX, CXM - k['rf'] - 4, CXM + k['rf'] + 4), rng(GZ, k['zr'] - 4, k['zf'] + 4), rng(GY, 27, 59))
+    comp, area, fso = c.comp[S], c.area[S], fsolid[S]
+    I, K, J = np.meshgrid(GX[S[0]], GZ[S[1]], GY[S[2]], indexing='ij')
+    t = cabin_terms(I, J, K)
+    chin = np.zeros(comp.shape, bool)
+    if 'chin_y' in k:
+        chin = (comp == C_FUS) & (J >= k['chin_y']) & (t['front'] > -1.0) & (t['side'] <= 0) & (t['cham'] <= 0)
+        comp[chin] = C_CANOPY; area[chin] = CODES['glass']
+    c.chin[S] = chin
+    can = comp == C_CANOPY
+    air = (comp == 0) & ~fso
+    surf = exposed(can, (0, 1, 2), air)
+    hull_edge = surf & exposed(can, (0, 1, 2), (comp > 0) & ~can)
+    front = (t['front'] >= np.maximum.reduce([t['roof'], t['side'], t['cham'], t['rear']])) | chin
+    st26 = np.ones((3, 3, 3), bool)
+    fs, os_ = surf & front, surf & ~front
+    seed_f = fs & binary_dilation(os_, st26)
+    seed_o = os_ & binary_dilation(fs, st26)
+    def grow(seed, n, within):
+        if n <= 0: return np.zeros_like(seed)
+        out = seed.copy(); fr = seed.copy()
+        for _ in range(n - 1):
+            fr = binary_dilation(fr, st26) & within & ~out
+            out |= fr
+        return out
+    w = k['frame_w']
+    frame = grow(hull_edge, w, surf) | grow(seed_f, (w + 1) // 2, fs) | grow(seed_o, w // 2, os_)
+    area[can & frame] = CODES['frame']
+    area[can & ~frame] = CODES['glass']
+    # distances along the surface (cells) from any frame, and from the frame along the hull (foot, rear)
+    def dist(seed, within, n=16):
+        d = np.full(seed.shape, 99, np.int16); d[seed] = 0; fr = seed.copy(); seen = seed.copy()
+        for i in range(1, n):
+            fr = binary_dilation(fr, st26) & within & ~seen
+            if not fr.any(): break
+            d[fr] = i; seen |= fr
+        return d
+    hull_frame = grow(hull_edge, w, surf)
+    c.d_frame = np.full(c.comp.shape, 99, np.int16); c.d_foot = np.full(c.comp.shape, 99, np.int16)
+    c.d_frame[S] = dist(surf & frame, surf); c.d_foot[S] = dist(hull_frame, surf)
+
+
 def beak_inside(X, Y, Z):
     """The yellow beak (BEAK): a regular octagon across, tapering elliptically to its tip."""
     b = BEAK
+    if b.get('deck'):
+        # the beak's base is the nose's front face (its top at the deck's front edge, as wide), tapering
+        # elliptically (p) to its tip at height ytip; the lower half leaning in at 45 degrees (low) toward the bottom
+        t = np.clip((Z - b['zs']) / (b['zt'] - b['zs']), 0, 1)
+        sfac = np.clip(1 - t ** b['p'], 0, 1) ** (1 / b['p'])
+        top = b['ytip'] + (b['top0'] - b['ytip']) * sfac
+        bot = b['ytip'] - (b['ytip'] - b['bot0']) * sfac
+        w = b['w0'] * sfac
+        mid = bot + b.get('low', 0.5) * (top - bot)
+        dx = np.abs(X - CXM)
+        return (Z >= b['zs']) & (Z <= b['zt']) & (Y <= top) & (Y >= bot) & (dx + np.clip(mid - Y, 0, None) * b.get('lean', 1.0) <= w)
     t = np.clip((Z - b['zs']) / (b['zt'] - b['zs']), 0, 1)
     R = b['r'] * np.clip(1 - t ** b['p'], 0, 1) ** (1 / b['p'])
     dx, dy = np.abs(X - CXM), np.abs(Y - b['yc'])
@@ -368,7 +525,26 @@ def build():
             a[ahead & ~solid & (foot | rear | bar)] = CODES['frame']
             return a
         box = ((CXM - h['rx'] - 1, CXM + h['rx'] + 1), (h['z'] - h['rz'] - 1, h['z'] + h['rz'] + 1), (28.0, 60.0))
+        if CANOPY_MODE == 'cabin':
+            k = CABIN
+            gap = k.get('gap', 0.6)
+            def bubble(X, Y, Z):
+                return cabin_inside(X, Y, Z) & ~fus_inside(X, Y - gap, Z)
+            def canopy_area(X, Y, Z, m):
+                t = cabin_terms(X, Y, Z)
+                fw = k.get('footband', 1.0)
+                foot = fus_inside(X, Y - fw, Z) | fus_inside(X - fw, Y, Z) | fus_inside(X + fw, Y, Z)
+                pillar = (np.abs(t['front'] - t['cham']) < 0.55) & (t['front'] > -1.2)
+                bow = (np.abs(t['front'] - t['roof']) < 0.55) & (t['roof'] > -1.2)
+                rear = t['rear'] > -k.get('rearband', 0.75)
+                a = np.full(X.shape, CODES['glass'], np.uint8)
+                a[foot | pillar | bow | rear] = CODES['frame']
+                return a
+            box = ((CXM - k['rf'] - 1, CXM + k['rf'] + 1), (k['zr'] - 1, k['zf'] + 1), (28.0, 60.0))
     c.put(box, bubble, C_CANOPY, canopy_area, over=True)
+    c.chin = np.zeros(c.comp.shape, bool)
+    if FACETED and CANOPY_MODE == 'cabin' and 'frame_w' in CABIN:
+        cabin_post(c)
     if FACETED: side_feature(c)
     # --- wings (left; the right mirrored): a plate, the tip edge red
     w = WING
@@ -635,6 +811,9 @@ def panels(c):
                 X = CXM + sign * np.interp(ynm, *zip(*CROSS)) * ww(Zm) / FUS['w']
                 P = np.array([X, Y, Zm])
                 n = grad(side_f, P)
+                if (y0n, y1n) == (41.0, 47.9): slope_n = n
+                if z0 == FUS_Z[0] and (y0n, y1n) in ((47.9, 48.0), (48.0, 49.0)):
+                    n = slope_n      # the ledge and upright strip at the wings' height: lit as the slope below
                 normals.append(n); regions.append((z0, z1, sign, y0n, y1n, P, n, len(normals)))
         # the flat bottom and top (shared by both sides)
         for which, yn in (('bottom', FUS['y0']), ('top', FUS['yt'])):
@@ -644,7 +823,7 @@ def panels(c):
             normals.append(n); regions.append((z0, z1, 0, yn - 0.5, yn + 0.5, P, n, len(normals)))
     sl, outer = c.fus_outer
     solid = np.zeros(c.comp.shape, bool); solid[sl] = outer
-    skin = exposed(np.isin(c.comp, (C_FUS, C_CONE)), (0, 1, 2), ~solid) & (GZ[None, :, None] <= NOSE['zt'])
+    skin = exposed(np.isin(c.comp, (C_FUS, C_CONE)) | c.chin, (0, 1, 2), ~solid) & (GZ[None, :, None] <= NOSE['zt'])
     skin &= ~((c.comp == C_CONE) & ~solid)                  # the beak beyond the body: its own panels (below)
     pan = np.zeros(c.comp.shape, np.uint8)
     si, sk, sj = np.nonzero(skin)
@@ -659,6 +838,17 @@ def panels(c):
             d = abs(np.dot(Pv - P0, n))
             if d < bd: best, bd = gid, d
         pan[i, k, j] = best
+    if NOSE_MODE == 'cut':      # the nose: each skin cell takes the plane that bounds it (the largest value)
+        P = nose_planes(); ids = {}
+        nz = np.nonzero(skin & (GZ[None, :, None] > FUS_Z[1]))
+        for i, k, j in zip(*nz):
+            x, Y, Z = abs(GX[i] - CXM), GY[j], GZ[k]
+            vals = [n[0] * x + n[1] * Y + n[2] * Z - d for n, d, _ in P]
+            b = int(np.argmax(vals)); sg = (1 if GX[i] >= CXM else -1) if P[b][2] else 0
+            if (b, sg) not in ids:
+                n = P[b][0].copy(); n[0] *= (sg or 1)
+                normals.append(n); ids[(b, sg)] = len(normals)
+            pan[i, k, j] = ids[(b, sg)]
     # the cockpit hood (HOOD): its roof follows the nose's top (that stretch's top panel); its eight sloping sides
     # each one panel (the direction at the side's middle)
     if FACETED:
@@ -681,8 +871,25 @@ def panels(c):
             normals.append(grad(hood_f, np.array([X, Y, Z])))
             side_ids[(t, sx_, sz_)] = len(normals)
         top_of = {(z0, z1): gid for z0, z1, sign, a0, a1, P0, n, gid in regions if sign == 0 and a0 > 40}
-        hood = exposed(c.comp == C_CANOPY, (0, 1, 2), c.comp == 0)
+        hood = exposed(c.comp == C_CANOPY, (0, 1, 2), c.comp == 0) & ~c.chin
         hi, hk, hj = np.nonzero(hood)
+        if CANOPY_MODE == 'cabin':
+            cab_ids = {}
+            for name in ('roof', 'front', 'rear'):
+                f = lambda X, Y, Z, n=name: float(cabin_terms(np.array(X), np.array(Y), np.array(Z))[n])
+                P = np.array([CXM + 2.0, CABIN['yr1'] - 3.0, (CABIN['zr'] + CABIN['zf']) / 2])
+                normals.append(grad(f, P)); cab_ids[(name, 0)] = len(normals)
+            for name in ('side', 'cham'):
+                for sg in (-1, 1):
+                    f = lambda X, Y, Z, n=name: float(cabin_terms(np.array(X), np.array(Y), np.array(Z))[n])
+                    P = np.array([CXM + sg * 7.0, 45.0, 284.0])
+                    normals.append(grad(f, P)); cab_ids[(name, sg)] = len(normals)
+            for i, k, j in zip(hi, hk, hj):
+                t = cabin_terms(np.array(GX[i]), np.array(GY[j]), np.array(GZ[k]))
+                name = max(('roof', 'front', 'side', 'cham', 'rear'), key=lambda n: float(t[n]))
+                sg = int(np.sign(GX[i] - CXM)) or 1
+                pan[i, k, j] = cab_ids[(name, sg if name in ('side', 'cham') else 0)]
+            hi = hk = hj = ()
         for i, k, j in zip(hi, hk, hj):
             X, Y, Z = GX[i], GY[j], GZ[k]
             L = float(hood_L(np.array(X), np.array(Z))[0])
@@ -692,12 +899,32 @@ def panels(c):
                 pan[i, k, j] = side_ids.get(octant(X, Z), 0)
         # the beak (BEAK): its eight faces per stretch along Z, the flat bottom one more
         b = BEAK
+        if b.get('deck'):
+            def terms_(X, Y, Z):
+                t = min(max((Z - b['zs']) / (b['zt'] - b['zs']), 0), 0.999)
+                sf = (1 - t ** b['p']) ** (1 / b['p'])
+                top = b['ytip'] + (b['top0'] - b['ytip']) * sf; bot = b['ytip'] - (b['ytip'] - b['bot0']) * sf
+                w = b['w0'] * sf; mid = bot + b.get('low', 0.5) * (top - bot); dx = abs(X - CXM)
+                return dict(top=Y - top, bot=bot - Y, side=(dx + max(mid - Y, 0) * b.get('lean', 1.0) - w) / (2 ** .5 if Y < mid else 1))
+            ids_ = {}
+            beak = exposed((c.comp == C_CONE) & ~solid, (0, 1, 2), c.comp == 0)
+            for i, k, j in zip(*np.nonzero(beak)):
+                X, Y, Z = GX[i], GY[j], GZ[k]
+                tv = terms_(X, Y, Z); name = max(tv, key=lambda n: tv[n])
+                f = lambda X_, Y_, Z_, n=name: terms_(X_, Y_, Z_)[n]
+                zb = int((Z - b['zs']) // 2.0); sg = int(np.sign(X - CXM)) if name == 'side' else 0
+                lowpart = name == 'side' and Y < b['ytip'] + 0.0
+                key = (name, zb, sg, lowpart)
+                if key not in ids_:
+                    normals.append(grad(f, np.array([X, Y, Z]))); ids_[key] = len(normals)
+                pan[i, k, j] = ids_[key]
+            b = None
         def beak_f(X, Y, Z):                                 # > 0 outside
             t = np.clip((Z - b['zs']) / (b['zt'] - b['zs']), 0, 0.999)
             R = b['r'] * (1 - t ** b['p']) ** (1 / b['p'])
             dx, dy = abs(X - CXM), abs(Y - b['yc'])
             return max(dx, dy, (dx + dy) / 1.414) - R
-        zs_ = [b['zs'], b['zs'] + 3.0, b['zs'] + 6.0, b['zt']]
+        zs_ = [b['zs'], b['zs'] + 3.0, b['zs'] + 6.0, b['zt']] if b is not None else []
         beak_ids = {}
         for z0, z1 in zip(zs_[:-1], zs_[1:]):
             zm = (z0 + z1) / 2
@@ -712,7 +939,7 @@ def panels(c):
                 beak_ids[(z0, face)] = len(normals)
         normals.append(np.array([0.0, -1.0, 0.0])); beak_bottom = len(normals)
         beak = exposed((c.comp == C_CONE) & ~solid, (0, 1, 2), c.comp == 0)
-        bi, bk, bj = np.nonzero(beak)
+        bi, bk, bj = np.nonzero(beak) if b is not None else ((), (), ())
         for i, k, j in zip(bi, bk, bj):
             X, Y, Z = GX[i], GY[j], GZ[k]
             if Y < b['ybot'] + 0.5: pan[i, k, j] = beak_bottom; continue
@@ -1091,6 +1318,117 @@ def tex_panels(c, placed, pidx, sel, accept, name, even=False):
     print(f'  {name}: {done} cells textured panel by panel')
 
 
+def tex_axis(c, placed, pidx, sel, accept, name, even=False):
+    """Like tex_panels, but the cells are table voxels on one grid per facing: each cell is a square of the two
+    voxel axes across the cells' main facing (X, Y or Z, by the panel's direction), so a cell is always a clean
+    2 x 2 block of model voxels, and panels facing the same way share the grid (their pixels line up)."""
+    art = Canvas(SET, placed, lambda *t: bool(holds(*t) & set(FUS_COMPS)))
+    who, P = owners(c, (C_FUS, C_CONE, C_CANOPY, C_WING, C_GEAR))
+    ii, kk, jj = np.nonzero(sel & (c.panel > 0))
+    if not len(ii): return
+    nrm = np.array([c.panel_normals[g - 1] for g in c.panel[ii, kk, jj]], float)
+    ax = np.argmax(np.abs(nrm), 1)                           # 0 X, 1 Y, 2 Z
+    sg = np.where(np.take_along_axis(nrm, ax[:, None], 1)[:, 0] >= 0, 1, -1)
+    side = np.sign(GX[ii] - CXM).astype(int)
+    Pc = np.stack([GX[ii], GY[jj], GZ[kk]], -1)
+    done = 0
+    for a in (0, 1, 2):
+        for s_ in (-1, 1):
+            for sd in ((-1, 1) if a != 0 else (0,)):
+                m = (ax == a) & (sg == s_) & ((side == sd) if a != 0 else True)
+                if not m.any(): continue
+                o = [b for b in (0, 1, 2) if b != a]
+                Q = Pc[m]
+                best = None
+                for p0 in (0.0, 0.5):
+                    for p1 in (0.0, 0.5):
+                        ku, kv = np.floor(Q[:, o[0]] - p0).astype(int), np.floor(Q[:, o[1]] - p1).astype(int)
+                        vals, cols = {}, {}
+                        for key in set(zip(ku, kv)):
+                            mm = (ku == key[0]) & (kv == key[1])
+                            x, y, z = Q[mm].mean(0)
+                            if x < CXM: x = 2 * CXM - x
+                            q = seen_at(who, P, (x, y, z), 1.2)
+                            if q is not None and art.ok[q] and accept(int(art.col[q])):
+                                vals[key] = art.value(q); cols[key] = int(art.col[q])
+                        if not cols: continue
+                        u0, v0 = min(k[0] for k in cols), min(k[1] for k in cols)
+                        G = np.full((max(k[0] for k in cols) - u0 + 1, max(k[1] for k in cols) - v0 + 1), None, object)
+                        for (x_, y_), col_ in cols.items(): G[x_ - u0, y_ - v0] = col_
+                        sc = straightness(G) + 0.001 * len(cols)
+                        if best is None or sc > best[0]: best = (sc, ku, kv, vals)
+                if best is None: continue
+                _, ku, kv, vals = best
+                if even:
+                    lv = lambda v: v if isinstance(v, int) else sum(v) / 2
+                    new = {}
+                    for (x_, y_), v in vals.items():
+                        nb = [lv(vals[(x_ + da, y_ + db)]) for da in (-1, 0, 1) for db in (-1, 0, 1) if (x_ + da, y_ + db) in vals]
+                        if len(nb) < 5: continue
+                        med = float(np.median(nb))
+                        if abs(lv(v) - med) >= 2:
+                            lo_, f = int(np.floor(med)), med - np.floor(med)
+                            new[(x_, y_)] = lo_ if f < 0.25 else (lo_ + 1 if f > 0.75 else (lo_, lo_ + 1))
+                    vals.update(new)
+                have = list(vals)
+                for x_, y_, i, k, j in zip(ku, kv, ii[m], kk[m], jj[m]):
+                    key = (x_, y_)
+                    if key not in vals:
+                        key = min(have, key=lambda h: (h[0] - x_) ** 2 + (h[1] - y_) ** 2)
+                    pidx[i, k, j] = resolve(vals[key], x_ + y_)
+                done += int(m.sum())
+    print(f'  {name}: {done} cells textured on the voxel grid')
+
+
+def tex_rule(c, placed, pidx, sel, accept, name, sigma=1.5, lo_f=0.3, hi_f=0.7):
+    """The art's tones, redrawn: cells on the voxel grid (as tex_axis); each cell's tone the Gaussian-weighted
+    mean (sigma table voxels, in 3D) of the art's values at the cells the game's view shows (the hidden side
+    mirrored), so gaps and the art's scattered dither become a smooth tone; drawn as the nearest ramp entry, or a
+    checkerboard of the two either side where the tone falls between them (lo_f..hi_f)."""
+    from scipy.spatial import cKDTree
+    art = Canvas(SET, placed, lambda *t: bool(holds(*t) & set(FUS_COMPS)))
+    who, P = owners(c, (C_FUS, C_CONE, C_CANOPY, C_WING, C_GEAR))
+    ii, kk, jj = np.nonzero(sel & (c.panel > 0))
+    if not len(ii): return
+    nrm = np.array([c.panel_normals[g - 1] for g in c.panel[ii, kk, jj]], float)
+    ax = np.argmax(np.abs(nrm), 1)
+    sg = np.where(np.take_along_axis(nrm, ax[:, None], 1)[:, 0] >= 0, 1, -1)
+    side = np.sign(GX[ii] - CXM).astype(int)
+    Pc = np.stack([GX[ii], GY[jj], GZ[kk]], -1)
+    lv = lambda v: float(v) if isinstance(v, (int, np.integer)) else sum(v) / 2
+    cells = []                                              # (voxel mask, key parity, centre mirrored)
+    samples, svals = [], []
+    for a in (0, 1, 2):
+        for s_ in (-1, 1):
+            for sd in ((-1, 1) if a != 0 else (0,)):
+                m = (ax == a) & (sg == s_) & ((side == sd) if a != 0 else True)
+                if not m.any(): continue
+                o = [b for b in (0, 1, 2) if b != a]
+                Q = Pc[m]
+                ku, kv = np.floor(Q[:, o[0]]).astype(int), np.floor(Q[:, o[1]]).astype(int)
+                mi = np.nonzero(m)[0]
+                for key in set(zip(ku, kv)):
+                    mm = (ku == key[0]) & (kv == key[1])
+                    x, y, z = Q[mm].mean(0)
+                    if x < CXM: x = 2 * CXM - x
+                    cells.append((mi[mm], key[0] + key[1], (x, y, z)))
+                    q = seen_at(who, P, (x, y, z), 1.2)
+                    if q is not None and art.ok[q] and accept(int(art.col[q])):
+                        samples.append((x, y, z)); svals.append(lv(art.value(q)))
+    tree = cKDTree(np.array(samples)); sv = np.array(svals)
+    for vm, par, ctr in cells:
+        idx_ = tree.query_ball_point(ctr, 3 * sigma)
+        if not idx_: _, idx_ = tree.query(ctr, 4); idx_ = list(np.atleast_1d(idx_))
+        d2 = ((np.array(samples)[idx_] - ctr) ** 2).sum(1)
+        w = np.exp(-d2 / (2 * sigma ** 2)) + 1e-9
+        t = float((sv[idx_] * w).sum() / w.sum())
+        lo_ = int(np.floor(t)); f = t - lo_
+        val = lo_ if f < lo_f else (lo_ + 1 if f > hi_f else (lo_, lo_ + 1))
+        col_ = resolve(val, par)
+        pidx[ii[vm], kk[vm], jj[vm]] = col_
+    print(f'  {name}: {len(ii)} cells, {len(cells)} pixels by rule from {len(samples)} art samples')
+
+
 def texture(c, placed):
     """Per cell: a palette index from the art (0: colour by area)."""
     import scipy.ndimage as nd
@@ -1105,8 +1443,33 @@ def texture(c, placed):
         hull = (c.comp == C_FUS) & (c.area == CODES['hull'])
         nose = hull & (Zc >= FUS_Z[1]) & (c.panel > 0)
         pidx[nose] = 0
-        tex_panels(c, placed, pidx, nose, hull_grey, 'nose', even=True)
-        tex_panels(c, placed, pidx, (c.comp == C_CANOPY) & (c.area == CODES['glass']) & (c.panel > 0), glass_colour, 'canopy glass')
+        if TEX_AXIS == 'rule': tex_rule(c, placed, pidx, nose, hull_grey, 'nose', **TEX_RULE)
+        else: (tex_axis if TEX_AXIS else tex_panels)(c, placed, pidx, nose, hull_grey, 'nose', even=True)
+        (tex_axis if TEX_AXIS else tex_panels)(c, placed, pidx, (c.comp == C_CANOPY) & (c.area == CODES['glass']) & (c.panel > 0), glass_colour, 'canopy glass')
+        if CANOPY_MODE == 'cabin' and CABIN.get('glass_rule2'):
+            # the art's glass shading as a rule, one shade per table voxel (a 2 x 2 x 2 block): darker toward the hull
+            # edges (foot) and next to the bars by the block's distance from them; half steps a checkerboard of the
+            # two entries either side (the lighter, 128 side, on blocks with even i + j + k)
+            gr = CABIN['glass_rule2']
+            g = (c.comp == C_CANOPY) & (c.area == CODES['glass']) & (c.d_frame < 99)
+            gi, gk, gj = np.nonzero(g)
+            bkey = (gi // 2) * 1000003 + (gk // 2) * 1009 + (gj // 2)
+            df_, dn_ = c.d_frame[gi, gk, gj].astype(int), c.d_foot[gi, gk, gj].astype(int)
+            order = np.argsort(bkey); bs = bkey[order]
+            starts = np.r_[0, np.nonzero(np.diff(bs))[0] + 1]
+            mf = np.minimum.reduceat(df_[order], starts); mn = np.minimum.reduceat(dn_[order], starts)
+            bf = np.empty_like(df_); bn = np.empty_like(dn_)
+            ends = np.r_[starts[1:], len(bs)]
+            for s0, e0, a1, a2 in zip(starts, ends, mf, mn):
+                bf[order[s0:e0]] = a1; bn[order[s0:e0]] = a2
+            dv = (bf + 1) // 2; dfo = (bn + 1) // 2
+            ring = np.array(list(gr['ring']) + [0] * 80, float); foot = np.array(list(gr['foot']) + [0] * 80, float)
+            sh = np.maximum(ring[np.minimum(dv, 80)], foot[np.minimum(dfo, 80)])
+            par = ((gi // 2) + (gk // 2) + (gj // 2)) % 2
+            lo_ = np.floor(sh).astype(int); half = (sh - lo_) > 0.25
+            val = np.where(half & (par == 1), lo_ + 1, lo_)
+            keep = (pidx[gi, gk, gj] >= 224) & (pidx[gi, gk, gj] <= 228)
+            pidx[gi, gk, gj] = np.where(keep, pidx[gi, gk, gj], 128 + val)
         tex_panels(c, placed, pidx, (c.comp == C_CANOPY) & (c.area == CODES['hull']) & (c.panel > 0), roof_colour, 'canopy roof')
         tex_panels(c, placed, pidx, (c.comp == C_CONE) & (c.area == CODES['yellow']) & (c.panel > 0), yellow_colour, 'beak')
     # what no view textured (undersides, ends, behind other pieces): the nearest textured cell of its piece

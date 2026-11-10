@@ -86,8 +86,8 @@ The code is in `vr-dev/models/straighten.py` and `skyranger.py` (`tex_wings`, `t
   A shape that changes along its length has to be textured panel by panel (`tex_panels`, terrain.23).
   Each panel is small, so it gets few art pixels.
 - **Thin strips between panels.** A sliver of panel facing a different way from its neighbours reads as a line
-  under even panel lighting. Seen in terrain.24: the vertical strip at the wings' height along the hull (fix
-  pending: light it as the slope below). A strip that exists only to meet another part should share a
+  under even panel lighting. Seen in terrain.24: the vertical strip at the wings' height along the hull (fixed
+  in terrain.25 by lighting it as the slope below). A strip that exists only to meet another part should share a
   neighbour's lighting direction.
 - **Small parts the art draws in a few pixels.** The art there is mostly outline, highlight and anti-aliasing,
   not texture. The fewer pixels a surface gets, the more the rules for accepting colours decide what it looks
@@ -95,6 +95,32 @@ The code is in `vr-dev/models/straighten.py` and `skyranger.py` (`tex_wings`, `t
 - **Painted light that isn't the surface's own.** Edge highlights (the cowl's white edge became a white
   patch) and reflections. Decide case by case with the owner: the canopy's glass highlight was kept at his
   choice.
+
+## What the canopy and nose study added (terrain.25)
+
+- **Faces that step one way vs two ways.** A face parallel to one voxel axis (a top sloping only along Z, an
+  upright side, a flat front) steps in one direction: its texture pixels stay square and crisp from any angle. A
+  facet that tapers (narrows along the length while sloping across) steps in two directions, and from the game's
+  diagonal view each texture pixel reads as a hexagon (a honeycomb), however the texture is drawn. When the art's
+  shape is rounder than one-way faces allow, the owner prefers crisp pixels over the closer outline (the
+  Skyranger's nose: outline 96.2% -> 95.3%, accepted).
+- **Building such a shape:** take the body's section as a prism and cut it by half-space planes, each parallel
+  to one axis (`nose_planes`). The profiles along the length must be concave and start at the body's own values;
+  otherwise the extended cut planes slice into the body behind (a fit that scored better by doing that was
+  invalid). Check the result for voxels drawn by two pieces where it meets other parts (the front wings).
+- **Texture by rule where the art is thin or ambiguous.** On the nose and the glass the per-panel copy left
+  blotches: cell grids at odd angles, 25-50% of cells with no art seen (filled by nearest), and the art's
+  scattered dither. Instead (`tex_rule`): cells on the voxel grid by the face's facing, each tone the Gaussian
+  mean (sigma 1.5 cells) of the art samples around it, and a checker of the two neighbouring entries between
+  steps. The glass the same way per table-voxel block (2 x 2 x 2): steps by distance from the frame and from the
+  hull's edge, half steps a checker; the art's highlight spots kept.
+- **Frames by distance along the surface.** A uniform frame (2 cells, one table voxel) is a band found by a
+  surface walk from the edges, not a shape of its own; bars between panes split evenly over the seam.
+- **The flush trap.** Fitting a raised part (the canopy) freely to the art's outline pulls it down flat onto the
+  hull: the score improves while the part disappears. Fix its shape by what the art plainly shows (its height at
+  the back, the windscreen's rake) and fit only the rest.
+- **One view can't fix depth.** The game's projection is blind along (1, 1, 1), so a shape that matches the
+  outline can still be wrong in 3D. Show the owner other angles before settling a shape.
 
 ## Before sending a textured part
 
