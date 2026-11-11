@@ -122,10 +122,23 @@ The code is in `vr-dev/models/straighten.py` and `skyranger.py` (`tex_wings`, `t
 - **One view can't fix depth.** The game's projection is blind along (1, 1, 1), so a shape that matches the
   outline can still be wrong in 3D. Show the owner other angles before settling a shape.
 
+## What the hood added (terrain.26)
+
+- **A raised part in the hull's own tone doesn't read.** The hood behind the canopy, built as the canopy's roof
+  carried back, blended into the deck until it got its own tone: darker than the deck, with the art's gradient
+  (light along its middle by the glass, dark toward its sides and back) by rule per table voxel. Keep such a
+  gradient symmetric: the art's lopsided light is its light from the left (Decision 5).
+- **The table lights whole tiles as indoors.** A level-1 tile with a floor on the level above gets no sun. A surface
+  of the hull that dips below level 2's floor inside such a tile drew as a dark patch (offline renders don't show
+  it). Give that surface to the piece above (`bands(placed, c)`; the `.ref`'s base lets a piece start below its
+  tile's floor), and give a piece left with nothing an empty model, or the table builds it from its collision
+  voxels.
+
 ## Before sending a textured part
 
 - Render it from several sides, panel-lit and unlit, and compare it with the art from the game's angle
   (Decision 7).
 - Look along seams and at the part's edges, where it meets its neighbours: lines and bars show up there.
 - Check that no voxel is drawn by two placed pieces (Decision 12). Offline renders can't show that, so count it.
+- Look at it in the preview too: the table's own lighting (sun, indoors tiles, shadows) can differ from offline renders.
 - Say plainly that it hasn't been seen in the headset.

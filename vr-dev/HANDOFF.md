@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.25).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.26).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -396,6 +396,34 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     the front wings before the notch), holes in the outer surface as terrain.24. Sheets vs terrain.24: only PLANE,
     mean shape 86.7 -> 86.4%, colour 85.9 -> 85.5 (the art's nose is rounder than any one-way shape: outline
     96.2 -> 95.3%). Triangles 868,212 -> 828,452. Not yet seen in the headset.
+  - Owner on terrain.25 (renders): looks good; the canopy's front corners seem too close to the edges of the nose's flat
+    top (art: a bigger gap); the hood by the canopy not noticeable, with a black rectangle across it. Measured from the
+    game's angle: the hull's outline there matches the art within a pixel, the canopy's far front corner is 2-3 px
+    nearer it than the art's (the cabin is limited only by the nose's width, CABIN in_nose, so at the front it fills the
+    deck). Shown: corners kept 3 or 5 voxels in from the nose's sides (CABIN margin), a narrower canopy; owner: leave it
+    for now, revisit later (margin stays 0). The black rectangle: the cockpit's level-1 tiles have the roof pieces'
+    floors above them, and the table lights such a tile as indoors (no sun, `indoors()`); in terrain.25 the deck dipped
+    below level 2's floor (Y 48) in front of the glass, so that strip belonged to the level-1 pieces 49/51 and was lit
+    as indoors. Offline renders don't apply that rule.
+  - Hood study: in the art, behind the glass a raised hump to about Z 263, darker than the deck, its far top edge lit
+    (traced by putting the art's pixels on the model from the game's angle; the dark band along the canopy's near side
+    is the nose's own shaded shoulder, not part of the hood: a hood wrapping the canopy's sides matched worse). Shown:
+    the roof carried back as a grey hood (flush with the deck at its back, or standing 1.5-3 above it; back corners
+    cut), which blended into the deck; the hood 2-3 steps darker; a light line on its top edges (looked painted on).
+    Owner chose E2b (2 steps darker), then asked for the art's gradient: G2 chosen.
+  - terrain.26 (`skyranger.py`; no engine code changed; mesh hash without PLANE unchanged). The hood (CABIN zr 262,
+    zg 273, yr0 53, rch 6): the cabin's part behind the glass's start (zg) is hull grey (cabin_post), its roof the
+    cabin's roof carried back (53 at Z 262, 3 above the deck there), its back corners cut upright at 45 degrees
+    (rcham, its own panels); the glass now from Z 273 (as the art; was 270) and higher at its back. Its tone by rule
+    (hood_grad 241-248, 0.8 across): per table-voxel block, light along the middle by the glass to dark at the sides
+    and back end, half steps a checker; symmetric (the art's lighter far side is its light from the left). The
+    rectangle: bands(placed, c) lets the roof pieces over a column whose outer surface dips below Y 48 reach down to
+    hold it (the cockpit's 52/53 now from Y 45, `.ref` base -3, as UFO1_10's -8); level-1 pieces left with nothing
+    there get an empty model (49/51), since a part without a model is built from its collision voxels. Checks: no
+    voxel drawn by two pieces, holes as terrain.25; in the preview the rectangle is gone and the hood stands out.
+    Sheets vs terrain.25: only PLANE, mean shape 86.4 -> 85%, colour 85.5 -> 86% (49/51 now empty: their sprites
+    show the cockpit, drawn by 52/53; 52/53 lower too, as the roof pieces' sprites end at their tile). Triangles
+    828,452 -> 828,796. Not yet seen in the headset.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -624,7 +652,7 @@ Room and rendering
 - Craft and UFO hulls are their collision voxels, except the small scout (hand-built since terrain.13) and
   the Skyranger's outside (terrain.18; faceted and textured from the art, terrain.19; panels lit evenly,
   terrain.22; the front and the hull's top refitted, terrain.23; wings flush with the fins, terrain.24; the nose cut to one-way faces and the canopy rebuilt as a glass cabin,
-  terrain.25; its inside, ribs and cockpit, still to do).
+  terrain.25; the hood behind the glass, terrain.26; its inside, ribs and cockpit, still to do).
 - Weather and the sun have only been judged in the desktop preview (no
   headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).
@@ -651,6 +679,9 @@ Room and rendering
   (Y 49 at Z 256, x 16) to the front edge (33.4 at Z 293.5), chines x + Y + 0.636 (Z - 256) <= 65 down to the
   sides. Outline 95.9% (best of the study) but the chines step two ways (honeycomb pixels); owner preferred crisp
   pixels. Worth another look if faces that step two ways can be made crisp (next idea).
+- Skyranger canopy front corners (owner, after terrain.25: revisit later): the art leaves more of the deck beside the
+  windscreen's front corners. CABIN margin (keep the canopy that many voxels inside the nose's sides; 3 or 5 shown,
+  glass match 0.753 / 0.750 vs 0.728) is in the generator, set to 0.
 - Flat panel planes drawn by the renderer (terrain.25 study, offline preview only): each panel a true plane with
   its texture laid on it, so any shape gets crisp, regular pixels; an engine change, and the style moves toward
   low-poly.

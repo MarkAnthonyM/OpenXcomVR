@@ -238,8 +238,8 @@ TEX_RULE = dict(sigma=1.5)
 # with the hull and the bars by the windscreen; the windscreen's glass carried down the nose's top to chin_y; the
 # glass shaded by glass_rule2 (darker by table voxels from the bars (ring) and the hull's edge (foot); x.5 = a
 # checkerboard of the two blues either side)
-CABIN = dict(axis=True, zr=270.0, zf=291.5, yf=35.0, rake=4.0, yr0=47.0, yr1=46.0, rf=10.84, ys=34.0, a=0.436,
-             ch=3.0, in_nose=True, ymin=33.0, gap=0.0, frame_w=2, chin_y=35.5,
+CABIN = dict(axis=True, zr=262.0, zg=273.0, zf=291.5, yf=35.0, rake=4.0, yr0=53.0, yr1=46.0, rf=10.84, ys=34.0, a=0.436,
+             ch=3.0, rch=6.0, hood_grad=(241, 248, 0.8), in_nose=True, ymin=33.0, gap=0.0, frame_w=2, chin_y=35.5,
              glass_rule2=dict(ring=[0, 2, 1, 0.5], foot=[0, 5, 4.5, 3.5, 2.5, 1.5, 0.5]))
 
 
@@ -259,16 +259,21 @@ def cabin_terms(X, Y, Z):
     if k.get('axis'):   # every face parallel to one voxel axis: sides along Z (upright below ys, leaning in above),
         hw = k['rf'] - k['a'] * np.clip(Y - k['ys'], 0, None)     # the front corner cuts upright
         if k.get('in_nose'):     # never wider than the nose under it (its upright sides)
-            hw = np.minimum(hw, np.interp(np.maximum(Z, FUS_Z[1]), *zip(*NOSE_W)))
-        return dict(roof=Y - roof, front=Z - zfront, side=ax - hw, cham=(ax + Z - (k['rf'] + k['zf'] - k['ch'])) / 1.414,
-                    rear=k['zr'] - Z)
+            hw = np.minimum(hw, np.interp(np.maximum(Z, FUS_Z[1]), *zip(*NOSE_W)) - k.get('margin', 0.0))
+        t = dict(roof=Y - roof, front=Z - zfront, side=ax - hw, cham=(ax + Z - (k['rf'] + k['zf'] - k['ch'])) / 1.414,
+                 rear=k['zr'] - Z)
+        if k.get('rch'):   # the hood's back corners cut (upright, 45 degrees in plan)
+            t['rcham'] = (ax - Z + k['zr'] - (k['rf'] - k['rch'])) / 1.414
+        return t
     return dict(roof=Y - roof, front=Z - zfront, side=ax - hw, cham=(ax + Z - (hw + zfront - ch)) / 1.414,
                 rear=k['zr'] - Z)
 
 
 def cabin_inside(X, Y, Z):
     t = cabin_terms(X, Y, Z)
-    return (t['roof'] <= 0) & (t['front'] <= 0) & (t['side'] <= 0) & (t['cham'] <= 0) & (t['rear'] <= 0) & (Y >= CABIN.get('ymin', 28.0))
+    ins = Y >= CABIN.get('ymin', 28.0)
+    for v in t.values(): ins = ins & (v <= 0)
+    return ins
 
 
 def cabin_post(c):
@@ -292,7 +297,11 @@ def cabin_post(c):
         chin = (comp == C_FUS) & (J >= k['chin_y']) & (t['front'] > -1.0) & (t['side'] <= 0) & (t['cham'] <= 0)
         comp[chin] = C_CANOPY; area[chin] = CODES['glass']
     c.chin[S] = chin
-    can = comp == C_CANOPY
+    # the hood (CABIN zg): the cabin's part behind the glass's start, hull grey; the glass's frame runs along it
+    hood = (comp == C_CANOPY) & (K < k.get('zg', k['zr']))
+    area[hood] = CODES['hull']
+    c.hood = np.zeros(c.comp.shape, bool); c.hood[S] = hood
+    can = (comp == C_CANOPY) & ~hood
     air = (comp == 0) & ~fso
     surf = exposed(can, (0, 1, 2), air)
     hull_edge = surf & exposed(can, (0, 1, 2), (comp > 0) & ~can)
@@ -712,15 +721,31 @@ def holds(tx, ty, tz, slot, p):
     return {C_FUS, C_CONE, C_CANOPY}      # the roof pieces
 
 
-def bands(placed):
+def bands(placed, c=None):
     """Per (tx, ty, tz, part): the heights it holds. Level 1's pieces hold the craft up to the top where the
-    level above has no piece holding the fuselage (the arch's shoulders beside the roof, the nose)."""
+    level above has no piece holding the fuselage (the arch's shoulders beside the roof, the nose). With the
+    craft (c): where the outer surface dips below level 2's floor under a roof piece (the deck in front of the
+    hood, terrain.26), the roof piece reaches down to hold it: the table lights a level-1 tile with a floor
+    above it as indoors (no sun), which drew that bit of deck dark. The piece then starts below its tile's
+    floor (the .ref's base)."""
     roof = {(tx, ty) for tx, ty, tz, slot, p in placed if tz == 2 and C_FUS in holds(tx, ty, tz, slot, p)}
+    split = {}
+    if c is not None:
+        solid = np.isin(c.comp, (C_FUS, C_CONE, C_CANOPY))
+        up = solid & np.concatenate([c.comp[:, :, 1:] == 0, np.zeros(c.comp.shape[:2] + (1,), bool)], 2)
+        for tx, ty in roof:
+            i0, k0 = (tx * 16 - X0) * PER, (ty * 16 - Z0) * PER
+            if k0 < 0 or k0 + 16 * PER > NZ: continue
+            j = np.nonzero(up[i0:i0 + 16 * PER, k0:k0 + 16 * PER].any((0, 1)))[0]
+            low = [GY[x] - 0.5 / PER for x in j if 36.0 <= GY[x] < 48.0]
+            if low: split[(tx, ty)] = float(np.floor(min(low)))
     out = {}
     for tx, ty, tz, slot, p in placed:
         lo, hi = tz * 24.0, tz * 24.0 + 24.0
         if tz == 1 and (tx, ty) not in roof: hi = Y1
+        if tz == 1 and (tx, ty) in split: hi = split[(tx, ty)]
         if tz == 2: hi = Y1
+        if tz == 2 and (tx, ty) in split: lo = split[(tx, ty)]
         out[(tx, ty, tz, slot)] = (lo, hi)
     return out
 
@@ -748,7 +773,7 @@ def speckle(area, i, j, k):
     return pixel_with(AREAS[area][0][0])
 
 
-def write_piece(path, kgrid, refs, pans=None, normals=()):
+def write_piece(path, kgrid, refs, pans=None, normals=(), base=0.0):
     """The .vox and its .ref: VRF2 (colour references, no lights here), or VRF3 when some voxels belong to
     panels (terrain.22): the piece's own table of the panels it uses (normals in model axes: x east, y south,
     z up), then a fifth byte per voxel, 0 or 1 + its index there."""
@@ -772,10 +797,10 @@ def write_piece(path, kgrid, refs, pans=None, normals=()):
                 count += 1
     if used:
         table = b''.join(struct.pack('<3f', *(normals[gid - 1][0], normals[gid - 1][2], normals[gid - 1][1])) for gid in used)
-        out = bytearray(b'VRF3' + struct.pack('<f', 0.0)) + struct.pack('<I', count) + bytes((lc[0], lc[1], lc[2], 0)) \
+        out = bytearray(b'VRF3' + struct.pack('<f', base)) + struct.pack('<I', count) + bytes((lc[0], lc[1], lc[2], 0)) \
             + struct.pack('<I', len(used)) + table + body
     else:
-        out = bytearray(b'VRF2' + struct.pack('<f', 0.0)) + struct.pack('<I', count) + bytes((lc[0], lc[1], lc[2], 0)) + body
+        out = bytearray(b'VRF2' + struct.pack('<f', base)) + struct.pack('<I', count) + bytes((lc[0], lc[1], lc[2], 0)) + body
     open(path + '.ref', 'wb').write(bytes(out))
     return count
 
@@ -879,16 +904,16 @@ def panels(c):
                 f = lambda X, Y, Z, n=name: float(cabin_terms(np.array(X), np.array(Y), np.array(Z))[n])
                 P = np.array([CXM + 2.0, CABIN['yr1'] - 3.0, (CABIN['zr'] + CABIN['zf']) / 2])
                 normals.append(grad(f, P)); cab_ids[(name, 0)] = len(normals)
-            for name in ('side', 'cham'):
+            for name in ('side', 'cham') + (('rcham',) if CABIN.get('rch') else ()):
                 for sg in (-1, 1):
                     f = lambda X, Y, Z, n=name: float(cabin_terms(np.array(X), np.array(Y), np.array(Z))[n])
                     P = np.array([CXM + sg * 7.0, 45.0, 284.0])
                     normals.append(grad(f, P)); cab_ids[(name, sg)] = len(normals)
             for i, k, j in zip(hi, hk, hj):
                 t = cabin_terms(np.array(GX[i]), np.array(GY[j]), np.array(GZ[k]))
-                name = max(('roof', 'front', 'side', 'cham', 'rear'), key=lambda n: float(t[n]))
+                name = max(t.keys(), key=lambda n: float(t[n]))
                 sg = int(np.sign(GX[i] - CXM)) or 1
-                pan[i, k, j] = cab_ids[(name, sg if name in ('side', 'cham') else 0)]
+                pan[i, k, j] = cab_ids[(name, sg if name in ('side', 'cham', 'rcham') else 0)]
             hi = hk = hj = ()
         for i, k, j in zip(hi, hk, hj):
             X, Y, Z = GX[i], GY[j], GZ[k]
@@ -1470,7 +1495,30 @@ def texture(c, placed):
             val = np.where(half & (par == 1), lo_ + 1, lo_)
             keep = (pidx[gi, gk, gj] >= 224) & (pidx[gi, gk, gj] <= 228)
             pidx[gi, gk, gj] = np.where(keep, pidx[gi, gk, gj], 128 + val)
-        tex_panels(c, placed, pidx, (c.comp == C_CANOPY) & (c.area == CODES['hull']) & (c.panel > 0), roof_colour, 'canopy roof')
+        hood_sel = (c.comp == C_CANOPY) & (c.area == CODES['hull']) & (c.panel > 0)
+        if CANOPY_MODE == 'cabin' and TEX_AXIS == 'rule' and CABIN.get('zg'):
+            tex_rule(c, placed, pidx, hood_sel, hull_grey, 'hood', **TEX_RULE)   # the hood behind the glass
+            hi_, hk_, hj_ = np.nonzero(hood_sel)
+            if CABIN.get('hood_dark'):   # a darker grey than the deck round it, as the art's hump
+                pidx[hi_, hk_, hj_] = np.clip(pidx[hi_, hk_, hj_].astype(int) + CABIN['hood_dark'], 240, 252)
+            if CABIN.get('hood_grad'):   # the art's gradient on the hump: light along its middle by the glass, darker
+                # toward its sides and back edge; one tone per table voxel (2 x 2 x 2 block), half steps a checker
+                lo_g, hi_g, wa = CABIN['hood_grad']
+                X_, Y_, Z_ = GX[hi_], GY[hj_], GZ[hk_]
+                hw_ = np.maximum(CABIN['rf'] - CABIN['a'] * np.clip(Y_ - CABIN['ys'], 0, None), 1.0)
+                bi, bk, bj = hi_ // 2, hk_ // 2, hj_ // 2
+                key = bi * 1000003 + bk * 1009 + bj
+                sa = np.clip(np.abs(X_ - CXM) / hw_, 0, 1)
+                sb = np.clip((CABIN['zg'] - Z_) / (CABIN['zg'] - CABIN['zr']), 0, 1)
+                sv = np.clip(wa * sa + (1 - wa) * sb, 0, 1)
+                _, inv = np.unique(key, return_inverse=True)
+                sv = (np.bincount(inv, sv) / np.bincount(inv))[inv]          # one value per block
+                tone = lo_g + (hi_g - lo_g) * sv
+                lo_t = np.floor(tone).astype(int); half = (tone - lo_t) > 0.5
+                par = (bi + bk + bj) % 2
+                pidx[hi_, hk_, hj_] = np.where(half & (par == 1), lo_t + 1, lo_t)
+        else:
+            tex_panels(c, placed, pidx, hood_sel, roof_colour, 'canopy roof')
         tex_panels(c, placed, pidx, (c.comp == C_CONE) & (c.area == CODES['yellow']) & (c.panel > 0), yellow_colour, 'beak')
     # what no view textured (undersides, ends, behind other pieces): the nearest textured cell of its piece
     for comp, areas in ((C_FUS, ('hull',)), (C_WING, ('hull',)), (C_POD, ('pod',)), (C_CANOPY, ('glass',)),
@@ -1524,7 +1572,9 @@ def main():
     c.pidx = texture(c, placed) if ART_TEXTURE else np.zeros(c.comp.shape, np.uint8)
     counts = {NAMES[a]: int((c.area == a).sum()) for a in np.unique(c.area) if a}
     print('craft:', int((c.comp > 0).sum()), 'cells;', counts)
-    bnd = bands(placed)
+    bnd = bands(placed, c)
+    for k_, v_ in bnd.items():
+        if v_[0] != k_[2] * 24.0: print(f'  tile {k_[:3]} slot {k_[3]} starts at Y {v_[0]} (base {v_[0] - k_[2] * 24.0:+.0f})')
     # a part the map uses in several places gets one model: the shape it has most often there (the roof
     # pieces repeat from the rear to the cockpit; the rear one also holds the end's top)
     places = {}
@@ -1544,8 +1594,15 @@ def main():
         refs = {}
         for x, y, z in zip(*np.nonzero(kg)):
             refs[(x, y, z)] = pixel_with(int(pals[x, y, z])) if pals[x, y, z] else speckle(NAMES[areas[x, y, z]], i0 + x, k0 + y, jb + z)
-        n = write_piece(os.path.join(OUT, f'{SET}_{p}'), kg, refs, pans, c.panel_normals)
+        n = write_piece(os.path.join(OUT, f'{SET}_{p}'), kg, refs, pans, c.panel_normals, base=bnd[(tx, ty, tz, slot)][0] - tz * 24.0)
         print(f'  {SET}_{p} ({tx},{ty},{tz}) slot {slot}: {n} voxels, {kg.shape[2]} layers')
+    # a part that holds craft components but has none left in its heights (the cockpit's level-1 pieces under the
+    # roof pieces, terrain.26) gets an empty model: without one the table would build it from its collision voxels
+    for tx, ty, tz, slot, p in placed:
+        if holds(tx, ty, tz, slot, p) and p not in places:
+            kg = np.zeros((16 * PER, 16 * PER, 2), np.uint8)
+            write_piece(os.path.join(OUT, f'{SET}_{p}'), kg, {})
+            print(f'  {SET}_{p} ({tx},{ty},{tz}) slot {slot}: empty')
     return c
 
 
