@@ -424,6 +424,16 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     Sheets vs terrain.25: only PLANE, mean shape 86.4 -> 85%, colour 85.5 -> 86% (49/51 now empty: their sprites
     show the cockpit, drawn by 52/53; 52/53 lower too, as the roof pieces' sprites end at their tile). Triangles
     828,452 -> 828,796. Not yet seen in the headset.
+  - Owner after terrain.26: the outside looks good enough for now; next, the interior (in a new session). Where it
+    stands: the hull is a shell one table voxel thick (build(): `cav = erode(outer, SHELL)`), its inner layer the
+    `inside` area (palette 230/231, flat colour, not textured); no bottom under the cabin's floor tiles (X 64-96,
+    Z 112-288: the game's own floors, rule-built, are the floor) or over the ramp's hatch; level-1 pieces hold the
+    walls up to Y 48 where roof pieces (level 2) are above, else the whole height (bands()); the cockpit's level-1
+    pieces 49/51 are empty and its roof is 52/53 from Y 45. Cutting the view to level 1 hides the roof pieces, which
+    is how the inside is seen. The game's own idea of the interior is its collision voxels: PLANE.MCD (62-byte
+    records, LOFT ids at offset 8, 12 entries of 2 voxel layers) and GEODATA/LOFTEMPS.DAT (16 rows of uint16 per
+    template, bit 15 - x of row y); and the sprites (`dumpart PLANE`). Start with a study of what the art and the
+    game's data show inside (seats, consoles, ribs, the cockpit) before building, as the owner prefers.
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
