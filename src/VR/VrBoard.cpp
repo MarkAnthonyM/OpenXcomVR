@@ -98,6 +98,7 @@ static const float MAT_BOARD = 8.f;
 // hand-built lights (VrModels.h Model::light; 0.21.0-terrain.16): glow in their own colour, animated in step
 // with the game's terrain frames (shader: uAnimFrame, uPulse, uFlip)
 static const float MAT_GLOW_A = 10.f, MAT_GLOW_B = 11.f, MAT_GLOW_PULSE = 12.f, MAT_GLOW_FLIP = 13.f;
+static const float MAT_GLOW_SOFT = 15.f; // a hand-built model's soft steady light (terrain.27): lit, with a floor of its own colour
 static const float MAT_PANEL = 14.f; // a hand-built model's face lit by its panel's direction (terrain.22): as MAT_BOARD, never turned to the eye
 
 /// How much a tile's shade (0 bright .. 15 dark, the game's lighting) darkens it, in linear light.
@@ -1597,8 +1598,8 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 					for (int i = 0; i < w; ++i) used[(size_t)(v + j) * nu + u + i] = 1;
 				const int kindv = mv & 7;
 				emitPanel = mv >> 3;
-				emitMat = kindv == 2 ? MAT_GLOW_PULSE : kindv == 3 ? MAT_GLOW_FLIP : kindv == 4 ? MAT_GLOW_A : kindv == 5 ? MAT_GLOW_B : emitPanel ? MAT_PANEL : MAT_BOARD;
-				emitLift = kindv >= 4 ? 0.04f : 0.f;
+				emitMat = kindv == 2 ? MAT_GLOW_PULSE : kindv == 3 ? MAT_GLOW_FLIP : kindv == 4 ? MAT_GLOW_A : kindv == 5 ? MAT_GLOW_B : kindv == 6 ? MAT_GLOW_SOFT : emitPanel ? MAT_PANEL : MAT_BOARD;
+				emitLift = (kindv == 4 || kindv == 5) ? 0.04f : 0.f;
 				emit(axis, sign, plane, u, v, w, h, ua, va, nu, paint);
 				emitMat = MAT_BOARD; emitLift = 0.f; emitPanel = 0;
 			}
@@ -1625,7 +1626,7 @@ void Board::Impl::addModel(const VR::Model &m, const Surface *spr, int yoff, con
 					if (f && d.axis == 2 && d.sign < 0 && k == 1 && m.baseY == 0.f) f = false; // stands on the floor
 					const size_t vi = ((size_t)c[2] * m.sy + c[1]) * m.sx + c[0];
 					const uint8_t lt = (f && !m.light.empty()) ? m.light[vi] : 0;
-					mask[o] = !f ? 0 : lt == VR::Model::LIGHT_PULSE ? 2 : lt == VR::Model::LIGHT_FLIP ? 3 : 1;
+					mask[o] = !f ? 0 : lt == VR::Model::LIGHT_PULSE ? 2 : lt == VR::Model::LIGHT_FLIP ? 3 : lt == VR::Model::LIGHT_STEADY ? 6 : 1;
 					if (!f) continue;
 					// its panel, unless the face turns away from it (a cut end keeps its own light)
 					if (!m.panel.empty() && m.panel[vi])

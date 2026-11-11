@@ -49,7 +49,9 @@ struct Model
 	/// Lights (".ref" version 2, 0.21.0-terrain.16): per voxel 0 = none, LIGHT_A / LIGHT_B = a light that
 	/// shows on even / odd frames of the game's terrain animation (the small scout's rim: two interleaved
 	/// sets), LIGHT_PULSE = glows, stepping bright, mid, dark, mid (the scout's cap), LIGHT_FLIP = glows,
-	/// bright two frames, dark two (its lift). Lights glow (never darkened by the night) on their own
+	/// bright two frames, dark two (its lift), LIGHT_STEADY = a soft, steady glow (0.21.0-terrain.27: the Skyranger's
+	/// console lights): lit as usual, but never darker than most of its own colour, so it shows in the dark and a
+	/// little brighter than its surroundings by day. Lights glow (never darkened by the night) on their own
 	/// surface only: they light nothing round them. A and B are drawn as a thin layer over the voxel's own
 	/// colour, in lightRef's colour.
 	std::vector<uint8_t> light;
@@ -61,7 +63,7 @@ struct Model
 	/// its panel (a cut end) keeps its own direction.
 	std::vector<uint8_t> panel;
 	std::vector<float> panelNormal; // 3 per panel
-	enum { LIGHT_NONE = 0, LIGHT_A = 1, LIGHT_B = 2, LIGHT_PULSE = 3, LIGHT_FLIP = 4 };
+	enum { LIGHT_NONE = 0, LIGHT_A = 1, LIGHT_B = 2, LIGHT_PULSE = 3, LIGHT_FLIP = 4, LIGHT_STEADY = 5 };
 	uint8_t at(int x, int y, int z) const
 	{
 		if (x < 0 || y < 0 || z < 0 || x >= sx || y >= sy || z >= sz) return MK_EMPTY;

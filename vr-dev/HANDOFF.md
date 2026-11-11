@@ -182,7 +182,7 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
   the same way on terrain.5 and .6 (checked: identical readout on both); timing, fixed in terrain.13 (40 more frames).
 - Branch `vr-prototype-terrain` (from vr-prototype 0.21.0): terrain looks (owner's list: flat rocks and
   holes, rough hidden sides, flicker, the Skyranger's white lines and nose, the small scout, missing polar
-  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.26).
+  tiles, animations, items and bodies, tree crowns). Builds `0.21.0-terrain.<n>` (now terrain.27).
   Owner's choices: one build (the lab is in openxcom.exe, command line only, view-only); relief from a
   hand-checked list of parts; holes a quarter level deep to start; both voxel steps and smooth relief to
   compare; hidden sides mirror the visible side, nearest colour where that fails; the small scout gets a
@@ -434,6 +434,41 @@ with things missing, Xvfb has died: run.sh restarts it on the next run.
     records, LOFT ids at offset 8, 12 entries of 2 voxel layers) and GEODATA/LOFTEMPS.DAT (16 rows of uint16 per
     template, bit 15 - x of row y); and the sprites (`dumpart PLANE`). Start with a study of what the art and the
     game's data show inside (seats, consoles, ribs, the cockpit) before building, as the owner prefers.
+  - Interior study (2026-11-10; study scripts were session scratch). The map: the cabin is two tiles wide (x4-5),
+    floor part 2 on rows 9-16 (16 walkable tiles); the walls on x3 / x6 (west: 6, 5, 4 x6, 3 on rows 7-15; east: 12,
+    11, 10 x6, 9); the cockpit rows 16-18 (floors 54, 55, 56 have TU walk 255: soldiers never stand there; 58/59 its
+    west wall, 47 its east). The art (with the view cut to level 1 the game shows the west wall's inside only; the
+    east tiles' sprites are outer hull): part 4/5, the cabin's wall in the light grey ramp (entries 1-13), pale C-shaped
+    frames, two a tile, a member along the middle, dark bays between; part 3 (row 15) a purple wall panel with red,
+    orange, red lights (mapped onto the wall: Z 247.5-251.5, Y 26-36, a dark seam at its rear edge ~Z 242); 58/59
+    the cockpit's side wall, purple, a console with orange / yellow lights (Z 257-263, Y 26-33) and grey instruments.
+    No seats anywhere; no part animates or gives light. The collision: the west wall a hollow C (a thin skin, ledges
+    at the floor and the top, a low bulge), the east wall one solid block (the game's data isn't symmetric): it only
+    confirms the C profile. Room: between the floor tiles' edge (X 64) and the inner skin (X 53 at Y 28-34, 56.5 at
+    40, 60 at 44, 64 at 48) a pocket 11 voxels deep each side; nothing there is ever in a soldier's way. From
+    straight above the shoulders hide it; from the seated angle the far wall's pocket shows.
+    Owner's choices: build what the art draws (ribs, the front panels, the cockpit consoles), both sides; the bays
+    between the ribs the skin's purple (not the art's dark); the console lights a soft glow. Seats (troops' jump
+    seats, pilots' seats and an instrument panel) not now: maybe after seeing it in the headset.
+  - terrain.27 (`skyranger.py` interior(), INTERIOR; engine: LIGHT_STEADY). New component C_INT, held by level-1
+    non-floor pieces (holds()); built on the left (X < 64) from the cavity (`erode(outer, SHELL)`) and mirrored.
+    RIBS: cells within 3 (model cells) of the inner skin at Z = tile + 3 and + 11 (2 thick), rows 8-14 (Z 128-240),
+    Y 24-48, so each repeated wall part (4, 10) holds two identical frames; the C's lower arm is the strip along the
+    floor's edge; STRINGER the same depth at Y 35-38 (at 1 voxel deep on the 2:1 slope it didn't show). FRONT (Z
+    242-255, Y 24-41) and COCKPIT (Z 256.5-266, Y 24-33.5, grey top `instr`) are cabinets: the cavity behind an
+    upright plane X = xf (57.5 / 60), so their fronts step one way only; a first try as "within n of the skin" grew
+    a shelf along the floor and a stepped front, and a light landed on the shelf. Lights on the front plane
+    (innermost cell per Z, Y): areas ired 36/35, iorange 20/19, iyellow 148, the panel `console` 229/230, the ribs
+    `rib` 4/5/3. write_piece writes the light byte (`lights`), piece() carries c.light. Engine: Model::LIGHT_STEADY
+    (5) -> face mask 6 -> MAT_GLOW_SOFT (15) (emitLift only for A/B now); the board shader for material 15: the lit
+    colour, but at least 0.8 of its own colour, plus 0.2 of it (shows at night and indoors, a little brighter by
+    day). Changed models: PLANE 3, 4, 5, 9, 10, 11, 47, 58 (the rest byte-identical; with INTERIOR off all are).
+    Checks: no voxel drawn by two placed pieces, every inside cell in a placed piece; parts 60/61 at row 7 differ
+    from their model by 438 cells as before. `outside` with `reveal` at the top level: triangles 826,074 -> 834,054,
+    the mesh hash without PLANE the same with the old and the new models (ef5b47f1ef580ecf here). Preview (`outside`, wheel 1, boardrotate 90, centertile 5 31-34, zoom
+    2.4, cam 0 1.72 -0.42 0 -64): the far wall's frames and rail show; at shade 15 the lights still glow. Not yet
+    seen in the headset. Preview notes: `dumpart` needs the terrain lab running (`-vrTerrainLab POLAR`); `shot`
+    takes a path (`shot shots/x`, no extension added).
   Setup fixes from this session: setup.sh creates the Linux prefix's include/lib first and stops if the
   Linux OpenXR loader doesn't build (it needs `-I$VR_LP/include` for EGL in the cloud workspace; before,
   it was marked done anyway and CMake quietly built the preview without VR); build-preview.sh refuses a
@@ -662,7 +697,7 @@ Room and rendering
 - Craft and UFO hulls are their collision voxels, except the small scout (hand-built since terrain.13) and
   the Skyranger's outside (terrain.18; faceted and textured from the art, terrain.19; panels lit evenly,
   terrain.22; the front and the hull's top refitted, terrain.23; wings flush with the fins, terrain.24; the nose cut to one-way faces and the canopy rebuilt as a glass cabin,
-  terrain.25; the hood behind the glass, terrain.26; its inside, ribs and cockpit, still to do).
+  terrain.25; the hood behind the glass, terrain.26; its inside, as the art draws it, terrain.27; seats not built).
 - Weather and the sun have only been judged in the desktop preview (no
   headset here); thunder has never been heard (the preview has no audio).
 - Changing video options in-game stops VR (restart).

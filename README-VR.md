@@ -1,4 +1,4 @@
-# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.26)
+# OpenXcom Extended — VR Tabletop (prototype 0.21.0-terrain.27)
 
 Play OpenXcom Extended in VR as if it were a tabletop wargame. You sit (or
 stand) in an X-COM command center at a holographic war table:
@@ -658,7 +658,7 @@ Key ideas:
     uses in several places (the roof pieces, the walls along the cabin, the
     pods, the wing tips) is one model, so those pieces are the same shape
     wherever they repeat. Since this build any part (floor, wall, object)
-    can have a model. The inside's ribs come next.
+    can have a model.
     0.21.0-terrain.19 (a test of the texture study's choices): the hull is
     faceted, flat panels at clean angles (square to the grid, 1:1, 1:2) so
     the voxel steps on each panel are even, with a faceted canopy following
@@ -735,8 +735,19 @@ Key ideas:
     does. The dark rectangle on the deck in front of the glass is gone:
     those tiles have the roof pieces above them, so the table lit them as
     indoors (no sun); the roof pieces now hold that bit of deck.
+    0.21.0-terrain.27 furnishes the inside (seen with the view on level 1,
+    which hides the roof), with what the game's art draws there, on both
+    sides: pale C-shaped frames along the cabin's walls, two a tile, with a
+    rail along their middle and the skin's purple between them; at the
+    cabin's front a flat-fronted purple panel on each wall with a stack of
+    red, orange and red lights; in the cockpit's rear a console on each
+    side wall with a grey top and orange and yellow lights. All of it lies
+    between the wall and the floor tiles' edge, never where soldiers stand.
+    The console lights glow softly: lit like everything else, but never
+    darker than most of their own colour, so they show at night and inside.
   - lights in models: `.ref` version 2 adds a light flag per voxel and the
-    lights' colour (Model::light): materials 10-13 in the board's shader,
+    lights' colour (Model::light): materials 10-13 in the board's shader
+    (and 15, a soft steady light: LIGHT_STEADY, 0.21.0-terrain.27),
     driven by `uAnimFrame` (the battle's animation frame; the lab goes by the
     clock), `uPulse` and `uFlip` (the scout's cap and lift, measured from
     their frames). The comparison pictures leave out the odd-frame lights. The far

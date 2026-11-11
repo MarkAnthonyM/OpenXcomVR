@@ -4,6 +4,8 @@
 panel lit evenly (panels()); 0.21.0-terrain.23, the hull's top slimmer, the cockpit hood (HOOD), the beak (BEAK),
 the device under the cockpit (FEATURE) and the nose textured panel by panel (tex_panels()); 0.21.0-terrain.24, the hull's
 edge at the fins' line through the wings' thickness and a roof cap (CROSS), no voxel shared by two pieces.
+0.21.0-terrain.27: the inside as the art draws it (interior(): the cabin's frames and rail, the front wall panels and
+the cockpit's consoles, their lights glowing softly).
 
 Run after `dumpart PLANE` in the terrain lab (see voxlib.py). Writes bin/common/Resources/VR/models/
 PLANE_<id>.vox and .ref for every part that holds a piece of the craft. Shapes and pixel references only,
@@ -109,12 +111,18 @@ AREAS = {
     'warn': [(37, 70), (36, 30)],                    # the red warning triangle
     'warnmid': [(20, 100)],                          # its yellow middle
     'amber': [(101, 60), (100, 40)],                 # the small amber light
+    'rib': [(4, 50), (5, 30), (3, 20)],              # the cabin's frames (terrain.27): the art's pale greys there
+    'console': [(229, 60), (230, 40)],               # the wall panels: a lighter purple than the skin
+    'instr': [(7, 60), (8, 40)],                     # the cockpit console's top
+    'ired': [(36, 60), (35, 40)],                    # the panels' lights (glowing)
+    'iorange': [(20, 60), (19, 40)],
+    'iyellow': [(148, 100)],
 }
 CODES = {name: i + 1 for i, name in enumerate(AREAS)}
 NAMES = {v: k for k, v in CODES.items()}
 
 # components (what a part may hold)
-C_FUS, C_CONE, C_CANOPY, C_WING, C_FIN, C_POD, C_GEAR, C_RAMP = range(1, 9)
+C_FUS, C_CONE, C_CANOPY, C_WING, C_FIN, C_POD, C_GEAR, C_RAMP, C_INT = range(1, 10)   # C_INT: the inside (terrain.27)
 
 
 # ---------------------------------------------------------------- shapes
@@ -683,7 +691,77 @@ def build():
     def ramp_area(X, Y, Z, m):
         return np.where(np.floor(Z / 1.5) % 2 == 0, CODES['ramp'], CODES['grate']).astype(np.uint8)
     c.put((r['x'], r['z'], r['y']), ramp, C_RAMP, ramp_area)
+    if INTERIOR: interior(c)
     return c
+
+
+# ---------------------------------------------------------------- the inside (terrain.27)
+# From the interior study (owner's choices, 2026-11-10): what the art draws inside, on both sides (the game's view
+# only shows the west wall's inside). The cabin's wall (parts 5, 4 over rows 8-14): pale C-shaped frames, two a tile,
+# a member along the middle; the bays between them the skin's purple (owner; the art's are dark). The cabin's front
+# wall (part 3, row 15): a purple panel with lights, red over orange over red. The cockpit's side walls (parts 58,
+# 59): a console with orange and yellow lights and grey instruments. The lights glow softly (owner; LIGHT_STEADY).
+# All of it lies between the wall and the floor tiles' edge (X < 64; mirrored X > 96): never in the soldiers' way.
+# Measured on the art (the parts' pixels mapped onto the wall's inner face): the front panel's lights at Z 247.5-251.5,
+# Y 26-36; the cockpit console's at Z 257-263, Y 26-33. The panel and the console are cabinets with an upright flat
+# front (X = xf, steps one way only: crisp) between the wall and that plane; their lights on the front.
+INTERIOR = True
+RIBS = dict(z=(128.0, 240.0), at=(3.0, 11.0), t=2.0, depth=3, y=(24.0, 48.0))   # frames: start in each tile, thickness
+STRINGER = dict(y=(35.0, 38.0), depth=3)                                      # the member along the middle (cells)
+FRONT = dict(z=(242.0, 255.0), y=(24.0, 41.0), xf=57.5,
+             lights=[('ired', (33.0, 36.0)), ('iorange', (30.0, 32.0)), ('ired', (26.5, 29.0))], lz=(247.5, 251.5))
+COCKPIT = dict(z=(256.5, 266.0), y=(24.0, 33.5), xf=60.0,
+               lights=[('iorange', (30.0, 32.5), (257.5, 261.5)), ('iyellow', (27.0, 29.5), (258.5, 263.5))])
+LIGHT_STEADY = 5        # VrModels.h Model::LIGHT_STEADY: glows softly, never darker than most of its own colour
+
+
+def interior(c):
+    sl, outer = c.fus_outer
+    _, X, Z, Y = grid(((CXM - 30, CXM + 30), (FUS_Z[0] - 1, NOSE['zt'] + 1), (FUS['y0'] - 1, FUS['yt'] + 1)))
+    cav = erode(outer, SHELL) & (c.comp[sl] == 0)
+    left = X < 64.0
+    near = lambda n: cav & ~erode(cav, n)          # cells within n of the inner skin
+    m_rib = np.zeros(cav.shape, bool)
+    for z0 in np.arange(RIBS['z'][0], RIBS['z'][1], 16.0):
+        for a in RIBS['at']:
+            m_rib |= (Z >= z0 + a) & (Z < z0 + a + RIBS['t'])
+    band = (Z >= RIBS['z'][0]) & (Z < RIBS['z'][1]) & (Y >= RIBS['y'][0]) & (Y < RIBS['y'][1]) & left
+    rib = near(RIBS['depth']) & band & m_rib
+    rib |= near(STRINGER['depth']) & band & (Y >= STRINGER['y'][0]) & (Y < STRINGER['y'][1])
+    f = FRONT
+    front = cav & (X < f['xf']) & (Z >= f['z'][0]) & (Z < f['z'][1]) & (Y >= f['y'][0]) & (Y < f['y'][1])
+    k = COCKPIT
+    cock = cav & (X < k['xf']) & (Z >= k['z'][0]) & (Z < k['z'][1]) & (Y >= k['y'][0]) & (Y < k['y'][1])
+    cur, ar = c.comp[sl], c.area[sl]
+    for m, name in ((rib, 'rib'), (front, 'console'), (cock, 'console')):
+        cur[m] = C_INT
+        ar[m] = CODES[name]
+    # the cockpit console's top: grey instruments
+    up = np.concatenate([cock[:, :, 1:], np.zeros(cock.shape[:2] + (1,), bool)], 2)
+    ar[cock & ~up] = CODES['instr']
+    # lights on the panels' faces toward the cabin (per Z, Y the innermost cell of the panel)
+    light = np.zeros(cav.shape, np.uint8)
+    def faces(m):
+        nxt = np.concatenate([m[1:], np.zeros((1,) + m.shape[1:], bool)], 0)
+        return m & ~nxt
+    ff, fc = faces(front), faces(cock)
+    for name, (y0, y1) in f['lights']:
+        s = ff & (Y >= y0) & (Y < y1) & (Z >= f['lz'][0]) & (Z < f['lz'][1])
+        ar[s] = CODES[name]; light[s] = LIGHT_STEADY
+    for name, (y0, y1), (z0, z1) in k['lights']:
+        s = fc & (Y >= y0) & (Y < y1) & (Z >= z0) & (Z < z1)
+        ar[s] = CODES[name]; light[s] = LIGHT_STEADY
+    c.light = np.zeros(c.comp.shape, np.uint8)
+    c.light[sl] = light
+    box = ((CXM - 30, CXM), (FUS_Z[0] - 1, NOSE['zt'] + 1), (FUS['y0'] - 1, FUS['yt'] + 1))
+    c.mirror(box, C_INT)
+    s2, _, _, _ = grid(box)
+    i0, i1 = s2[0].start, s2[0].stop
+    src = c.light[s2]
+    dst = c.light[NX - i1:NX - i0, s2[1], s2[2]]
+    dst[src[::-1] > 0] = src[::-1][src[::-1] > 0]
+    print(f'inside: ribs {int(rib.sum())}, front panels {int(front.sum())}, cockpit consoles {int(cock.sum())} cells a side; '
+          f'{int((c.light > 0).sum())} light cells')
 
 
 ROUNDEL = (246.0, 37.0, 4.5)     # Z, Y of its middle on the side, radius (refined by --measure)
@@ -715,7 +793,7 @@ def holds(tx, ty, tz, slot, p):
     if tz == 1:
         if p in (41, 42, 43, 44): return {C_POD}
         if slot == FLOOR: return set()
-        return {C_FUS, C_CONE, C_CANOPY}
+        return {C_FUS, C_CONE, C_CANOPY, C_INT}
     if p in WING_IDS: return {C_WING}     # (the hull's shoulders beside them: level 1's pieces, bands())
     if p in (7, 8, 13, 14): return {C_FIN}
     return {C_FUS, C_CONE, C_CANOPY}      # the roof pieces
@@ -773,7 +851,7 @@ def speckle(area, i, j, k):
     return pixel_with(AREAS[area][0][0])
 
 
-def write_piece(path, kgrid, refs, pans=None, normals=(), base=0.0):
+def write_piece(path, kgrid, refs, pans=None, normals=(), base=0.0, lights=None):
     """The .vox and its .ref: VRF2 (colour references, no lights here), or VRF3 when some voxels belong to
     panels (terrain.22): the piece's own table of the panels it uses (normals in model axes: x east, y south,
     z up), then a fifth byte per voxel, 0 or 1 + its index there."""
@@ -791,7 +869,7 @@ def write_piece(path, kgrid, refs, pans=None, normals=(), base=0.0):
             for x in range(sx):
                 if not kgrid[x, y, z]: continue
                 r = refs[(x, y, z)]
-                rec = (r[0], r[1], r[2], 0)
+                rec = (r[0], r[1], r[2], int(lights[x, y, z]) if lights is not None else 0)
                 if used: rec += (local.get(int(pans[x, y, z]), 0),)
                 body += bytes(rec)
                 count += 1
@@ -1550,6 +1628,7 @@ def piece(c, tx, ty, tz, comps, band):
     aa = c.area[i0:i0 + T, k0:k0 + T, j0:j1]
     pp = c.pidx[i0:i0 + T, k0:k0 + T, j0:j1]
     pn = c.panel[i0:i0 + T, k0:k0 + T, j0:j1]
+    lt = c.light[i0:i0 + T, k0:k0 + T, j0:j1] if getattr(c, 'light', None) is not None else np.zeros_like(pn)
     sel = np.isin(cc, list(comps))
     if not sel.any(): return None
     top = int(np.nonzero(sel.any(axis=(0, 1)))[0].max()) + 1
@@ -1561,7 +1640,9 @@ def piece(c, tx, ty, tz, comps, band):
     pal_[:, :, 1:] = np.where(sel[:, :, :top], pp[:, :, :top], 0)
     pan_ = np.zeros((T, T, top + 1), np.uint8)
     pan_[:, :, 1:] = np.where(sel[:, :, :top], pn[:, :, :top], 0)
-    return kg, (areas, pal_, pan_), (i0, k0, j0 - 1)
+    lt_ = np.zeros((T, T, top + 1), np.uint8)
+    lt_[:, :, 1:] = np.where(sel[:, :, :top], lt[:, :, :top], 0)
+    return kg, (areas, pal_, pan_, lt_), (i0, k0, j0 - 1)
 
 
 def main():
@@ -1586,7 +1667,7 @@ def main():
     for p, lst in sorted(places.items()):
         keys = [r[0].tobytes() + bytes(r[0].shape) for _, r in lst]
         best = max(keys, key=lambda k: (keys.count(k), -keys.index(k)))   # a tie: its first place (the main wings)
-        (tx, ty, tz, slot), (kg, (areas, pals, pans), (i0, k0, jb)) = lst[keys.index(best)]
+        (tx, ty, tz, slot), (kg, (areas, pals, pans, lts), (i0, k0, jb)) = lst[keys.index(best)]
         for (where, r), key in zip(lst, keys):
             if key != best:
                 n = min(r[0].shape[2], kg.shape[2])
@@ -1594,7 +1675,7 @@ def main():
         refs = {}
         for x, y, z in zip(*np.nonzero(kg)):
             refs[(x, y, z)] = pixel_with(int(pals[x, y, z])) if pals[x, y, z] else speckle(NAMES[areas[x, y, z]], i0 + x, k0 + y, jb + z)
-        n = write_piece(os.path.join(OUT, f'{SET}_{p}'), kg, refs, pans, c.panel_normals, base=bnd[(tx, ty, tz, slot)][0] - tz * 24.0)
+        n = write_piece(os.path.join(OUT, f'{SET}_{p}'), kg, refs, pans, c.panel_normals, base=bnd[(tx, ty, tz, slot)][0] - tz * 24.0, lights=lts)
         print(f'  {SET}_{p} ({tx},{ty},{tz}) slot {slot}: {n} voxels, {kg.shape[2]} layers')
     # a part that holds craft components but has none left in its heights (the cockpit's level-1 pieces under the
     # roof pieces, terrain.26) gets an empty model: without one the table would build it from its collision voxels

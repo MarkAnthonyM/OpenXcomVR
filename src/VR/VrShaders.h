@@ -483,6 +483,9 @@ void sceneMain()
 		}
 		vec3 base = t.rgb * vColor.rgb * uTint.rgb;
 		if (uMode == 4) { fragColor = vec4(base, t.a * uTint.a); return; }
+		// a soft steady light (0.21.0-terrain.27, hand-built models' consoles): lit as usual, but never darker than
+		// most of its own colour (it shows at night and indoors) and a little brighter than its surroundings by day
+		vec3 soft = vMat == 15 ? t.rgb * uTint.rgb : vec3(0.0);
 		// the highlight follows the surface's own brightness, so a tile darkened by the night stays dark
 		float k = dot(vColor.rgb * uTint.rgb, vec3(1.0 / 3.0));
 		// glowing shots and blasts light the surface from its unlit colour, so they show at night too
@@ -536,10 +539,10 @@ void sceneMain()
 			vec3 lit = uTerrain == 1 ? lighting(bAmb, n, 0.12 * k * uWet, 0.35) : lighting(bAmb, n, 0.1 * k, 0.8);
 			// in any shade the base light is dimmer and cooler, so shadows read deep on busy ground
 			vec3 c = lit + bAmb * 0.22 * mix(vec3(0.42, 0.46, 0.56), vec3(1.0), sunOpen(n)) + albedo * (locSky * uPoolSkyCol + locWarm * uLampCol) * (0.8 + 0.2 * max(n.y, 0.0)) + skyLit;
-			fragColor = vec4(c + t.rgb * glow, 1.0);
+			fragColor = vec4(max(c, soft * 0.8) + soft * 0.2 + t.rgb * glow, 1.0);
 			return;
 		}
-		fragColor = vec4(lighting(base, n, 0.1 * k, 0.8) + base * 0.22 + t.rgb * glow, 1.0);
+		fragColor = vec4(max(lighting(base, n, 0.1 * k, 0.8) + base * 0.22, soft * 0.8) + soft * 0.2 + t.rgb * glow, 1.0);
 		return;
 	}
 
